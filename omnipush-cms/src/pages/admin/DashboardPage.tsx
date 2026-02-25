@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
-import { Monitor, Store, Users, Wifi, WifiOff, AlertTriangle, Clock } from 'lucide-react'
-import { supabase } from '../../lib/supabase'
+import { Monitor, Store, Users, Wifi, WifiOff, AlertTriangle, Clock, FileCheck, ArrowUpRight } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { supabase, DEFAULT_TENANT_ID } from '../../lib/supabase'
 import { DeviceHeartbeat } from '../../types'
 import { formatDistanceToNow } from 'date-fns'
 
@@ -9,16 +10,18 @@ interface Stats {
     devices: number
     online: number
     offline: number
+    activePubs: number
+    roles: number
 }
 
-const ONLINE_THRESHOLD_MS = 15 * 60 * 1000 // 15 minutes
+const ONLINE_THRESHOLD_MS = 3 * 60 * 1000 // 3 minutes (matches Monitoring & Devices pages)
 
 function isOnline(lastSeen: string) {
     return Date.now() - new Date(lastSeen).getTime() < ONLINE_THRESHOLD_MS
 }
 
 export default function DashboardPage() {
-    const [stats, setStats] = useState<Stats>({ stores: 0, devices: 0, online: 0, offline: 0 })
+    const [stats, setStats] = useState<Stats>({ stores: 0, devices: 0, online: 0, offline: 0, activePubs: 0, roles: 0 })
     const [heartbeats, setHeartbeats] = useState<DeviceHeartbeat[]>([])
     const [alerts, setAlerts] = useState<DeviceHeartbeat[]>([])
     const [loading, setLoading] = useState(true)
@@ -26,10 +29,12 @@ export default function DashboardPage() {
     useEffect(() => {
         async function load() {
             setLoading(true)
-            const [storesRes, devicesRes, heartbeatsRes] = await Promise.all([
-                supabase.from('stores').select('id', { count: 'exact' }).eq('active', true),
-                supabase.from('devices').select('id', { count: 'exact' }).eq('active', true),
+            const [storesRes, devicesRes, heartbeatsRes, pubsRes, rolesRes] = await Promise.all([
+                supabase.from('stores').select('id', { count: 'exact' }).eq('tenant_id', DEFAULT_TENANT_ID).eq('active', true),
+                supabase.from('devices').select('id', { count: 'exact' }).eq('tenant_id', DEFAULT_TENANT_ID).eq('active', true),
                 supabase.from('device_heartbeats').select('*').order('last_seen_at', { ascending: false }).limit(50),
+                supabase.from('layout_publications').select('id', { count: 'exact' }).eq('tenant_id', DEFAULT_TENANT_ID).eq('is_active', true),
+                supabase.from('roles').select('id', { count: 'exact' }).eq('tenant_id', DEFAULT_TENANT_ID),
             ])
 
             // Get latest heartbeat per device
@@ -39,15 +44,18 @@ export default function DashboardPage() {
             }
             const latest = Array.from(hbMap.values())
 
+            const totalDevices = devicesRes.count || 0
             const online = latest.filter(h => isOnline(h.last_seen_at)).length
-            const offline = latest.length - online
+            const offline = Math.max(0, totalDevices - online)
             const alertList = latest.filter(h => !isOnline(h.last_seen_at))
 
             setStats({
                 stores: storesRes.count || 0,
-                devices: devicesRes.count || 0,
+                devices: totalDevices,
                 online,
                 offline,
+                activePubs: pubsRes.count || 0,
+                roles: rolesRes.count || 0,
             })
             setHeartbeats(heartbeatsRes.data || [])
             setAlerts(alertList)
@@ -83,7 +91,7 @@ export default function DashboardPage() {
                     <AlertTriangle size={16} color="#ef4444" style={{ flexShrink: 0, marginTop: 2 }} />
                     <div>
                         <div style={{ fontWeight: 500, color: '#ef4444', fontSize: '0.875rem' }}>
-                            {alerts.length} device{alerts.length > 1 ? 's' : ''} offline — not seen in the last 15 minutes
+                            {alerts.length} device{alerts.length > 1 ? 's' : ''} offline — not seen in the last 3 minutes
                         </div>
                         <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.25rem' }}>
                             {alerts.slice(0, 3).map(a => a.device_code).join(', ')}{alerts.length > 3 ? ` and ${alerts.length - 3} more` : ''}
@@ -93,11 +101,13 @@ export default function DashboardPage() {
             )}
 
             {/* Stats grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-                <StatCard icon={<Store size={22} />} label="Active Stores" value={loading ? '—' : stats.stores} color="#5a64f6" />
-                <StatCard icon={<Monitor size={22} />} label="Total Devices" value={loading ? '—' : stats.devices} color="#7a8aff" />
-                <StatCard icon={<Wifi size={22} />} label="Online" value={loading ? '—' : stats.online} color="#22c55e" />
-                <StatCard icon={<WifiOff size={22} />} label="Offline" value={loading ? '—' : stats.offline} color="#ef4444" />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+                <StatCard icon={<Store size={22} />} label="Active Stores" value={loading ? '—' : stats.stores} color="#5a64f6" to="/admin/stores" />
+                <StatCard icon={<Monitor size={22} />} label="Total Devices" value={loading ? '—' : stats.devices} color="#7a8aff" to="/admin/devices" />
+                <StatCard icon={<Users size={22} />} label="Screen Roles" value={loading ? '—' : stats.roles} color="#8b5cf6" to="/admin/roles" />
+                <StatCard icon={<Wifi size={22} />} label="Online" value={loading ? '—' : stats.online} color="#22c55e" to="/admin/monitoring" />
+                <StatCard icon={<WifiOff size={22} />} label="Offline" value={loading ? '—' : stats.offline} color="#ef4444" to="/admin/monitoring" />
+                <StatCard icon={<FileCheck size={22} />} label="Active Publns" value={loading ? '—' : stats.activePubs} color="#06b6d4" to="/admin/publish" />
             </div>
 
             {/* Recent heartbeats */}
@@ -163,16 +173,52 @@ export default function DashboardPage() {
     )
 }
 
-function StatCard({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: number | string; color: string }) {
+function StatCard({
+    icon, label, value, color, to
+}: {
+    icon: React.ReactNode
+    label: string
+    value: number | string
+    color: string
+    to?: string
+}) {
+    const navigate = useNavigate()
+    const [hovered, setHovered] = useState(false)
+
+    const handleClick = () => { if (to) navigate(to) }
+
     return (
-        <div className="stat-card">
+        <div
+            className="stat-card"
+            onClick={handleClick}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            style={{
+                cursor: to ? 'pointer' : 'default',
+                transform: hovered && to ? 'translateY(-3px)' : 'translateY(0)',
+                boxShadow: hovered && to ? `0 8px 24px rgba(0,0,0,0.3), 0 0 0 1px ${color}40` : undefined,
+                transition: 'transform 0.18s ease, box-shadow 0.18s ease',
+                position: 'relative',
+            }}
+        >
             <div className="stat-icon" style={{ background: `${color}20` }}>
                 <span style={{ color }}>{icon}</span>
             </div>
-            <div>
+            <div style={{ flex: 1 }}>
                 <div className="stat-value">{value}</div>
                 <div className="stat-label">{label}</div>
             </div>
+            {to && (
+                <div style={{
+                    position: 'absolute', top: '0.75rem', right: '0.75rem',
+                    color: hovered ? color : '#334155',
+                    transition: 'color 0.18s ease, transform 0.18s ease',
+                    transform: hovered ? 'translate(1px, -1px)' : 'translate(0, 0)',
+                    display: 'flex',
+                }}>
+                    <ArrowUpRight size={14} />
+                </div>
+            )}
         </div>
     )
 }

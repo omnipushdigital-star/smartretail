@@ -42,7 +42,7 @@ export default function PlaylistsPage() {
     const [saving, setSaving] = useState(false)
     const [editingPlaylist, setEditingPlaylist] = useState<Playlist | null>(null)
     const [playlistItems, setPlaylistItems] = useState<(PlaylistItem & { media?: MediaAsset })[]>([])
-    const [addType, setAddType] = useState<'image' | 'video' | 'web_url'>('image')
+    const [addType, setAddType] = useState<'image' | 'video' | 'web_url'>('video')
     const [addMediaId, setAddMediaId] = useState('')
     const [addUrl, setAddUrl] = useState('')
     const [addDuration, setAddDuration] = useState('10')
@@ -247,11 +247,40 @@ export default function PlaylistsPage() {
                             </div>
                             {addType !== 'web_url' ? (
                                 <div className="form-group">
-                                    <label className="label">Select Media</label>
-                                    <select className="input-field" value={addMediaId} onChange={e => setAddMediaId(e.target.value)}>
-                                        <option value="">— Select —</option>
-                                        {filteredMedia.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                                    </select>
+                                    <label className="label">
+                                        Select Media
+                                        {filteredMedia.length > 0 && (
+                                            <span style={{ marginLeft: '0.5rem', fontSize: '0.7rem', color: '#64748b', fontWeight: 400 }}>
+                                                ({filteredMedia.length} available)
+                                            </span>
+                                        )}
+                                    </label>
+                                    {filteredMedia.length === 0 ? (
+                                        <div style={{
+                                            padding: '0.75rem 1rem',
+                                            background: 'rgba(245,158,11,0.06)',
+                                            border: '1px solid rgba(245,158,11,0.2)',
+                                            borderRadius: 8,
+                                            fontSize: '0.8125rem',
+                                            color: '#92400e',
+                                            lineHeight: 1.5,
+                                        }}>
+                                            <span style={{ color: '#fbbf24' }}>⚠ No {addType} files found.</span><br />
+                                            <span style={{ color: '#94a3b8' }}>
+                                                Go to{' '}
+                                                <a href="/admin/media" target="_blank" rel="noreferrer"
+                                                    style={{ color: '#7a8aff', textDecoration: 'underline' }}>
+                                                    Media Library
+                                                </a>{' '}
+                                                and upload a {addType} file first.
+                                            </span>
+                                        </div>
+                                    ) : (
+                                        <select className="input-field" value={addMediaId} onChange={e => setAddMediaId(e.target.value)}>
+                                            <option value="">— Select {addType} —</option>
+                                            {filteredMedia.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                        </select>
+                                    )}
                                 </div>
                             ) : (
                                 <div className="form-group">

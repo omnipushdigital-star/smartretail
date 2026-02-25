@@ -17,6 +17,10 @@ import LayoutsPage from './pages/admin/LayoutsPage'
 import RulesPage from './pages/admin/RulesPage'
 import PublishPage from './pages/admin/PublishPage'
 import MonitoringPage from './pages/admin/MonitoringPage'
+import DbMigrationPage from './pages/admin/DbMigrationPage'
+import EdgeFunctionsPage from './pages/admin/EdgeFunctionsPage'
+import RlsSetupPage from './pages/admin/RlsSetupPage'
+import BundlesPage from './pages/admin/BundlesPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -58,7 +62,11 @@ function AppRoutes() {
         <Route path="layouts" element={<LayoutsPage />} />
         <Route path="rules" element={<RulesPage />} />
         <Route path="publish" element={<PublishPage />} />
+        <Route path="bundles" element={<BundlesPage />} />
         <Route path="monitoring" element={<MonitoringPage />} />
+        <Route path="db-migration" element={<DbMigrationPage />} />
+        <Route path="edge-functions" element={<EdgeFunctionsPage />} />
+        <Route path="rls-setup" element={<RlsSetupPage />} />
       </Route>
 
       {/* Redirect root */}

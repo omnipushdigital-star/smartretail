@@ -13,10 +13,19 @@ function maskToDays(mask: number): string {
     return DAYS.filter((_, i) => mask & (1 << i)).join(', ')
 }
 
-const emptySchedule = { days_mask: 127, start_time: '', end_time: '', date_from: '', date_to: '' }
-const emptyForm = { name: '', enabled: true, priority: 0, target_type: 'GLOBAL' as const, target_id: '', layout_id: '' }
+interface FormState {
+    name: string
+    enabled: boolean
+    priority: number
+    target_type: 'GLOBAL' | 'STORE' | 'ROLE' | 'DEVICE'
+    target_id: string
+    layout_id: string
+}
+
+const emptyForm: FormState = { name: '', enabled: true, priority: 0, target_type: 'GLOBAL', target_id: '', layout_id: '' }
 
 export default function RulesPage() {
+    const emptyScheduleLocal = { days_mask: 127, start_time: '', end_time: '', date_from: '', date_to: '' }
     const [rules, setRules] = useState<Rule[]>([])
     const [layouts, setLayouts] = useState<Layout[]>([])
     const [stores, setStores] = useState<Store[]>([])
@@ -28,8 +37,8 @@ export default function RulesPage() {
     const [showModal, setShowModal] = useState(false)
     const [showPreview, setShowPreview] = useState(false)
     const [editing, setEditing] = useState<Rule | null>(null)
-    const [form, setForm] = useState(emptyForm)
-    const [schedule, setSchedule] = useState(emptySchedule)
+    const [form, setForm] = useState<FormState>(emptyForm)
+    const [schedule, setSchedule] = useState(emptyScheduleLocal)
     const [dayToggles, setDayToggles] = useState<boolean[]>(Array(7).fill(true))
     const [saving, setSaving] = useState(false)
     const [previewDevice, setPreviewDevice] = useState('')
@@ -63,7 +72,7 @@ export default function RulesPage() {
     const openCreate = () => {
         setEditing(null)
         setForm(emptyForm)
-        setSchedule(emptySchedule)
+        setSchedule(emptyScheduleLocal)
         setDayToggles(Array(7).fill(true))
         setShowModal(true)
     }
@@ -75,7 +84,7 @@ export default function RulesPage() {
             setSchedule({ days_mask: sched.days_mask, start_time: sched.start_time || '', end_time: sched.end_time || '', date_from: sched.date_from || '', date_to: sched.date_to || '' })
             setDayToggles(togglesToDays(sched.days_mask))
         } else {
-            setSchedule(emptySchedule)
+            setSchedule(emptyScheduleLocal)
             setDayToggles(Array(7).fill(true))
         }
         setShowModal(true)

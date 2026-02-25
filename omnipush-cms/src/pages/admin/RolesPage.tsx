@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Plus, Search, Edit2, Trash2, Users as UsersIcon, Loader2 } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, Users as UsersIcon, Loader2, Info } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { Role } from '../../types'
 import { DEFAULT_TENANT_ID } from '../../lib/supabase'
@@ -8,7 +8,12 @@ import Pagination from '../../components/ui/Pagination'
 import toast from 'react-hot-toast'
 
 const PAGE_SIZE = 10
-const emptyForm = { name: '', description: '' }
+const emptyForm = { key: '', name: '', description: '' }
+const KEY_REGEX = /^[A-Z0-9_]+$/
+
+function autoKey(name: string) {
+    return name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+}
 
 export default function RolesPage() {
     const [roles, setRoles] = useState<Role[]>([])
@@ -21,49 +26,84 @@ export default function RolesPage() {
     const [form, setForm] = useState(emptyForm)
     const [saving, setSaving] = useState(false)
     const [deleting, setDeleting] = useState<string | null>(null)
+    const [keyTouched, setKeyTouched] = useState(false)
 
     const loadRoles = async () => {
         setLoading(true)
         const [rolesRes, devicesRes] = await Promise.all([
-            supabase.from('roles').select('*').order('name'),
+            supabase.from('roles').select('*').eq('tenant_id', DEFAULT_TENANT_ID).order('name'),
             supabase.from('devices').select('role_id').eq('active', true),
         ])
-        const roles = rolesRes.data || []
         const counts: Record<string, number> = {}
         for (const d of devicesRes.data || []) {
             if (d.role_id) counts[d.role_id] = (counts[d.role_id] || 0) + 1
         }
-        setRoles(roles)
+        setRoles(rolesRes.data || [])
         setDeviceCounts(counts)
         setLoading(false)
     }
 
     useEffect(() => { loadRoles() }, [])
 
-    const filtered = roles.filter(r => r.name.toLowerCase().includes(search.toLowerCase()))
+    const filtered = roles.filter(r =>
+        r.name.toLowerCase().includes(search.toLowerCase()) ||
+        (r.key || '').toLowerCase().includes(search.toLowerCase())
+    )
     const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
-    const openCreate = () => { setEditing(null); setForm(emptyForm); setShowModal(true) }
-    const openEdit = (r: Role) => { setEditing(r); setForm({ name: r.name, description: r.description || '' }); setShowModal(true) }
+    const openCreate = () => {
+        setEditing(null); setForm(emptyForm); setKeyTouched(false); setShowModal(true)
+    }
+    const openEdit = (r: Role) => {
+        setEditing(r)
+        setForm({ key: r.key || '', name: r.name, description: r.description || '' })
+        setKeyTouched(true)
+        setShowModal(true)
+    }
+
+    const handleNameChange = (name: string) => {
+        setForm(f => ({
+            ...f,
+            name,
+            key: keyTouched ? f.key : autoKey(name),
+        }))
+    }
+
+    const handleKeyChange = (key: string) => {
+        setKeyTouched(true)
+        setForm(f => ({ ...f, key: key.toUpperCase().replace(/[^A-Z0-9_]/g, '') }))
+    }
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault()
         if (!form.name.trim()) { toast.error('Name is required'); return }
+        if (!form.key.trim()) { toast.error('Key is required'); return }
+        if (!KEY_REGEX.test(form.key)) { toast.error('Key must be uppercase letters, digits, underscores only'); return }
         setSaving(true)
         try {
             if (editing) {
-                const { error } = await supabase.from('roles').update({ ...form, updated_at: new Date().toISOString() }).eq('id', editing.id)
+                const { error } = await supabase.from('roles').update({
+                    name: form.name, key: form.key, description: form.description,
+                    updated_at: new Date().toISOString()
+                }).eq('id', editing.id)
                 if (error) throw error
                 toast.success('Role updated')
             } else {
-                const { error } = await supabase.from('roles').insert({ ...form, tenant_id: DEFAULT_TENANT_ID })
+                const { error } = await supabase.from('roles').insert({
+                    name: form.name, key: form.key, description: form.description,
+                    tenant_id: DEFAULT_TENANT_ID
+                })
                 if (error) throw error
                 toast.success('Role created')
             }
             setShowModal(false)
             loadRoles()
         } catch (err: any) {
-            toast.error(err.message || 'Failed to save')
+            if (err.message?.includes('roles_tenant_key_ux')) {
+                toast.error('A role with this key already exists for this tenant')
+            } else {
+                toast.error(err.message || 'Failed to save')
+            }
         }
         setSaving(false)
     }
@@ -93,9 +133,7 @@ export default function RolesPage() {
                 <div style={{ position: 'relative', maxWidth: 360 }}>
                     <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
                     <input
-                        id="role-search"
-                        type="text"
-                        className="input-field"
+                        id="role-search" type="text" className="input-field"
                         placeholder="Search roles..."
                         value={search}
                         onChange={e => { setSearch(e.target.value); setPage(1) }}
@@ -111,7 +149,7 @@ export default function RolesPage() {
                     <div className="empty-state">
                         <UsersIcon size={40} />
                         <h3>No roles found</h3>
-                        <p>{search ? 'Try different search terms.' : 'Create roles like "Main Menu", "Deals", "Drinks", etc.'}</p>
+                        <p>{search ? 'Try different search terms.' : 'Create roles like "MAIN_MENU", "DEALS", "DRINKS", etc.'}</p>
                     </div>
                 ) : (
                     <>
@@ -119,15 +157,21 @@ export default function RolesPage() {
                             <table>
                                 <thead>
                                     <tr>
+                                        <th>Key</th>
                                         <th>Role Name</th>
                                         <th>Description</th>
-                                        <th>Devices Assigned</th>
+                                        <th>Devices</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {paginated.map(r => (
                                         <tr key={r.id}>
+                                            <td>
+                                                <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '0.8125rem', color: '#7a8aff', background: 'rgba(90,100,246,0.1)', padding: '2px 8px', borderRadius: 4 }}>
+                                                    {r.key || '—'}
+                                                </span>
+                                            </td>
                                             <td style={{ color: '#f1f5f9', fontWeight: 500 }}>{r.name}</td>
                                             <td style={{ color: '#94a3b8', fontSize: '0.8125rem' }}>{r.description || '—'}</td>
                                             <td>
@@ -158,11 +202,27 @@ export default function RolesPage() {
                     <form onSubmit={handleSave}>
                         <div className="form-group">
                             <label className="label">Role Name *</label>
-                            <input id="role-name" className="input-field" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Main Menu, Deals, Drinks..." />
+                            <input id="role-name" className="input-field" value={form.name}
+                                onChange={e => handleNameChange(e.target.value)}
+                                placeholder="e.g. Main Menu, Deals, Drinks..." />
+                        </div>
+                        <div className="form-group">
+                            <label className="label" style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                                Role Key * <span title="Stable identifier used by Player" style={{ display: 'flex' }}><Info size={12} color="#64748b" /></span>
+                            </label>
+                            <input id="role-key" className="input-field" value={form.key}
+                                onChange={e => handleKeyChange(e.target.value)}
+                                placeholder="e.g. MAIN_MENU, DEALS, DRINKS"
+                                style={{ fontFamily: 'monospace' }} />
+                            <p style={{ margin: '0.375rem 0 0', fontSize: '0.75rem', color: '#475569' }}>
+                                Only <code>[A-Z0-9_]</code> allowed. Examples: <code>MAIN_MENU</code>, <code>DEALS</code>, <code>DRINKS</code>
+                            </p>
                         </div>
                         <div className="form-group">
                             <label className="label">Description</label>
-                            <textarea className="input-field" rows={3} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Optional description of this screen role..." />
+                            <textarea className="input-field" rows={3} value={form.description}
+                                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                                placeholder="Optional description of this screen role..." />
                         </div>
                         <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
                             <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>

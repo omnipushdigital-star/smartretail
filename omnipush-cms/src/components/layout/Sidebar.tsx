@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
     LayoutDashboard, Store, Users, Monitor, Image, ListVideo,
     LayoutTemplate, Layout, CalendarRange, Upload, Activity,
-    LogOut, ChevronRight
+    LogOut, ChevronRight, Database, Zap, Shield, Package
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -18,7 +18,11 @@ const navItems = [
     { icon: Layout, label: 'Layouts', to: '/admin/layouts' },
     { icon: CalendarRange, label: 'Rules & Scheduling', to: '/admin/rules' },
     { icon: Upload, label: 'Publish', to: '/admin/publish' },
+    { icon: Package, label: 'Bundles', to: '/admin/bundles' },
     { icon: Activity, label: 'Monitoring', to: '/admin/monitoring' },
+    { icon: Database, label: 'DB Migration', to: '/admin/db-migration' },
+    { icon: Zap, label: 'Edge Functions', to: '/admin/edge-functions' },
+    { icon: Shield, label: 'RLS Setup', to: '/admin/rls-setup' },
 ]
 
 export default function Sidebar() {
