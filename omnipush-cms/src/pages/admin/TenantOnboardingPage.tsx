@@ -36,7 +36,7 @@ export default function TenantOnboardingPage() {
                     logo_url: data.settings?.logo_url || 'https://i.ibb.co/vzB7K8N/apache-pizza-logo.png',
                     primary_color: data.settings?.primary_color || '#ef4444',
                     secondary_color: data.settings?.secondary_color || '#991b1b',
-                    domain: data.domain || 'apachepizza.ie',
+                    domain: data.settings?.domain || 'apachepizza.ie',
                     support_email: data.settings?.support_email || 'support@apachepizza.ie'
                 })
             }
@@ -144,12 +144,12 @@ export default function TenantOnboardingPage() {
                 .upsert({
                     id: DEFAULT_TENANT_ID,
                     name: tenantData.name,
-                    domain: tenantData.domain,
                     settings: {
                         logo_url: tenantData.logo_url,
                         primary_color: tenantData.primary_color,
                         secondary_color: tenantData.secondary_color,
-                        support_email: tenantData.support_email
+                        support_email: tenantData.support_email,
+                        domain: tenantData.domain
                     },
                     updated_at: new Date().toISOString()
                 })
