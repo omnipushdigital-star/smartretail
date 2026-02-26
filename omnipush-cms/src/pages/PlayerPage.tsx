@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { WifiOff, Tv2, Lock, RefreshCw, Clock } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from '../lib/supabase'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -51,20 +51,12 @@ const HEARTBEAT_INTERVAL_MS = 30_000
 const DEFAULT_IMAGE_DURATION = 8
 const DEFAULT_WEB_DURATION = 15
 
-// Get keys directly from the configured instance to ensure compatibility with Vercel/Localhost
-const SUPABASE_URL = (supabase as any).supabaseUrl
-const SUPABASE_ANON_KEY = (supabase as any).supabaseKey
-
 function secretKey(code: string) { return `omnipush_device_secret:${code}` }
 function manifestKey(code: string) { return `omnipush_manifest:${code}` }
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 
 async function callEdgeFn(fn: string, body: object): Promise<any> {
-    if (!SUPABASE_URL || SUPABASE_URL === 'undefined') {
-        throw new Error('VITE_SUPABASE_URL is not set. Check your .env file and restart the dev server.')
-    }
-
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 15000) // 15s timeout
 
