@@ -19,19 +19,40 @@ export default function AdminLayout() {
                             fontWeight: 800,
                             background: 'linear-gradient(90deg, #ef4444, #f97316)',
                             WebkitBackgroundClip: 'text',
+                            backgroundClip: 'text',
                             WebkitTextFillColor: 'transparent',
+                            color: 'transparent',
                             letterSpacing: '0.04em',
-                            textTransform: 'uppercase'
+                            textTransform: 'uppercase',
+                            display: 'inline-block'
                         }}>
                             OMNIPUSH SMART RETAIL DISPLAY
                         </span>
                         <span style={{ margin: '0 0.75rem', color: '#334155', fontSize: '1.25rem', fontWeight: 300 }}>|</span>
-                        <span style={{ fontSize: '1rem', fontWeight: 600, color: '#94a3b8', letterSpacing: '0.02em', textTransform: 'none', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                            <div style={{ width: 24, height: 24, borderRadius: '4px', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2px', overflow: 'hidden' }}>
-                                <img src="https://i.ibb.co/vzB7K8N/apache-pizza-logo.png" alt="Apache Pizza" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                            <div style={{
+                                width: 28, height: 28, borderRadius: '6px',
+                                background: 'white', display: 'flex',
+                                alignItems: 'center', justifyContent: 'center',
+                                padding: '3px', overflow: 'hidden',
+                                boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                            }}>
+                                <img
+                                    src="https://i.ibb.co/vzB7K8N/apache-pizza-logo.png"
+                                    alt="Apache Pizza"
+                                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                                    onError={(e) => {
+                                        const parent = e.currentTarget.parentElement;
+                                        if (parent) {
+                                            parent.innerHTML = '<span style="color: #ef4444; font-size: 10px; font-weight: 900;">AP</span>';
+                                        }
+                                    }}
+                                />
                             </div>
-                            Apache Pizza
-                        </span>
+                            <span style={{ fontSize: '1rem', fontWeight: 600, color: '#f1f5f9', letterSpacing: '0.02em' }}>
+                                Apache Pizza
+                            </span>
+                        </div>
                     </div>
                     <button
                         onClick={toggleTheme}
