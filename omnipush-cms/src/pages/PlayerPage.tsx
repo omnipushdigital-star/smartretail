@@ -579,10 +579,13 @@ export default function PlayerPage() {
 
     // ── Resolve playlist items for playback ──
     const getPlaylistItems = (): ManifestItem[] => {
-        if (!manifest) return []
+        if (!manifest || !manifest.region_playlists) return []
         const rp = manifest.region_playlists
         // Use first available region (prefer 'full')
-        const regionKey = rp['full'] ? 'full' : Object.keys(rp)[0]
+        const regions = Object.keys(rp)
+        if (regions.length === 0) return []
+
+        const regionKey = rp['full'] ? 'full' : regions[0]
         return rp[regionKey] || []
     }
 
