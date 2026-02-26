@@ -127,7 +127,8 @@ body.light .card {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #5a64f6, #4347ea);
+  background: var(--color-brand-500);
+  background: linear-gradient(135deg, var(--color-brand-500), var(--color-brand-600));
   color: white;
   padding: 0.5rem 1rem;
   border-radius: 8px;
@@ -144,7 +145,7 @@ body.light .card {
 
 .btn-primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 15px rgba(90, 100, 246, 0.4);
+  box-shadow: 0 4px 15px rgba(var(--color-brand-500-rgb), 0.4);
 }
 
 .btn-primary:active {
@@ -234,7 +235,7 @@ body.light .input-field {
 }
 
 body.light .input-field:focus {
-  border-color: #5a64f6;
+  border-color: var(--color-brand-500);
 }
 
 .label {
@@ -496,7 +497,7 @@ body.light .nav-item:hover {
 }
 
 body.light .nav-item.active {
-  color: #5a64f6;
+  color: var(--color-brand-500);
 }
 
 .stat-card {
@@ -573,7 +574,7 @@ body.light .checkbox-label {
 }
 
 input[type='checkbox'] {
-  accent-color: #5a64f6;
+  accent-color: var(--color-brand-500);
   width: 16px;
   height: 16px;
   cursor: pointer;
@@ -632,8 +633,8 @@ body.light .pagination {
 }
 
 .page-btn.current {
-  background: #5a64f6;
-  border-color: #5a64f6;
+  background: var(--color-brand-500);
+  border-color: var(--color-brand-500);
   color: white;
 }
 
@@ -677,8 +678,8 @@ select.input-field {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  background: rgba(90, 100, 246, 0.15);
-  color: #7a8aff;
+  background: rgba(var(--color-brand-500-rgb), 0.15);
+  color: var(--color-brand-500);
   padding: 0.125rem 0.5rem;
   border-radius: 999px;
   font-size: 0.75rem;

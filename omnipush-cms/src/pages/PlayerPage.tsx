@@ -265,7 +265,7 @@ function LoadingState({ device_code }: { device_code: string }) {
             <AmbientOrbs />
             <div style={{ textAlign: 'center', zIndex: 1, position: 'relative' }}>
                 <Logo />
-                <div style={{ width: 40, height: 40, borderRadius: '50%', border: '3px solid #1e293b', borderTopColor: '#5a64f6', animation: 'spin 0.8s linear infinite', margin: '2rem auto 1rem' }} />
+                <div style={{ width: 40, height: 40, borderRadius: '50%', border: '3px solid #1e293b', borderTopColor: 'var(--color-brand-500)', animation: 'spin 0.8s linear infinite', margin: '2rem auto 1rem' }} />
                 <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>Connecting to network…</div>
                 <div style={{ fontFamily: 'monospace', color: '#7a8aff', fontSize: '0.8rem', marginTop: '0.5rem' }}>{device_code}</div>
             </div>
@@ -309,7 +309,7 @@ function SecretPrompt({ device_code, onSubmit }: { device_code: string; onSubmit
                         disabled={!val}
                         style={{
                             width: '100%', padding: '0.75rem', borderRadius: 8,
-                            background: val ? 'linear-gradient(135deg,#5a64f6,#4347ea)' : '#1e293b',
+                            background: val ? 'linear-gradient(135deg, var(--color-brand-500), var(--color-brand-600))' : '#1e293b',
                             border: 'none', color: val ? 'white' : '#475569',
                             fontWeight: 600, fontSize: '0.9rem', cursor: val ? 'pointer' : 'not-allowed',
                             transition: 'all 0.15s',
@@ -376,7 +376,7 @@ function AmbientOrbs() {
 function Logo() {
     return (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' }}>
-            <div style={{ width: 48, height: 48, borderRadius: 14, background: 'linear-gradient(135deg,#5a64f6,#4347ea)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 32px rgba(90,100,246,0.5)' }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, background: 'linear-gradient(135deg, var(--color-brand-500), var(--color-brand-600))', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 32px rgba(239, 68, 68, 0.5)' }}>
                 <Tv2 size={24} color="white" />
             </div>
             <div style={{ textAlign: 'left' }}>

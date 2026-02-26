@@ -29,7 +29,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f172a' }}>
         <div style={{ textAlign: 'center', color: '#64748b' }}>
-          <div style={{ width: 40, height: 40, borderRadius: '50%', border: '3px solid #334155', borderTopColor: '#5a64f6', animation: 'spin 0.8s linear infinite', margin: '0 auto 1rem' }} />
+          <div style={{ width: 40, height: 40, borderRadius: '50%', border: '3px solid #334155', borderTopColor: 'var(--color-brand-500)', animation: 'spin 0.8s linear infinite', margin: '0 auto 1rem' }} />
           Loading…
         </div>
       </div>

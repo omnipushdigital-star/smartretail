@@ -42,6 +42,12 @@ export default function AdminLayout() {
             console.error('Error loading branding:', err)
         }
     }
+    function hexToRgb(hex: string) {
+        const r = parseInt(hex.slice(1, 3), 16)
+        const g = parseInt(hex.slice(3, 5), 16)
+        const b = parseInt(hex.slice(5, 7), 16)
+        return `${r}, ${g}, ${b}`
+    }
 
     return (
         <div style={{ display: 'flex' }}>
@@ -51,9 +57,24 @@ export default function AdminLayout() {
                     __html: `
                     :root {
                         --color-brand-500: ${tenant.primary_color};
+                        --color-brand-500-rgb: ${hexToRgb(tenant.primary_color)};
                         --color-brand-600: ${tenant.secondary_color};
                         --color-brand-400: ${tenant.primary_color}dd;
                         --color-brand-300: ${tenant.primary_color}aa;
+                        
+                        /* Automatically tinted background based on brand */
+                        --color-surface-900: color-mix(in srgb, ${tenant.primary_color} 5%, #0f172a);
+                        --color-surface-950: color-mix(in srgb, ${tenant.primary_color} 7%, #020617);
+                    }
+                    
+                    body {
+                        background-color: var(--color-surface-950);
+                    }
+                    .main-content, .sidebar, .topbar {
+                        background-color: var(--color-surface-950) !important;
+                    }
+                    .card, .modal-box, .stat-card {
+                        background-color: var(--color-surface-900) !important;
                     }
                 `}} />
             )}
