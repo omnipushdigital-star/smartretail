@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { WifiOff, Tv2, Lock, RefreshCw, Clock } from 'lucide-react'
+import { supabase } from '../lib/supabase'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -46,11 +47,13 @@ interface Manifest {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 const HEARTBEAT_INTERVAL_MS = 30_000
 const DEFAULT_IMAGE_DURATION = 8
 const DEFAULT_WEB_DURATION = 15
+
+// Get keys directly from the configured instance to ensure compatibility with Vercel/Localhost
+const SUPABASE_URL = (supabase as any).supabaseUrl
+const SUPABASE_ANON_KEY = (supabase as any).supabaseKey
 
 function secretKey(code: string) { return `omnipush_device_secret:${code}` }
 function manifestKey(code: string) { return `omnipush_manifest:${code}` }
