@@ -105,7 +105,7 @@ export default function DashboardPage() {
             )}
 
             {/* Stats grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
                 <StatCard icon={<Store size={22} />} label="Active Stores" value={loading ? '—' : stats.stores} color="#5a64f6" to="/admin/stores" />
                 <StatCard icon={<Monitor size={22} />} label="Total Devices" value={loading ? '—' : stats.devices} color="#7a8aff" to="/admin/devices" />
                 <StatCard icon={<Users size={22} />} label="Screen Roles" value={loading ? '—' : stats.roles} color="#8b5cf6" to="/admin/roles" />
@@ -225,11 +225,21 @@ function StatCard({
             <div className="stat-icon" style={{ background: `${color}20` }}>
                 <span style={{ color }}>{icon}</span>
             </div>
-            <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', whiteSpace: 'nowrap' }}>
                     <div className="stat-value">{value}</div>
                     {subValue && (
-                        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8' }}>({subValue})</div>
+                        <div style={{
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            color: color,
+                            background: `${color}15`,
+                            padding: '1px 6px',
+                            borderRadius: '6px',
+                            letterSpacing: '0.02em'
+                        }}>
+                            {subValue.toUpperCase()}
+                        </div>
                     )}
                 </div>
                 <div className="stat-label">{label}</div>
