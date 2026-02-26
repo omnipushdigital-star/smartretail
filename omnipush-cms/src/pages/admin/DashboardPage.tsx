@@ -18,7 +18,12 @@ interface Stats {
 const ONLINE_THRESHOLD_MS = 3 * 60 * 1000 // 3 minutes (matches Monitoring & Devices pages)
 
 function isOnline(lastSeen: string) {
-    return Date.now() - new Date(lastSeen).getTime() < ONLINE_THRESHOLD_MS
+    if (!lastSeen) return false
+    try {
+        return Date.now() - new Date(lastSeen).getTime() < ONLINE_THRESHOLD_MS
+    } catch (e) {
+        return false
+    }
 }
 
 export default function DashboardPage() {
@@ -26,44 +31,56 @@ export default function DashboardPage() {
     const [heartbeats, setHeartbeats] = useState<DeviceHeartbeat[]>([])
     const [alerts, setAlerts] = useState<DeviceHeartbeat[]>([])
     const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
 
     useEffect(() => {
         async function load() {
-            setLoading(true)
-            const [storesRes, devicesRes, heartbeatsRes, pubsRes, rolesRes] = await Promise.all([
-                supabase.from('stores').select('id', { count: 'exact' }).eq('tenant_id', DEFAULT_TENANT_ID).eq('active', true),
-                supabase.from('devices').select('id', { count: 'exact' }).eq('tenant_id', DEFAULT_TENANT_ID).eq('active', true),
-                supabase.from('device_heartbeats').select('*').order('last_seen_at', { ascending: false }).limit(50),
-                supabase.from('layout_publications').select('id', { count: 'exact' }).eq('tenant_id', DEFAULT_TENANT_ID).eq('is_active', true),
-                supabase.from('roles').select('id', { count: 'exact' }).eq('tenant_id', DEFAULT_TENANT_ID),
-            ])
+            try {
+                setError(null)
+                // We don't set loading(true) on every update to prevent flicker
+                const [storesRes, devicesRes, heartbeatsRes, pubsRes, rolesRes] = await Promise.all([
+                    supabase.from('stores').select('id', { count: 'exact' }).eq('tenant_id', DEFAULT_TENANT_ID).eq('active', true),
+                    supabase.from('devices').select('id', { count: 'exact' }).eq('tenant_id', DEFAULT_TENANT_ID).eq('active', true),
+                    supabase.from('device_heartbeats').select('*').order('last_seen_at', { ascending: false }).limit(50),
+                    supabase.from('layout_publications').select('id', { count: 'exact' }).eq('tenant_id', DEFAULT_TENANT_ID).eq('is_active', true),
+                    supabase.from('roles').select('id', { count: 'exact' }).eq('tenant_id', DEFAULT_TENANT_ID),
+                ])
 
-            // Get latest heartbeat per device
-            const hbMap = new Map<string, DeviceHeartbeat>()
-            for (const hb of (heartbeatsRes.data || [])) {
-                if (!hbMap.has(hb.device_code)) hbMap.set(hb.device_code, hb)
+                if (storesRes.error || devicesRes.error || heartbeatsRes.error || pubsRes.error || rolesRes.error) {
+                    throw new Error('Database connection failed. Please check your network or Supabase status.')
+                }
+
+                // Get latest heartbeat per device
+                const hbMap = new Map<string, DeviceHeartbeat>()
+                for (const hb of (heartbeatsRes.data || [])) {
+                    if (!hbMap.has(hb.device_code)) hbMap.set(hb.device_code, hb)
+                }
+                const latest = Array.from(hbMap.values())
+
+                const totalDevices = devicesRes.count || 0
+                const onlineList = latest.filter(h => isOnline(h.last_seen_at))
+                const online = onlineList.length
+                const playing = onlineList.filter(h => h.status === 'playing').length
+                const offline = Math.max(0, totalDevices - online)
+                const alertList = latest.filter(h => !isOnline(h.last_seen_at))
+
+                setStats({
+                    stores: storesRes.count || 0,
+                    devices: totalDevices,
+                    online,
+                    playing,
+                    offline,
+                    activePubs: pubsRes.count || 0,
+                    roles: rolesRes.count || 0,
+                })
+                setHeartbeats(heartbeatsRes.data || [])
+                setAlerts(alertList)
+            } catch (err: any) {
+                console.error('Dashboard Error:', err)
+                setError(err.message)
+            } finally {
+                setLoading(false)
             }
-            const latest = Array.from(hbMap.values())
-
-            const totalDevices = devicesRes.count || 0
-            const onlineList = latest.filter(h => isOnline(h.last_seen_at))
-            const online = onlineList.length
-            const playing = onlineList.filter(h => h.status === 'playing').length
-            const offline = Math.max(0, totalDevices - online)
-            const alertList = latest.filter(h => !isOnline(h.last_seen_at))
-
-            setStats({
-                stores: storesRes.count || 0,
-                devices: totalDevices,
-                online,
-                playing,
-                offline,
-                activePubs: pubsRes.count || 0,
-                roles: rolesRes.count || 0,
-            })
-            setHeartbeats(heartbeatsRes.data || [])
-            setAlerts(alertList)
-            setLoading(false)
         }
         load()
         const interval = setInterval(load, 30000)
@@ -71,6 +88,19 @@ export default function DashboardPage() {
     }, [])
 
     const recentHbs = heartbeats.slice(0, 20)
+
+    if (error) {
+        return (
+            <div style={{ padding: '2rem', textAlign: 'center' }}>
+                <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef444433', borderRadius: 12, padding: '2rem', maxWidth: 500, margin: '0 auto' }}>
+                    <AlertTriangle size={48} color="#ef4444" style={{ margin: '0 auto 1rem' }} />
+                    <h2 style={{ color: '#ef4444', marginBottom: '0.5rem' }}>Dashboard Error</h2>
+                    <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '1.5rem' }}>{error}</p>
+                    <button className="btn-primary" onClick={() => window.location.reload()}>Retry Connection</button>
+                </div>
+            </div>
+        )
+    }
 
     return (
         <div>
@@ -171,7 +201,15 @@ export default function DashboardPage() {
                                                 </span>
                                             </td>
                                             <td style={{ color: '#94a3b8', fontSize: '0.8125rem' }}>
-                                                {formatDistanceToNow(new Date(hb.last_seen_at), { addSuffix: true })}
+                                                {hb.last_seen_at ? (() => {
+                                                    try {
+                                                        const d = new Date(hb.last_seen_at)
+                                                        if (isNaN(d.getTime())) return 'Invalid date'
+                                                        return formatDistanceToNow(d, { addSuffix: true })
+                                                    } catch (e) {
+                                                        return 'Invalid date'
+                                                    }
+                                                })() : 'Never'}
                                             </td>
                                             <td>
                                                 {hb.current_version ? (

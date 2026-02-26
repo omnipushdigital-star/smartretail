@@ -22,13 +22,31 @@ export default function AdminLayout() {
         fetchTenantBranding()
     }, [])
 
+    function hexToRgb(hex: string) {
+        if (!hex || typeof hex !== 'string') return '239, 68, 68'
+        let h = hex.replace('#', '')
+        if (h.length === 3) h = h.split('').map(c => c + c).join('')
+        if (h.length !== 6) return '239, 68, 68'
+
+        const r = parseInt(h.slice(0, 2), 16)
+        const g = parseInt(h.slice(2, 4), 16)
+        const b = parseInt(h.slice(4, 6), 16)
+        return `${r}, ${g}, ${b}`
+    }
+
     async function fetchTenantBranding() {
         try {
+            console.log('Fetching branding for tenant:', DEFAULT_TENANT_ID)
             const { data, error } = await supabase
                 .from('tenants')
                 .select('name, settings')
                 .eq('id', DEFAULT_TENANT_ID)
                 .single()
+
+            if (error) {
+                console.warn('Tenant branding fetch error:', error)
+                return
+            }
 
             if (data) {
                 setTenant({
@@ -41,12 +59,6 @@ export default function AdminLayout() {
         } catch (err) {
             console.error('Error loading branding:', err)
         }
-    }
-    function hexToRgb(hex: string) {
-        const r = parseInt(hex.slice(1, 3), 16)
-        const g = parseInt(hex.slice(3, 5), 16)
-        const b = parseInt(hex.slice(5, 7), 16)
-        return `${r}, ${g}, ${b}`
     }
 
     return (
@@ -68,7 +80,7 @@ export default function AdminLayout() {
                     }
                     
                     body {
-                        background-color: var(--color-surface-950);
+                        background-color: var(--color-surface-950) !important;
                     }
                     .main-content, .sidebar, .topbar {
                         background-color: var(--color-surface-950) !important;
