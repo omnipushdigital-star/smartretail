@@ -114,7 +114,7 @@ export default function RulesPage() {
                 }
                 toast.success('Rule updated')
             } else {
-                const { data, error } = await supabase.from('rules').insert({ ...rulePayload, tenant_id: DEFAULT_TENANT_ID }).select().single()
+                const { data, error } = await supabase.from('rules').insert({ ...rulePayload, tenant_id: DEFAULT_TENANT_ID }).select('id').single()
                 if (error) throw error
                 ruleId = data.id
                 await supabase.from('rule_schedules').insert({ rule_id: ruleId, days_mask: mask, start_time: schedule.start_time || null, end_time: schedule.end_time || null, date_from: schedule.date_from || null, date_to: schedule.date_to || null })

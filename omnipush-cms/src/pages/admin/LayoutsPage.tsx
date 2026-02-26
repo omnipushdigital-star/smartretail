@@ -54,7 +54,7 @@ export default function LayoutsPage() {
                 if (error) throw error
                 toast.success('Layout updated')
             } else {
-                const { data, error } = await supabase.from('layouts').insert({ name: form.name, template_id: form.template_id || null, tenant_id: DEFAULT_TENANT_ID }).select().single()
+                const { data, error } = await supabase.from('layouts').insert({ name: form.name, template_id: form.template_id || null, tenant_id: DEFAULT_TENANT_ID }).select('id').single()
                 if (error) throw error
                 // Create default full region assignment
                 if (form.template_id) {

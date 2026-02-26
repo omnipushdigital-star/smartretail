@@ -232,7 +232,7 @@ function CreateBundleModal({
             const { data: bundle, error: bErr } = await supabase
                 .from('bundles')
                 .insert({ tenant_id: DEFAULT_TENANT_ID, version: form.version.trim(), notes: form.notes.trim() || null })
-                .select()
+                .select('id, version')
                 .single()
             if (bErr) throw bErr
 
