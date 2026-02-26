@@ -5,17 +5,17 @@
   --font-sans: 'Inter', system-ui, sans-serif;
   --font-display: 'Space Grotesk', system-ui, sans-serif;
 
-  --color-brand-50: #f0f4ff;
-  --color-brand-100: #dde6ff;
-  --color-brand-200: #c4d2ff;
-  --color-brand-300: #9fb3ff;
-  --color-brand-400: #7a8aff;
-  --color-brand-500: #5a64f6;
-  --color-brand-600: #4347ea;
-  --color-brand-700: #3735d0;
-  --color-brand-800: #2f2da7;
-  --color-brand-900: #2c2c84;
-  --color-brand-950: #1a1a5c;
+  --color-brand-50: #fef2f2;
+  --color-brand-100: #fee2e2;
+  --color-brand-200: #fecaca;
+  --color-brand-300: #fca5a5;
+  --color-brand-400: #f87171;
+  --color-brand-500: #ef4444;
+  --color-brand-600: #dc2626;
+  --color-brand-700: #b91c1c;
+  --color-brand-800: #991b1b;
+  --color-brand-900: #7f1d1d;
+  --color-brand-950: #450a0a;
 
   --color-surface-50: #f8fafc;
   --color-surface-100: #f1f5f9;
@@ -219,8 +219,8 @@ body.light .btn-secondary:hover {
 }
 
 .input-field:focus {
-  border-color: #5a64f6;
-  box-shadow: 0 0 0 3px rgba(90, 100, 246, 0.15);
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
 }
 
 .input-field::placeholder {
@@ -279,8 +279,8 @@ body.light .label {
 }
 
 .badge-blue {
-  background: rgba(90, 100, 246, 0.15);
-  color: #7a8aff;
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
 }
 
 .badge-gray {
@@ -318,7 +318,7 @@ tbody tr {
 }
 
 tbody tr:hover {
-  background: rgba(90, 100, 246, 0.05);
+  background: rgba(239, 68, 68, 0.05);
 }
 
 tbody td {
@@ -476,13 +476,13 @@ body.light .page-subtitle {
 }
 
 .nav-item:hover {
-  background: rgba(90, 100, 246, 0.1);
+  background: rgba(239, 68, 68, 0.1);
   color: #ffffff;
 }
 
 .nav-item.active {
-  background: rgba(90, 100, 246, 0.15);
-  color: #7a8aff;
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
   font-weight: 500;
 }
 

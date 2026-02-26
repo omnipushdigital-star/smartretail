@@ -106,9 +106,9 @@ export default function DashboardPage() {
 
             {/* Stats grid */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-                <StatCard icon={<Store size={22} />} label="Active Stores" value={loading ? '—' : stats.stores} color="#5a64f6" to="/admin/stores" />
-                <StatCard icon={<Monitor size={22} />} label="Total Devices" value={loading ? '—' : stats.devices} color="#7a8aff" to="/admin/devices" />
-                <StatCard icon={<Users size={22} />} label="Screen Roles" value={loading ? '—' : stats.roles} color="#8b5cf6" to="/admin/roles" />
+                <StatCard icon={<Store size={22} />} label="Active Stores" value={loading ? '—' : stats.stores} color="#ef4444" to="/admin/stores" />
+                <StatCard icon={<Monitor size={22} />} label="Total Devices" value={loading ? '—' : stats.devices} color="#f87171" to="/admin/devices" />
+                <StatCard icon={<Users size={22} />} label="Screen Roles" value={loading ? '—' : stats.roles} color="#dc2626" to="/admin/roles" />
                 <StatCard
                     icon={<Wifi size={22} />}
                     label="Online"
@@ -118,13 +118,13 @@ export default function DashboardPage() {
                     to="/admin/monitoring"
                 />
                 <StatCard icon={<WifiOff size={22} />} label="Offline" value={loading ? '—' : stats.offline} color="#ef4444" to="/admin/monitoring" />
-                <StatCard icon={<FileCheck size={22} />} label="Active Publns" value={loading ? '—' : stats.activePubs} color="#06b6d4" to="/admin/publish" />
+                <StatCard icon={<FileCheck size={22} />} label="Active Publns" value={loading ? '—' : stats.activePubs} color="#ea580c" to="/admin/publish" />
             </div>
 
             {/* Recent heartbeats */}
             <div className="card">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-                    <Clock size={16} color="#5a64f6" />
+                    <Clock size={16} color="#ef4444" />
                     <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#f1f5f9' }}>Recent Device Heartbeats</h2>
                 </div>
                 {loading ? (

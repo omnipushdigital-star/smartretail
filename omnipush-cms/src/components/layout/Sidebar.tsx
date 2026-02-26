@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
     LayoutDashboard, Store, Users, Monitor, Image, ListVideo,
     LayoutTemplate, Layout, CalendarRange, Upload, Activity,
-    LogOut, ChevronRight, Database, Zap, Shield, Package
+    LogOut, ChevronRight, Database, Zap, Shield, Package, Building2
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -12,6 +12,7 @@ const navItems = [
     { icon: Store, label: 'Stores', to: '/admin/stores' },
     { icon: Users, label: 'Roles', to: '/admin/roles' },
     { icon: Monitor, label: 'Devices', to: '/admin/devices' },
+    { icon: Building2, label: 'Onboarding', to: '/admin/onboarding' },
     { icon: Image, label: 'Media Library', to: '/admin/media' },
     { icon: ListVideo, label: 'Playlists', to: '/admin/playlists' },
     { icon: LayoutTemplate, label: 'Layout Templates', to: '/admin/layout-templates' },

@@ -21,6 +21,7 @@ import DbMigrationPage from './pages/admin/DbMigrationPage'
 import EdgeFunctionsPage from './pages/admin/EdgeFunctionsPage'
 import RlsSetupPage from './pages/admin/RlsSetupPage'
 import BundlesPage from './pages/admin/BundlesPage'
+import TenantOnboardingPage from './pages/admin/TenantOnboardingPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -67,6 +68,7 @@ function AppRoutes() {
         <Route path="db-migration" element={<DbMigrationPage />} />
         <Route path="edge-functions" element={<EdgeFunctionsPage />} />
         <Route path="rls-setup" element={<RlsSetupPage />} />
+        <Route path="onboarding" element={<TenantOnboardingPage />} />
       </Route>
 
       {/* Redirect root */}
