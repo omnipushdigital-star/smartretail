@@ -15,10 +15,12 @@ export default function AdminLayout() {
                 <header className="topbar">
                     <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
                         <span style={{
-                            fontSize: '0.8125rem',
-                            fontWeight: 700,
-                            color: '#94a3b8',
-                            letterSpacing: '0.08em',
+                            fontSize: '1.125rem',
+                            fontWeight: 800,
+                            background: 'linear-gradient(90deg, #5a64f6, #06b6d4)',
+                            WebkitBackgroundClip: 'text',
+                            WebkitTextFillColor: 'transparent',
+                            letterSpacing: '0.04em',
                             textTransform: 'uppercase'
                         }}>
                             OMNIPUSH SMART RETAIL DISPLAY
