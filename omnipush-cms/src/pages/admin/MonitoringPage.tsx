@@ -209,8 +209,17 @@ export default function MonitoringPage() {
                                             </td>
                                             <td>
                                                 <span className={`badge ${online ? 'badge-green' : 'badge-red'}`}>
-                                                    <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: online ? '#22c55e' : '#ef4444', marginRight: 4, boxShadow: online ? '0 0 6px #22c55e' : 'none' }} />
-                                                    {online ? 'Online' : 'Offline'}
+                                                    <span style={{
+                                                        display: 'inline-block', width: 6, height: 6, borderRadius: '50%',
+                                                        background: online ? '#22c55e' : '#ef4444',
+                                                        marginRight: 4,
+                                                        boxShadow: online ? '0 0 6px #22c55e' : 'none',
+                                                        animation: online && hb.status === 'playing' ? 'pulse 2s infinite' : 'none'
+                                                    }} />
+                                                    {online
+                                                        ? (hb.status === 'playing' ? 'Playing' : hb.status === 'standby' ? 'Standby' : hb.status ? hb.status.charAt(0).toUpperCase() + hb.status.slice(1) : 'Online')
+                                                        : 'Offline'
+                                                    }
                                                 </span>
                                             </td>
                                             <td style={{ color: '#94a3b8', fontSize: '0.875rem' }}>
@@ -265,6 +274,7 @@ export default function MonitoringPage() {
                         <thead>
                             <tr>
                                 <th>Device Code</th>
+                                <th>Status</th>
                                 <th>Timestamp</th>
                                 <th>Version</th>
                                 <th>IP</th>
@@ -274,6 +284,11 @@ export default function MonitoringPage() {
                             {paginatedLog.map(hb => (
                                 <tr key={hb.id}>
                                     <td style={{ fontFamily: 'monospace', color: '#f1f5f9' }}>{hb.device_code}</td>
+                                    <td>
+                                        <span className={`badge ${hb.status === 'playing' ? 'badge-green' : hb.status === 'standby' ? 'badge-blue' : 'badge-gray'}`} style={{ fontSize: '0.65rem' }}>
+                                            {hb.status ? hb.status.charAt(0).toUpperCase() + hb.status.slice(1) : 'Online'}
+                                        </span>
+                                    </td>
                                     <td style={{ fontSize: '0.8125rem', color: '#64748b' }}>{new Date(hb.last_seen_at).toLocaleString()}</td>
                                     <td>{hb.current_version ? <span className="badge badge-blue">{hb.current_version}</span> : <span style={{ color: '#475569' }}>—</span>}</td>
                                     <td style={{ fontFamily: 'monospace', color: '#64748b', fontSize: '0.8125rem' }}>{hb.ip_address || '—'}</td>

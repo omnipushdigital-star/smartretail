@@ -157,8 +157,17 @@ export default function DashboardPage() {
                                             </td>
                                             <td>
                                                 <span className={`badge ${online ? 'badge-green' : 'badge-red'}`}>
-                                                    <span className={online ? 'online-dot' : 'offline-dot'} style={{ marginRight: 4 }} />
-                                                    {online ? 'Online' : 'Offline'}
+                                                    <span style={{
+                                                        display: 'inline-block', width: 6, height: 6, borderRadius: '50%',
+                                                        background: online ? '#22c55e' : '#ef4444',
+                                                        marginRight: 4,
+                                                        boxShadow: online ? '0 0 6px #22c55e' : 'none',
+                                                        animation: online && hb.status === 'playing' ? 'pulse 2s infinite' : 'none'
+                                                    }} />
+                                                    {online
+                                                        ? (hb.status === 'playing' ? 'Playing' : hb.status === 'standby' ? 'Standby' : hb.status ? hb.status.charAt(0).toUpperCase() + hb.status.slice(1) : 'Online')
+                                                        : 'Offline'
+                                                    }
                                                 </span>
                                             </td>
                                             <td style={{ color: '#94a3b8', fontSize: '0.8125rem' }}>
