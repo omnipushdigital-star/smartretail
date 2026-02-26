@@ -485,16 +485,17 @@ export default function PlayerPage() {
                 device_code: dc,
                 device_secret: sec,
                 current_version: version,
+                status: phase, // Reports current player state (playing, standby, etc)
             })
             if (res.error) {
                 console.error('[Player] Heartbeat Server Error:', res.error)
             } else {
-                console.log('[Player] Heartbeat Recorded ✅')
+                console.log(`[Player] Heartbeat Recorded ✅ (${phase})`)
             }
         } catch (err: any) {
             console.error('[Player] Heartbeat Network Error:', err.message)
         }
-    }, [dc, version])
+    }, [dc, version, phase])
 
     // ── Init: check for stored secret or URL param ──
     useEffect(() => {

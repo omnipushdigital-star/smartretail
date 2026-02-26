@@ -9,6 +9,7 @@ interface Stats {
     stores: number
     devices: number
     online: number
+    playing: number
     offline: number
     activePubs: number
     roles: number
@@ -21,7 +22,7 @@ function isOnline(lastSeen: string) {
 }
 
 export default function DashboardPage() {
-    const [stats, setStats] = useState<Stats>({ stores: 0, devices: 0, online: 0, offline: 0, activePubs: 0, roles: 0 })
+    const [stats, setStats] = useState<Stats>({ stores: 0, devices: 0, online: 0, playing: 0, offline: 0, activePubs: 0, roles: 0 })
     const [heartbeats, setHeartbeats] = useState<DeviceHeartbeat[]>([])
     const [alerts, setAlerts] = useState<DeviceHeartbeat[]>([])
     const [loading, setLoading] = useState(true)
@@ -45,7 +46,9 @@ export default function DashboardPage() {
             const latest = Array.from(hbMap.values())
 
             const totalDevices = devicesRes.count || 0
-            const online = latest.filter(h => isOnline(h.last_seen_at)).length
+            const onlineList = latest.filter(h => isOnline(h.last_seen_at))
+            const online = onlineList.length
+            const playing = onlineList.filter(h => h.status === 'playing').length
             const offline = Math.max(0, totalDevices - online)
             const alertList = latest.filter(h => !isOnline(h.last_seen_at))
 
@@ -53,6 +56,7 @@ export default function DashboardPage() {
                 stores: storesRes.count || 0,
                 devices: totalDevices,
                 online,
+                playing,
                 offline,
                 activePubs: pubsRes.count || 0,
                 roles: rolesRes.count || 0,
@@ -105,7 +109,14 @@ export default function DashboardPage() {
                 <StatCard icon={<Store size={22} />} label="Active Stores" value={loading ? '—' : stats.stores} color="#5a64f6" to="/admin/stores" />
                 <StatCard icon={<Monitor size={22} />} label="Total Devices" value={loading ? '—' : stats.devices} color="#7a8aff" to="/admin/devices" />
                 <StatCard icon={<Users size={22} />} label="Screen Roles" value={loading ? '—' : stats.roles} color="#8b5cf6" to="/admin/roles" />
-                <StatCard icon={<Wifi size={22} />} label="Online" value={loading ? '—' : stats.online} color="#22c55e" to="/admin/monitoring" />
+                <StatCard
+                    icon={<Wifi size={22} />}
+                    label="Online"
+                    value={loading ? '—' : stats.online}
+                    subValue={loading ? undefined : `${stats.playing} playing`}
+                    color="#22c55e"
+                    to="/admin/monitoring"
+                />
                 <StatCard icon={<WifiOff size={22} />} label="Offline" value={loading ? '—' : stats.offline} color="#ef4444" to="/admin/monitoring" />
                 <StatCard icon={<FileCheck size={22} />} label="Active Publns" value={loading ? '—' : stats.activePubs} color="#06b6d4" to="/admin/publish" />
             </div>
@@ -174,11 +185,12 @@ export default function DashboardPage() {
 }
 
 function StatCard({
-    icon, label, value, color, to
+    icon, label, value, subValue, color, to
 }: {
     icon: React.ReactNode
     label: string
     value: number | string
+    subValue?: string
     color: string
     to?: string
 }) {
@@ -205,7 +217,12 @@ function StatCard({
                 <span style={{ color }}>{icon}</span>
             </div>
             <div style={{ flex: 1 }}>
-                <div className="stat-value">{value}</div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
+                    <div className="stat-value">{value}</div>
+                    {subValue && (
+                        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8' }}>({subValue})</div>
+                    )}
+                </div>
                 <div className="stat-label">{label}</div>
             </div>
             {to && (

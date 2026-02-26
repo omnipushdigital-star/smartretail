@@ -284,7 +284,7 @@ serve(async (req: Request) => {
       device_code: device.device_code,
       current_version: current_version || null,
       ip_address: ip,
-      status: "online",
+      status: body.status || "online",
       last_seen_at: new Date().toISOString(),
     });
 
