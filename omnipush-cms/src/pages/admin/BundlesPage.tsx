@@ -75,7 +75,7 @@ function BundleRow({
         setLoadingFiles(true)
         const { data } = await supabase
             .from('bundle_files')
-            .select('*, media:media_assets(id,name,type,bytes,url,storage_path)')
+            .select('*, media:media_assets!media_id(id,name,type,bytes,url,storage_path)')
             .eq('bundle_id', bundle.id)
             .order('created_at')
         setFiles((data as BundleFileRow[]) || [])

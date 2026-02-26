@@ -92,7 +92,7 @@ export default function PlaylistsPage() {
 
     const openEditor = async (p: Playlist) => {
         setEditingPlaylist(p)
-        const { data } = await supabase.from('playlist_items').select('*, media:media_assets(*)').eq('playlist_id', p.id).order('sort_order')
+        const { data } = await supabase.from('playlist_items').select('*, media:media_assets!media_id(*)').eq('playlist_id', p.id).order('sort_order')
         setPlaylistItems((data || []) as any)
         setShowEditor(true)
     }
@@ -113,7 +113,7 @@ export default function PlaylistsPage() {
         } else {
             payload.web_url = addUrl
         }
-        const { data, error } = await supabase.from('playlist_items').insert(payload).select('*, media:media_assets(*)').single()
+        const { data, error } = await supabase.from('playlist_items').insert(payload).select('*, media:media_assets!media_id(*)').single()
         if (error) { toast.error(error.message); return }
         setPlaylistItems(items => [...items, data as any])
         setAddMediaId('')

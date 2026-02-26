@@ -104,9 +104,9 @@ serve(async (req: Request) => {
     // 5. Fetch playlist items
     const { data: items } = await supabase
       .from("playlist_items")
-      .select("*, media:media_assets(*)")
+      .select("*, media:media_assets!media_id(*)")
       .in("playlist_id", playlistIds)
-      .order("order_index");
+      .order("sort_order");
 
     // 6. Generate signed URLs for storage assets
     const mediaAssets: any[] = [];
@@ -120,17 +120,19 @@ serve(async (req: Request) => {
       let url = media.url || media.web_url || null;
       if ((media.type === "image" || media.type === "video") && media.storage_path) {
         const { data: signed } = await supabase.storage
-          .from("media")
+          .from("signage_media")
           .createSignedUrl(media.storage_path, 3600); // 1 hour TTL
         url = signed?.signedUrl || url;
       }
 
       mediaAssets.push({
-        media_id: media.id,
+        id: media.id,
+        name: media.name,
         type: media.type,
         url,
-        checksum_sha256: media.checksum_sha256 || null,
-        bytes: media.bytes || null,
+        web_url: media.web_url,
+        checksum: media.checksum_sha256,
+        size: media.bytes,
       });
     }
 
@@ -142,8 +144,10 @@ serve(async (req: Request) => {
         .map((i: any) => ({
           playlist_item_id: i.id,
           media_id: i.media_id,
-          order_index: i.order_index,
-          duration_seconds: i.duration_seconds,
+          type: i.type,
+          web_url: i.web_url,
+          duration: i.duration_seconds,
+          sort_order: i.sort_order,
         }));
       regionPlaylists[rm.region_id] = regionItems;
     }
