@@ -75,9 +75,16 @@ export default function DashboardPage() {
     return (
         <div>
             <div className="page-header">
-                <div>
-                    <h1 className="page-title">OMNIPUSH SMART RETAIL DISPLAY</h1>
-                    <p className="page-subtitle">Real-time overview of your retail display network</p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <img
+                        src="/logo.png"
+                        alt="OmniPush"
+                        style={{ height: 48, width: 'auto', display: 'block', objectFit: 'contain' }}
+                    />
+                    <div>
+                        <h1 className="page-title" style={{ lineHeight: 1.2 }}>OMNIPUSH SMART RETAIL DISPLAY</h1>
+                        <p className="page-subtitle">Real-time overview of your retail display network</p>
+                    </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: '#64748b' }}>
                     <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px #22c55e', animation: 'pulse 2s infinite' }} />
