@@ -179,6 +179,34 @@ export default function PublishPage() {
         setPublishing(false)
     }
 
+    const forceRepair = async () => {
+        const loading = toast.loading('Repairing database links...')
+        try {
+            // 1. Ensure Tenant
+            await supabase.from('tenants').upsert({
+                id: DEFAULT_TENANT_ID,
+                name: 'Default Tenant',
+                slug: 'default',
+                active: true
+            })
+
+            // 2. Link orphans
+            await supabase.from('roles').update({ tenant_id: DEFAULT_TENANT_ID }).eq('id', '642ed289-53e7-49f3-80f4-d50d32159074')
+            await supabase.from('devices').update({ tenant_id: DEFAULT_TENANT_ID }).eq('device_code', 'DUB01_MAIN_001')
+
+            // 3. Fix publication
+            await supabase.from('layout_publications').update({
+                tenant_id: DEFAULT_TENANT_ID,
+                is_active: true
+            }).eq('role_id', '642ed289-53e7-49f3-80f4-d50d32159074')
+
+            toast.success('Database links restored! Refreshing playout...', { id: loading })
+            loadAll()
+        } catch (e: any) {
+            toast.error('Repair failed: ' + e.message, { id: loading })
+        }
+    }
+
     const handleDeactivate = async (pubId: string) => {
         if (!confirm('Deactivate this publication?')) return
         const { error } = await supabase.from('layout_publications').update({ is_active: false }).eq('id', pubId)
@@ -205,9 +233,18 @@ export default function PublishPage() {
                     <h1 className="page-title">Publish</h1>
                     <p className="page-subtitle">Push layouts to devices — global, per-store, or per-device overrides</p>
                 </div>
-                <button className="btn-primary" onClick={() => setShowPublishModal(true)}>
-                    <Upload size={14} /> Publish Layout
-                </button>
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                    <button
+                        onClick={forceRepair}
+                        className="btn-secondary"
+                        style={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.2)', gap: '0.4rem' }}
+                    >
+                        Force DB Repair
+                    </button>
+                    <button className="btn-primary" onClick={() => setShowPublishModal(true)}>
+                        <Upload size={14} /> Publish Layout
+                    </button>
+                </div>
             </div>
 
             {/* Override hierarchy note */}

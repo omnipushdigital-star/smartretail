@@ -31,7 +31,13 @@ interface Manifest {
         orientation: string
         resolution: string
     }
-    resolved: { scope: string; bundle_id: string | null; version: string | null }
+    resolved: {
+        scope: string;
+        role: string | null;
+        bundle_id: string | null;
+        version: string | null;
+        debug?: any;
+    }
     layout: { layout_id: string; template_id: string; regions: any[] }
     region_playlists: Record<string, ManifestItem[]>
     assets: ManifestAsset[]
@@ -56,6 +62,9 @@ async function callEdgeFn(fn: string, body: object): Promise<any> {
         throw new Error('VITE_SUPABASE_URL is not set. Check your .env file and restart the dev server.')
     }
 
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 15000) // 15s timeout
+
     let res: Response
     try {
         res = await fetch(`${SUPABASE_URL}/functions/v1/${fn}`, {
@@ -65,8 +74,14 @@ async function callEdgeFn(fn: string, body: object): Promise<any> {
                 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
             },
             body: JSON.stringify(body),
+            signal: controller.signal,
         })
+        clearTimeout(timeoutId)
     } catch (networkErr: any) {
+        clearTimeout(timeoutId)
+        if (networkErr.name === 'AbortError') {
+            throw new Error('Connection timed out. Checking network...')
+        }
         throw new Error(`Network error — check internet connection. (${networkErr.message})`)
     }
 
@@ -88,7 +103,9 @@ async function callEdgeFn(fn: string, body: object): Promise<any> {
     }
 
     if (!res.ok) {
-        throw new Error(json?.error || json?.message || `HTTP ${res.status}`)
+        const err: any = new Error(json?.error || json?.message || `HTTP ${res.status}`)
+        err.data = json // Attach payload for diagnostics
+        throw err
     }
     return json
 }
@@ -432,13 +449,23 @@ export default function PlayerPage() {
             return true
         } catch (err: any) {
             // "No active publication" is not a real error — show standby
-            const msg: string = err.message || ''
+            const msg: string = (err.message || '').toLowerCase()
             if (
-                msg.toLowerCase().includes('no active publication') ||
-                msg.toLowerCase().includes('no publication') ||
-                msg.toLowerCase().includes('not found for this device')
+                msg.includes('no active publication') ||
+                msg.includes('no publication') ||
+                msg.includes('not found for this device')
             ) {
                 setPhase('standby')
+                // Use diagnostic device info if returned by the Edge Function
+                if (err.data?.device) {
+                    setManifest({
+                        resolved: {
+                            role: err.data.device.role_name,
+                            scope: 'Standby',
+                            debug: err.data.debug
+                        }
+                    } as any)
+                }
                 return true // authenticated OK, just no content yet
             }
             // Try cache for real network errors
@@ -450,7 +477,7 @@ export default function PlayerPage() {
                     return true
                 } catch { /* ignore */ }
             }
-            setErrorMsg(msg || 'Failed to reach server')
+            setErrorMsg(err.message || 'Failed to reach server')
             return false
         }
     }, [dc, version])
@@ -483,8 +510,12 @@ export default function PlayerPage() {
             // Attempt manifest immediately with stored secret
             setPhase('loading')
             fetchManifest(stored).then(ok => {
-                if (ok) setPhase('playing')
-                else setPhase('error')
+                // Only go to 'playing' if we aren't already moved to 'standby' by fetchManifest
+                if (ok) {
+                    setPhase(p => p === 'standby' ? 'standby' : 'playing')
+                } else {
+                    setPhase('error')
+                }
             })
         } else {
             setPhase('secret')
@@ -523,8 +554,11 @@ export default function PlayerPage() {
         secretRef.current = s
         localStorage.setItem(secretKey(dc), s)
         const ok = await fetchManifest(s)
-        if (ok) setPhase('playing')
-        else setPhase('error')
+        if (ok) {
+            setPhase(p => p === 'standby' ? 'standby' : 'playing')
+        } else {
+            setPhase('error')
+        }
     }
 
     // ── Retry ──
@@ -566,10 +600,31 @@ export default function PlayerPage() {
                     <Logo />
                     <div style={{ marginTop: '2.5rem', color: 'rgba(255,255,255,0.35)', fontSize: '0.9rem', lineHeight: 1.8 }}>
                         <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📺</div>
-                        <div style={{ fontWeight: 600, color: 'rgba(255,255,255,0.5)', marginBottom: '0.25rem' }}>Display is online and authenticated.</div>
-                        <div>No content has been published to this screen yet.</div>
-                        <div style={{ marginTop: '0.75rem', fontFamily: 'monospace', fontSize: '0.75rem', color: '#334155' }}>
-                            {dc} · checking for content every 30s…
+                        <div style={{ fontWeight: 600, color: '#f1f5f9', marginBottom: '0.25rem' }}>Display is Online</div>
+                        <div style={{ color: '#94a3b8' }}>Connected as <strong style={{ color: '#7a8aff' }}>{manifest?.resolved?.role || 'Unassigned'}</strong> role</div>
+                        <div style={{ marginTop: '1rem', color: 'rgba(255,255,255,0.3)', fontSize: '0.8125rem' }}>No active publication found for this role.</div>
+
+                        {manifest?.resolved?.debug && (
+                            <div style={{ marginTop: '1.5rem', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: 8, textAlign: 'left', display: 'inline-block', maxWidth: '90%' }}>
+                                <div style={{ fontSize: '0.65rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '0.5rem' }}>🔌 Database Link Diagnostics</div>
+                                <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontFamily: 'monospace', lineHeight: 1.5 }}>
+                                    Device Tenant: {manifest.resolved.debug.device_tenant}<br />
+                                    Device Role:   {manifest.resolved.debug.device_role_id}<br />
+                                    <hr style={{ border: 'none', borderTop: '1px solid #1e293b', margin: '0.75rem 0' }} />
+                                    Pubs in Tenant: {manifest.resolved.debug.total_tenant_pubs}<br />
+                                    Role Pub Status: {manifest.resolved.debug.found_role_pub?.active ? '✅ Active' : '❌ Inactive'}<br />
+                                    Pub Scope: {manifest.resolved.debug.found_role_pub?.scope || 'N/A'}<br />
+                                    Pub Tenant: {manifest.resolved.debug.found_role_pub?.tenant || 'N/A'}
+                                    {manifest.resolved.debug.resolution_error && (
+                                        <div style={{ marginTop: '0.5rem', color: '#f87171', fontWeight: 600 }}>
+                                            ⚠️ Resolution Error: {manifest.resolved.debug.resolution_error}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                        <div style={{ marginTop: '0.75rem', fontFamily: 'monospace', fontSize: '0.75rem', color: '#444' }}>
+                            {dc} · Polling for updates every 30s
                         </div>
                     </div>
                     <div style={{ marginTop: '2rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1.25rem', borderRadius: 999, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e', fontSize: '0.8rem' }}>

@@ -92,8 +92,31 @@ export default function PlaylistsPage() {
 
     const openEditor = async (p: Playlist) => {
         setEditingPlaylist(p)
-        const { data } = await supabase.from('playlist_items').select('*, media:media_assets!media_id(*)').eq('playlist_id', p.id).order('sort_order')
-        setPlaylistItems((data || []) as any)
+        // Load items and media separately to avoid join ambiguity in PostgREST
+        const { data: items, error: itemsErr } = await supabase
+            .from('playlist_items')
+            .select('*')
+            .eq('playlist_id', p.id)
+            .order('sort_order')
+
+        if (itemsErr) {
+            toast.error(itemsErr.message)
+            return
+        }
+
+        const mediaIds = (items || []).map(i => i.media_id).filter(Boolean)
+        let mediaMap: Record<string, any> = {}
+        if (mediaIds.length > 0) {
+            const { data: media } = await supabase.from('media_assets').select('*').in('id', mediaIds)
+            mediaMap = Object.fromEntries((media || []).map(m => [m.id, m]))
+        }
+
+        const resolved = (items || []).map(i => ({
+            ...i,
+            media: i.media_id ? mediaMap[i.media_id] : null
+        }))
+
+        setPlaylistItems(resolved as any)
         setShowEditor(true)
     }
 
@@ -113,9 +136,18 @@ export default function PlaylistsPage() {
         } else {
             payload.web_url = addUrl
         }
-        const { data, error } = await supabase.from('playlist_items').insert(payload).select('*, media:media_assets!media_id(*)').single()
+
+        // Insert and then resolve the media manually
+        const { data: newItem, error } = await supabase.from('playlist_items').insert(payload).select().single()
         if (error) { toast.error(error.message); return }
-        setPlaylistItems(items => [...items, data as any])
+
+        let resolvedItem = { ...newItem, media: null }
+        if (newItem.media_id) {
+            const { data: media } = await supabase.from('media_assets').select('*').eq('id', newItem.media_id).single()
+            resolvedItem.media = media
+        }
+
+        setPlaylistItems(items => [...items, resolvedItem as any])
         setAddMediaId('')
         setAddUrl('')
         toast.success('Item added')

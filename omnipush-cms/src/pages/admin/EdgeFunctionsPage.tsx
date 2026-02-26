@@ -29,58 +29,87 @@ serve(async (req: Request) => {
     // 1. Authenticate device
     const { data: device, error: devErr } = await supabase
       .from("devices")
-      .select("id, tenant_id, store_id, role_id, device_code, device_secret, orientation, resolution, active")
+      .select("*, role:roles(name, key)")
       .eq("device_code", device_code)
       .single();
 
     if (devErr || !device || device.device_secret !== device_secret || !device.active)
       return Response.json({ error: "Invalid credentials or inactive device" }, { status: 401, headers: corsHeaders });
 
-    // 2. Resolve publication: DEVICE > STORE > GLOBAL
+    // Ensure tenant_id exists for query consistency
+    const tid = device.tenant_id || '00000000-0000-0000-0000-000000000001';
+
+    console.log(\`[Manifest] Fetching for device \${device_code} (Role: \${device.role?.key || 'Unassigned'})\`);
+
+    // 2. Resolve publication: DEVICE > STORE > GLOBAL (Bulletproof JS resolution)
+    let resolutionError = "";
     let pub: any = null;
     let resolvedScope = "";
-
-    // DEVICE scope
-    const { data: devPub } = await supabase
-      .from("layout_publications")
-      .select("*, bundle:bundles(*)")
-      .eq("tenant_id", device.tenant_id)
-      .eq("role_id", device.role_id)
-      .eq("device_id", device.id)
-      .eq("is_active", true)
-      .maybeSingle();
-    if (devPub) { pub = devPub; resolvedScope = "DEVICE"; }
-
-    // STORE scope
-    if (!pub) {
-      const { data: storePub } = await supabase
+    
+    // Fetch all active pubs as a simplified list
+    const { data: allPubs, error: fetchErr } = await supabase
         .from("layout_publications")
-        .select("*, bundle:bundles(*)")
-        .eq("tenant_id", device.tenant_id)
+        .select("*")
+        .eq("tenant_id", tid)
         .eq("role_id", device.role_id)
-        .eq("store_id", device.store_id)
         .eq("is_active", true)
-        .maybeSingle();
-      if (storePub) { pub = storePub; resolvedScope = "STORE"; }
+        .order('published_at', { ascending: false });
+
+    if (fetchErr) {
+        console.error("[Manifest] Fetch error:", fetchErr);
+        resolutionError = fetchErr.message;
     }
 
-    // GLOBAL scope
-    if (!pub) {
-      const { data: globalPub } = await supabase
-        .from("layout_publications")
-        .select("*, bundle:bundles(*)")
-        .eq("tenant_id", device.tenant_id)
-        .eq("role_id", device.role_id)
-        .eq("scope", "GLOBAL")
-        .eq("is_active", true)
-        .maybeSingle();
-      if (globalPub) { pub = globalPub; resolvedScope = "GLOBAL"; }
+    if (allPubs && allPubs.length > 0) {
+        const devMatch = allPubs.find(p => p.device_id === device.id);
+        const storeMatch = allPubs.find(p => p.store_id === device.store_id);
+        const globalMatch = allPubs.find(p => p.scope === 'GLOBAL');
+
+        if (devMatch) { pub = devMatch; resolvedScope = "DEVICE"; }
+        else if (storeMatch) { pub = storeMatch; resolvedScope = "STORE"; }
+        else if (globalMatch) { pub = globalMatch; resolvedScope = "GLOBAL"; }
+        
+        console.log(\`[Manifest] Resolved: \${resolvedScope}\`);
     }
 
-    if (!pub)
-      return Response.json({ error: "No active publication found for this device" }, { status: 404, headers: corsHeaders });
+    if (!pub) {
+      const { data: inactiveCheck } = await supabase
+        .from("layout_publications")
+        .select("id, is_active, scope, role_id, tenant_id")
+        .eq("role_id", device.role_id)
+        .limit(1);
 
-    // 3. Fetch layout + template
+      return Response.json({
+          error: "No active publication found for this device",
+          debug: {
+            device_tenant: tid,
+            device_role_id: device.role_id,
+            resolution_error: resolutionError || (allPubs?.length ? "No scope match" : "No active pubs for role"),
+            found_role_pub: inactiveCheck?.[0] ? {
+                scope: inactiveCheck[0].scope,
+                tenant: inactiveCheck[0].tenant_id,
+                active: inactiveCheck[0].is_active
+            } : null
+          },
+          device: {
+            id: device.id,
+            tenant_id: tid,
+            store_id: device.store_id,
+            role_id: device.role_id,
+            device_code: device.device_code,
+            role_name: device.role?.name || null,
+          }
+        }, { status: 404, headers: corsHeaders });
+    }
+
+    // 3. Fetch Bundle (Join-free)
+    const { data: bundle } = await supabase
+        .from("bundles")
+        .select("*")
+        .eq("id", pub.bundle_id)
+        .single();
+
+    // 4. Fetch layout + template
     const { data: layout } = await supabase
       .from("layouts")
       .select("id, name, template_id")
@@ -93,7 +122,7 @@ serve(async (req: Request) => {
       .eq("id", layout.template_id)
       .single();
 
-    // 4. Fetch region→playlist mappings
+    // 5. Fetch region→playlist mappings
     const { data: regionMaps } = await supabase
       .from("layout_region_playlists")
       .select("region_id, playlist_id")
@@ -101,14 +130,42 @@ serve(async (req: Request) => {
 
     const playlistIds = [...new Set((regionMaps || []).map((r: any) => r.playlist_id))];
 
-    // 5. Fetch playlist items
-    const { data: items } = await supabase
+    // 6. Fetch playlist items (Join-free)
+    const { data: rawItems } = await supabase
       .from("playlist_items")
-      .select("*, media:media_assets!media_id(*)")
+      .select("*")
       .in("playlist_id", playlistIds)
       .order("sort_order");
+    
+    const mediaIds = [...new Set((rawItems || []).map((i: any) => i.media_id))];
+    const { data: allMedia } = await supabase
+      .from("media_assets")
+      .select("*")
+      .in("id", mediaIds);
 
-    // 6. Generate signed URLs for storage assets
+    // Merge media back into items
+    const items = (rawItems || []).map(item => ({
+        ...item,
+        media: allMedia?.find(m => m.id === item.media_id)
+    }));
+
+    // 7. Generate signed URLs for storage assets in bulk (Optimized)
+    const storageItems = (items || []).filter((i: any) => 
+      i.media && (i.media.type === "image" || i.media.type === "video") && i.media.storage_path
+    );
+    const uniquePaths = [...new Set(storageItems.map((i: any) => i.media.storage_path))];
+    
+    let signedUrlsMap: Record<string, string> = {};
+    if (uniquePaths.length > 0) {
+      const { data: signedResults, error: signedErr } = await supabase.storage
+        .from("signage_media")
+        .createSignedUrls(uniquePaths, 3600); // 1 hour TTL
+      
+      if (!signedErr && signedResults) {
+        signedUrlsMap = Object.fromEntries(signedResults.map(s => [s.path, s.signedUrl]));
+      }
+    }
+
     const mediaAssets: any[] = [];
     const seenMedia = new Set<string>();
 
@@ -117,22 +174,14 @@ serve(async (req: Request) => {
       if (!media || seenMedia.has(media.id)) continue;
       seenMedia.add(media.id);
 
-      let url = media.url || media.web_url || null;
-      if ((media.type === "image" || media.type === "video") && media.storage_path) {
-        const { data: signed } = await supabase.storage
-          .from("signage_media")
-          .createSignedUrl(media.storage_path, 3600); // 1 hour TTL
-        url = signed?.signedUrl || url;
-      }
+      const url = signedUrlsMap[media.storage_path] || media.url || media.web_url || null;
 
       mediaAssets.push({
-        id: media.id,
-        name: media.name,
+        media_id: media.id,
         type: media.type,
         url,
-        web_url: media.web_url,
-        checksum: media.checksum_sha256,
-        size: media.bytes,
+        checksum_sha256: media.checksum_sha256 || null,
+        bytes: media.bytes || null,
       });
     }
 
@@ -146,7 +195,7 @@ serve(async (req: Request) => {
           media_id: i.media_id,
           type: i.type,
           web_url: i.web_url,
-          duration: i.duration_seconds,
+          duration_seconds: i.duration_seconds,
           sort_order: i.sort_order,
         }));
       regionPlaylists[rm.region_id] = regionItems;
@@ -164,8 +213,9 @@ serve(async (req: Request) => {
       },
       resolved: {
         scope: resolvedScope,
-        bundle_id: pub.bundle?.id || null,
-        version: pub.bundle?.version || null,
+        role: device.role?.name || null,
+        bundle_id: bundle?.id || null,
+        version: bundle?.version || null,
       },
       layout: {
         layout_id: layout.id,
@@ -176,6 +226,8 @@ serve(async (req: Request) => {
       assets: mediaAssets,
       poll_seconds: 30,
     };
+
+    console.log(\`[Manifest] Success: \${resolvedScope} publication found. Version: \${bundle?.version || 'N/A'}\`);
 
     return Response.json(manifest, { headers: corsHeaders });
   } catch (err: any) {
