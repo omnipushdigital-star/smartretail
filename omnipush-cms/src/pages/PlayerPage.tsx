@@ -496,21 +496,42 @@ export default function PlayerPage() {
         }
     }, [dc, version])
 
-    // ── Init: check for stored secret ──
+    // ── Init: check for stored secret or URL param ──
     useEffect(() => {
         if (!dc) return
+
+        // 1. Check for ?reset=true to clear stale data
+        const params = new URLSearchParams(window.location.search)
+        if (params.get('reset') === 'true') {
+            localStorage.removeItem(secretKey(dc))
+            setSecret('')
+            setPhase('secret')
+            return
+        }
+
+        // 2. Check for ?secret= in URL for auto-login
+        const urlSecret = params.get('secret')
+        if (urlSecret) {
+            setSecret(urlSecret)
+            secretRef.current = urlSecret
+            localStorage.setItem(secretKey(dc), urlSecret)
+            setPhase('loading')
+            fetchManifest(urlSecret).then(ok => {
+                if (ok) setPhase(p => p === 'standby' ? 'standby' : 'playing')
+                else setPhase('error')
+            })
+            return
+        }
+
+        // 3. Check for stored secret in localStorage
         const stored = localStorage.getItem(secretKey(dc))
         if (stored) {
             setSecret(stored)
-            // Attempt manifest immediately with stored secret
+            secretRef.current = stored
             setPhase('loading')
             fetchManifest(stored).then(ok => {
-                // Only go to 'playing' if we aren't already moved to 'standby' by fetchManifest
-                if (ok) {
-                    setPhase(p => p === 'standby' ? 'standby' : 'playing')
-                } else {
-                    setPhase('error')
-                }
+                if (ok) setPhase(p => p === 'standby' ? 'standby' : 'playing')
+                else setPhase('error')
             })
         } else {
             setPhase('secret')
