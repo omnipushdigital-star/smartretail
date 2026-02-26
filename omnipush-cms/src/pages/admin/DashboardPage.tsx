@@ -76,7 +76,7 @@ export default function DashboardPage() {
         <div>
             <div className="page-header">
                 <div>
-                    <h1 className="page-title">Dashboard</h1>
+                    <h1 className="page-title">OMNIPUSH SMART RETAIL DISPLAY</h1>
                     <p className="page-subtitle">Real-time overview of your retail display network</p>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: '#64748b' }}>
