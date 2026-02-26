@@ -13,7 +13,17 @@ export default function AdminLayout() {
             <div className="main-content" style={{ flex: 1 }}>
                 {/* Top bar */}
                 <header className="topbar">
-                    <div style={{ flex: 1 }} />
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+                        <span style={{
+                            fontSize: '0.8125rem',
+                            fontWeight: 700,
+                            color: '#94a3b8',
+                            letterSpacing: '0.08em',
+                            textTransform: 'uppercase'
+                        }}>
+                            OMNIPUSH SMART RETAIL DISPLAY
+                        </span>
+                    </div>
                     <button
                         onClick={toggleTheme}
                         style={{ background: 'none', border: '1px solid #334155', borderRadius: 8, padding: '0.375rem 0.625rem', cursor: 'pointer', color: '#94a3b8', display: 'flex', alignItems: 'center' }}
