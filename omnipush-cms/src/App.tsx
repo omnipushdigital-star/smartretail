@@ -80,7 +80,7 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <BrowserRouter basename="/signage">
+    <BrowserRouter>
       <ThemeProvider>
         <AuthProvider>
           <AppRoutes />
