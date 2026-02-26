@@ -25,6 +25,10 @@ export default function AdminLayout() {
                         }}>
                             OMNIPUSH SMART RETAIL DISPLAY
                         </span>
+                        <span style={{ margin: '0 0.75rem', color: '#334155', fontSize: '1.25rem', fontWeight: 300 }}>|</span>
+                        <span style={{ fontSize: '1rem', fontWeight: 600, color: '#94a3b8', letterSpacing: '0.02em', textTransform: 'none' }}>
+                            Apache Pizza
+                        </span>
                     </div>
                     <button
                         onClick={toggleTheme}
