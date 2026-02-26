@@ -362,7 +362,7 @@ function Step({ n, title, children }: { n: number; title: string; children: Reac
     <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
       <div style={{
         width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
-        background: 'linear-gradient(135deg,#5a64f6,#7a8aff)',
+        background: 'linear-gradient(135deg, var(--color-brand-500), var(--color-brand-600))',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontWeight: 700, fontSize: '0.8125rem', color: 'white', marginTop: 2,
       }}>{n}</div>
@@ -388,7 +388,7 @@ function Section({ title, icon, children, defaultOpen = true }: { title: string;
           textAlign: 'left',
         }}
       >
-        <span style={{ color: '#5a64f6', display: 'flex' }}>{icon}</span>
+        <span style={{ color: 'var(--color-brand-500)', display: 'flex' }}>{icon}</span>
         <span style={{ flex: 1, fontWeight: 700, color: '#f1f5f9', fontSize: '1rem' }}>{title}</span>
         <span style={{ color: '#475569' }}>{open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</span>
       </button>

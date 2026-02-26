@@ -629,292 +629,292 @@ where routine_schema = 'public'
 // ─── SQL Block data ───────────────────────────────────────────────────────────
 
 const BLOCKS = [
-    {
-        id: 'A',
-        color: '#f59e0b',
-        label: 'Section A — tenant_users Mapping Table',
-        description: 'Create the tenant_users join table and restrict access so users only see their own membership rows.',
-        sql: SECTION_A_SQL,
-    },
-    {
-        id: 'B',
-        color: '#8b5cf6',
-        label: 'Section B — is_tenant_member() Helper Function',
-        description: 'Reusable SQL function that returns TRUE when the current user belongs to a given tenant_id. Used across all RLS policies.',
-        sql: SECTION_B_SQL,
-    },
-    {
-        id: 'C',
-        color: '#06b6d4',
-        label: 'Section C — RLS for All Tenant-Scoped Tables',
-        description: 'Enable RLS and add SELECT / INSERT / UPDATE / DELETE policies for every table that carries a tenant_id column.',
-        sql: SECTION_C_SQL,
-    },
-    {
-        id: 'D',
-        color: '#5a64f6',
-        label: 'Section D — RLS for device_heartbeats (Admin Read-Only)',
-        description: 'Admins can SELECT heartbeats by joining through the devices table. Writes are blocked for authenticated users — only Edge Functions (service role) can insert.',
-        sql: SECTION_D_SQL,
-    },
-    {
-        id: 'E',
-        color: '#ec4899',
-        label: 'Section E — Storage RLS for "media" Bucket',
-        description: 'Restrict Storage uploads/downloads to tenant members. Requires object paths prefixed with tenant/<uuid>/.',
-        sql: SECTION_E_SQL,
-    },
-    {
-        id: 'F',
-        color: '#22c55e',
-        label: 'Section F — Verification Queries',
-        description: 'Run these after applying all sections to confirm RLS is active and your user can access their tenant data.',
-        sql: SECTION_F_SQL,
-    },
+  {
+    id: 'A',
+    color: '#f59e0b',
+    label: 'Section A — tenant_users Mapping Table',
+    description: 'Create the tenant_users join table and restrict access so users only see their own membership rows.',
+    sql: SECTION_A_SQL,
+  },
+  {
+    id: 'B',
+    color: '#8b5cf6',
+    label: 'Section B — is_tenant_member() Helper Function',
+    description: 'Reusable SQL function that returns TRUE when the current user belongs to a given tenant_id. Used across all RLS policies.',
+    sql: SECTION_B_SQL,
+  },
+  {
+    id: 'C',
+    color: '#06b6d4',
+    label: 'Section C — RLS for All Tenant-Scoped Tables',
+    description: 'Enable RLS and add SELECT / INSERT / UPDATE / DELETE policies for every table that carries a tenant_id column.',
+    sql: SECTION_C_SQL,
+  },
+  {
+    id: 'D',
+    color: 'var(--color-brand-500)',
+    label: 'Section D — RLS for device_heartbeats (Admin Read-Only)',
+    description: 'Admins can SELECT heartbeats by joining through the devices table. Writes are blocked for authenticated users — only Edge Functions (service role) can insert.',
+    sql: SECTION_D_SQL,
+  },
+  {
+    id: 'E',
+    color: '#ec4899',
+    label: 'Section E — Storage RLS for "media" Bucket',
+    description: 'Restrict Storage uploads/downloads to tenant members. Requires object paths prefixed with tenant/<uuid>/.',
+    sql: SECTION_E_SQL,
+  },
+  {
+    id: 'F',
+    color: '#22c55e',
+    label: 'Section F — Verification Queries',
+    description: 'Run these after applying all sections to confirm RLS is active and your user can access their tenant data.',
+    sql: SECTION_F_SQL,
+  },
 ]
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function SqlCard({
-    block,
-    copied,
-    onCopy,
+  block,
+  copied,
+  onCopy,
 }: {
-    block: typeof BLOCKS[0]
-    copied: string | null
-    onCopy: (id: string, sql: string) => void
+  block: typeof BLOCKS[0]
+  copied: string | null
+  onCopy: (id: string, sql: string) => void
 }) {
-    const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(true)
 
-    return (
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            {/* Header */}
-            <div style={{
-                display: 'flex', alignItems: 'center',
-                padding: '1rem 1.25rem',
-                background: 'rgba(15,23,42,0.6)',
-                borderBottom: open ? '1px solid #1e293b' : 'none',
-                gap: '0.75rem',
-            }}>
-                {/* Section badge */}
-                <div style={{
-                    width: 28, height: 28, borderRadius: 8, flexShrink: 0,
-                    background: block.color + '22',
-                    border: `1px solid ${block.color}44`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontWeight: 700, fontSize: '0.8125rem', color: block.color,
-                }}>
-                    {block.id}
-                </div>
-
-                {/* Label + description */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, color: '#f1f5f9', fontSize: '0.9rem' }}>{block.label}</div>
-                    <div style={{ color: '#64748b', fontSize: '0.8125rem', marginTop: '0.125rem' }}>{block.description}</div>
-                </div>
-
-                {/* Actions */}
-                <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
-                    <button
-                        onClick={() => onCopy(block.id, block.sql)}
-                        className="btn-secondary"
-                        style={{ gap: '0.375rem' }}
-                    >
-                        {copied === block.id
-                            ? <><Check size={13} color="#22c55e" /> Copied!</>
-                            : <><Copy size={13} /> Copy SQL</>
-                        }
-                    </button>
-                    <button
-                        onClick={() => setOpen(o => !o)}
-                        className="btn-secondary"
-                        style={{ padding: '0.5rem', minWidth: 'unset' }}
-                        title={open ? 'Collapse' : 'Expand'}
-                    >
-                        {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                    </button>
-                </div>
-            </div>
-
-            {/* SQL body */}
-            {open && (
-                <div>
-                    <div style={{
-                        display: 'flex', alignItems: 'center', gap: '0.5rem',
-                        padding: '0.4rem 1.25rem',
-                        background: '#060d1a',
-                        borderBottom: '1px solid #0f172a',
-                    }}>
-                        <Database size={11} color="#475569" />
-                        <span style={{ fontSize: '0.7188rem', color: '#475569', fontFamily: 'monospace' }}>PostgreSQL / Supabase SQL Editor</span>
-                    </div>
-                    <pre style={{
-                        margin: 0,
-                        padding: '1.25rem',
-                        background: '#060d1a',
-                        color: '#e2e8f0',
-                        fontFamily: '"Fira Code", "Cascadia Code", "JetBrains Mono", Consolas, monospace',
-                        fontSize: '0.7813rem',
-                        lineHeight: 1.75,
-                        overflowX: 'auto',
-                        whiteSpace: 'pre',
-                        maxHeight: 480,
-                    }}>
-                        {block.sql}
-                    </pre>
-                </div>
-            )}
+  return (
+    <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{
+        display: 'flex', alignItems: 'center',
+        padding: '1rem 1.25rem',
+        background: 'rgba(15,23,42,0.6)',
+        borderBottom: open ? '1px solid #1e293b' : 'none',
+        gap: '0.75rem',
+      }}>
+        {/* Section badge */}
+        <div style={{
+          width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+          background: block.color + '22',
+          border: `1px solid ${block.color}44`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontWeight: 700, fontSize: '0.8125rem', color: block.color,
+        }}>
+          {block.id}
         </div>
-    )
+
+        {/* Label + description */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 600, color: '#f1f5f9', fontSize: '0.9rem' }}>{block.label}</div>
+          <div style={{ color: '#64748b', fontSize: '0.8125rem', marginTop: '0.125rem' }}>{block.description}</div>
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+          <button
+            onClick={() => onCopy(block.id, block.sql)}
+            className="btn-secondary"
+            style={{ gap: '0.375rem' }}
+          >
+            {copied === block.id
+              ? <><Check size={13} color="#22c55e" /> Copied!</>
+              : <><Copy size={13} /> Copy SQL</>
+            }
+          </button>
+          <button
+            onClick={() => setOpen(o => !o)}
+            className="btn-secondary"
+            style={{ padding: '0.5rem', minWidth: 'unset' }}
+            title={open ? 'Collapse' : 'Expand'}
+          >
+            {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+        </div>
+      </div>
+
+      {/* SQL body */}
+      {open && (
+        <div>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '0.5rem',
+            padding: '0.4rem 1.25rem',
+            background: '#060d1a',
+            borderBottom: '1px solid #0f172a',
+          }}>
+            <Database size={11} color="#475569" />
+            <span style={{ fontSize: '0.7188rem', color: '#475569', fontFamily: 'monospace' }}>PostgreSQL / Supabase SQL Editor</span>
+          </div>
+          <pre style={{
+            margin: 0,
+            padding: '1.25rem',
+            background: '#060d1a',
+            color: '#e2e8f0',
+            fontFamily: '"Fira Code", "Cascadia Code", "JetBrains Mono", Consolas, monospace',
+            fontSize: '0.7813rem',
+            lineHeight: 1.75,
+            overflowX: 'auto',
+            whiteSpace: 'pre',
+            maxHeight: 480,
+          }}>
+            {block.sql}
+          </pre>
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function RlsSetupPage() {
-    const [copied, setCopied] = useState<string | null>(null)
-    const [assignCopied, setAssignCopied] = useState(false)
+  const [copied, setCopied] = useState<string | null>(null)
+  const [assignCopied, setAssignCopied] = useState(false)
 
-    const copyBlock = (id: string, sql: string) => {
-        navigator.clipboard.writeText(sql)
-        setCopied(id)
-        toast.success(`Section ${id} copied to clipboard`)
-        setTimeout(() => setCopied(null), 2000)
-    }
+  const copyBlock = (id: string, sql: string) => {
+    navigator.clipboard.writeText(sql)
+    setCopied(id)
+    toast.success(`Section ${id} copied to clipboard`)
+    setTimeout(() => setCopied(null), 2000)
+  }
 
-    const copyAssign = () => {
-        navigator.clipboard.writeText(ASSIGN_SELF_SQL)
-        setAssignCopied(true)
-        toast.success('Assignment SQL copied')
-        setTimeout(() => setAssignCopied(false), 2000)
-    }
+  const copyAssign = () => {
+    navigator.clipboard.writeText(ASSIGN_SELF_SQL)
+    setAssignCopied(true)
+    toast.success('Assignment SQL copied')
+    setTimeout(() => setAssignCopied(false), 2000)
+  }
 
-    return (
+  return (
+    <div>
+      {/* Page header */}
+      <div className="page-header">
         <div>
-            {/* Page header */}
-            <div className="page-header">
-                <div>
-                    <h1 className="page-title">RLS Setup</h1>
-                    <p className="page-subtitle">
-                        Production-grade Row Level Security — paste each block into Supabase SQL Editor in order A → F
-                    </p>
-                </div>
-                <div style={{
-                    display: 'flex', alignItems: 'center', gap: '0.5rem',
-                    padding: '0.5rem 1rem', borderRadius: 999,
-                    background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)',
-                    color: '#fbbf24', fontSize: '0.8125rem', fontWeight: 500,
-                }}>
-                    <Shield size={14} />
-                    Manual SQL — Supabase Editor Only
-                </div>
-            </div>
-
-            {/* Warning banner */}
-            <div style={{
-                display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
-                padding: '1rem 1.25rem', marginBottom: '1.5rem',
-                background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)',
-                borderRadius: 10,
-            }}>
-                <AlertTriangle size={18} color="#f59e0b" style={{ flexShrink: 0, marginTop: 1 }} />
-                <div>
-                    <div style={{ fontWeight: 600, color: '#fbbf24', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
-                        Run sections in order: A → B → C → D → E → F
-                    </div>
-                    <div style={{ color: '#94a3b8', fontSize: '0.8125rem', lineHeight: 1.6 }}>
-                        Go to <strong style={{ color: '#e2e8f0' }}>Supabase Dashboard → SQL Editor</strong>, paste each block and click <strong style={{ color: '#e2e8f0' }}>Run</strong>.
-                        All <code style={{ background: '#0f172a', padding: '0 4px', borderRadius: 3, color: '#7a8aff' }}>drop policy if exists</code> statements
-                        are idempotent — safe to re-run. <strong style={{ color: '#fbbf24' }}>Section B must be run before C–E</strong> (policies depend on the helper function).
-                    </div>
-                </div>
-            </div>
-
-            {/* How-to: assign user to tenant */}
-            <div style={{
-                display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
-                padding: '1rem 1.25rem', marginBottom: '1.75rem',
-                background: 'rgba(90,100,246,0.07)', border: '1px solid rgba(90,100,246,0.2)',
-                borderRadius: 10,
-            }}>
-                <UserCheck size={18} color="#7a8aff" style={{ flexShrink: 0, marginTop: 1 }} />
-                <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, color: '#a5b4fc', fontSize: '0.875rem', marginBottom: '0.375rem' }}>
-                        How to assign your user to the tenant (required after Section A)
-                    </div>
-                    <ol style={{ margin: '0 0 0.75rem 1rem', padding: 0, color: '#94a3b8', fontSize: '0.8125rem', lineHeight: 1.8 }}>
-                        <li>Go to <strong style={{ color: '#e2e8f0' }}>Supabase → Authentication → Users</strong> and copy your user's UUID.</li>
-                        <li>Paste the UUID into the SQL below (replacing the placeholder).</li>
-                        <li>Run it in the SQL Editor <strong style={{ color: '#e2e8f0' }}>using the service role</strong> (the editor always runs as superuser).</li>
-                    </ol>
-                    {/* Assign self SQL */}
-                    <div style={{ position: 'relative' }}>
-                        <div style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                            padding: '0.4rem 1rem',
-                            background: '#060d1a', borderRadius: '8px 8px 0 0',
-                            border: '1px solid #1e293b', borderBottom: 'none',
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <Database size={11} color="#475569" />
-                                <span style={{ fontSize: '0.7188rem', color: '#475569', fontFamily: 'monospace' }}>Assign self to tenant — paste user UUID first</span>
-                            </div>
-                            <button
-                                onClick={copyAssign}
-                                className="btn-secondary"
-                                style={{ gap: '0.375rem', padding: '0.3rem 0.625rem', fontSize: '0.75rem' }}
-                            >
-                                {assignCopied ? <><Check size={11} color="#22c55e" /> Copied!</> : <><Copy size={11} /> Copy</>}
-                            </button>
-                        </div>
-                        <pre style={{
-                            margin: 0, padding: '0.875rem 1rem',
-                            background: '#060d1a', color: '#e2e8f0',
-                            fontFamily: '"Fira Code", Consolas, monospace',
-                            fontSize: '0.7813rem', lineHeight: 1.7,
-                            overflowX: 'auto', whiteSpace: 'pre',
-                            borderRadius: '0 0 8px 8px', border: '1px solid #1e293b',
-                        }}>
-                            {ASSIGN_SELF_SQL}
-                        </pre>
-                    </div>
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', marginTop: '0.75rem' }}>
-                        <Info size={13} color="#475569" style={{ flexShrink: 0, marginTop: 2 }} />
-                        <span style={{ color: '#475569', fontSize: '0.8rem', lineHeight: 1.6 }}>
-                            Once RLS is active you will only see data for tenants you are a member of.
-                            If the CMS shows empty tables after enabling RLS, it means the user is not yet assigned — run the above query.
-                        </span>
-                    </div>
-                </div>
-            </div>
-
-            {/* SQL Blocks */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                {BLOCKS.map(block => (
-                    <SqlCard key={block.id} block={block} copied={copied} onCopy={copyBlock} />
-                ))}
-            </div>
-
-            {/* Footer note */}
-            <div style={{
-                marginTop: '1.5rem', padding: '1rem 1.25rem',
-                background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.15)',
-                borderRadius: 10,
-            }}>
-                <div style={{ display: 'flex', gap: '0.625rem', alignItems: 'flex-start' }}>
-                    <Shield size={15} color="#22c55e" style={{ flexShrink: 0, marginTop: 2 }} />
-                    <div>
-                        <div style={{ fontWeight: 600, color: '#4ade80', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
-                            Security model summary
-                        </div>
-                        <ul style={{ margin: '0 0 0 1rem', padding: 0, color: '#64748b', fontSize: '0.8125rem', lineHeight: 1.8 }}>
-                            <li><strong style={{ color: '#94a3b8' }}>Admin users</strong> — access rows scoped to their tenant via <code style={{ color: '#7a8aff' }}>is_tenant_member()</code>.</li>
-                            <li><strong style={{ color: '#94a3b8' }}>Player devices</strong> — never query Postgres directly; all reads go through Edge Functions using the service role key.</li>
-                            <li><strong style={{ color: '#94a3b8' }}>Heartbeat writes</strong> — performed exclusively by the <code style={{ color: '#7a8aff' }}>device-heartbeat</code> Edge Function (service role), not by authenticated users.</li>
-                            <li><strong style={{ color: '#94a3b8' }}>Storage</strong> — media files are scoped by path prefix <code style={{ color: '#7a8aff' }}>tenant/&lt;uuid&gt;/…</code> enforced via storage.objects RLS.</li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
+          <h1 className="page-title">RLS Setup</h1>
+          <p className="page-subtitle">
+            Production-grade Row Level Security — paste each block into Supabase SQL Editor in order A → F
+          </p>
         </div>
-    )
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '0.5rem',
+          padding: '0.5rem 1rem', borderRadius: 999,
+          background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)',
+          color: '#fbbf24', fontSize: '0.8125rem', fontWeight: 500,
+        }}>
+          <Shield size={14} />
+          Manual SQL — Supabase Editor Only
+        </div>
+      </div>
+
+      {/* Warning banner */}
+      <div style={{
+        display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
+        padding: '1rem 1.25rem', marginBottom: '1.5rem',
+        background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)',
+        borderRadius: 10,
+      }}>
+        <AlertTriangle size={18} color="#f59e0b" style={{ flexShrink: 0, marginTop: 1 }} />
+        <div>
+          <div style={{ fontWeight: 600, color: '#fbbf24', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
+            Run sections in order: A → B → C → D → E → F
+          </div>
+          <div style={{ color: '#94a3b8', fontSize: '0.8125rem', lineHeight: 1.6 }}>
+            Go to <strong style={{ color: '#e2e8f0' }}>Supabase Dashboard → SQL Editor</strong>, paste each block and click <strong style={{ color: '#e2e8f0' }}>Run</strong>.
+            All <code style={{ background: '#0f172a', padding: '0 4px', borderRadius: 3, color: '#7a8aff' }}>drop policy if exists</code> statements
+            are idempotent — safe to re-run. <strong style={{ color: '#fbbf24' }}>Section B must be run before C–E</strong> (policies depend on the helper function).
+          </div>
+        </div>
+      </div>
+
+      {/* How-to: assign user to tenant */}
+      <div style={{
+        display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
+        padding: '1rem 1.25rem', marginBottom: '1.75rem',
+        background: 'rgba(90,100,246,0.07)', border: '1px solid rgba(90,100,246,0.2)',
+        borderRadius: 10,
+      }}>
+        <UserCheck size={18} color="#7a8aff" style={{ flexShrink: 0, marginTop: 1 }} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 600, color: '#a5b4fc', fontSize: '0.875rem', marginBottom: '0.375rem' }}>
+            How to assign your user to the tenant (required after Section A)
+          </div>
+          <ol style={{ margin: '0 0 0.75rem 1rem', padding: 0, color: '#94a3b8', fontSize: '0.8125rem', lineHeight: 1.8 }}>
+            <li>Go to <strong style={{ color: '#e2e8f0' }}>Supabase → Authentication → Users</strong> and copy your user's UUID.</li>
+            <li>Paste the UUID into the SQL below (replacing the placeholder).</li>
+            <li>Run it in the SQL Editor <strong style={{ color: '#e2e8f0' }}>using the service role</strong> (the editor always runs as superuser).</li>
+          </ol>
+          {/* Assign self SQL */}
+          <div style={{ position: 'relative' }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '0.4rem 1rem',
+              background: '#060d1a', borderRadius: '8px 8px 0 0',
+              border: '1px solid #1e293b', borderBottom: 'none',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Database size={11} color="#475569" />
+                <span style={{ fontSize: '0.7188rem', color: '#475569', fontFamily: 'monospace' }}>Assign self to tenant — paste user UUID first</span>
+              </div>
+              <button
+                onClick={copyAssign}
+                className="btn-secondary"
+                style={{ gap: '0.375rem', padding: '0.3rem 0.625rem', fontSize: '0.75rem' }}
+              >
+                {assignCopied ? <><Check size={11} color="#22c55e" /> Copied!</> : <><Copy size={11} /> Copy</>}
+              </button>
+            </div>
+            <pre style={{
+              margin: 0, padding: '0.875rem 1rem',
+              background: '#060d1a', color: '#e2e8f0',
+              fontFamily: '"Fira Code", Consolas, monospace',
+              fontSize: '0.7813rem', lineHeight: 1.7,
+              overflowX: 'auto', whiteSpace: 'pre',
+              borderRadius: '0 0 8px 8px', border: '1px solid #1e293b',
+            }}>
+              {ASSIGN_SELF_SQL}
+            </pre>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', marginTop: '0.75rem' }}>
+            <Info size={13} color="#475569" style={{ flexShrink: 0, marginTop: 2 }} />
+            <span style={{ color: '#475569', fontSize: '0.8rem', lineHeight: 1.6 }}>
+              Once RLS is active you will only see data for tenants you are a member of.
+              If the CMS shows empty tables after enabling RLS, it means the user is not yet assigned — run the above query.
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* SQL Blocks */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        {BLOCKS.map(block => (
+          <SqlCard key={block.id} block={block} copied={copied} onCopy={copyBlock} />
+        ))}
+      </div>
+
+      {/* Footer note */}
+      <div style={{
+        marginTop: '1.5rem', padding: '1rem 1.25rem',
+        background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.15)',
+        borderRadius: 10,
+      }}>
+        <div style={{ display: 'flex', gap: '0.625rem', alignItems: 'flex-start' }}>
+          <Shield size={15} color="#22c55e" style={{ flexShrink: 0, marginTop: 2 }} />
+          <div>
+            <div style={{ fontWeight: 600, color: '#4ade80', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
+              Security model summary
+            </div>
+            <ul style={{ margin: '0 0 0 1rem', padding: 0, color: '#64748b', fontSize: '0.8125rem', lineHeight: 1.8 }}>
+              <li><strong style={{ color: '#94a3b8' }}>Admin users</strong> — access rows scoped to their tenant via <code style={{ color: '#7a8aff' }}>is_tenant_member()</code>.</li>
+              <li><strong style={{ color: '#94a3b8' }}>Player devices</strong> — never query Postgres directly; all reads go through Edge Functions using the service role key.</li>
+              <li><strong style={{ color: '#94a3b8' }}>Heartbeat writes</strong> — performed exclusively by the <code style={{ color: '#7a8aff' }}>device-heartbeat</code> Edge Function (service role), not by authenticated users.</li>
+              <li><strong style={{ color: '#94a3b8' }}>Storage</strong> — media files are scoped by path prefix <code style={{ color: '#7a8aff' }}>tenant/&lt;uuid&gt;/…</code> enforced via storage.objects RLS.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }

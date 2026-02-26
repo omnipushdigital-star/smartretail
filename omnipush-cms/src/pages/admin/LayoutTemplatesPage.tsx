@@ -46,7 +46,7 @@ export default function LayoutTemplatesPage() {
                                     {t.is_default && <span className="badge badge-blue" style={{ marginTop: '0.25rem' }}>Default</span>}
                                 </div>
                                 <div style={{ width: 48, height: 48, background: '#0f172a', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #334155' }}>
-                                    <LTIcon size={20} color="#5a64f6" />
+                                    <LTIcon size={20} color="var(--color-brand-500)" />
                                 </div>
                             </div>
                             {t.description && <p style={{ fontSize: '0.8125rem', color: '#64748b', margin: 0 }}>{t.description}</p>}
@@ -73,7 +73,7 @@ export default function LayoutTemplatesPage() {
                                         left: `${r.x}%`, top: `${r.y}%`,
                                         width: `${r.width}%`, height: `${r.height}%`,
                                         background: 'rgba(90,100,246,0.15)',
-                                        border: '1.5px dashed #5a64f6',
+                                        border: '1.5px dashed var(--color-brand-500)',
                                         borderRadius: 4,
                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                                         fontSize: '0.75rem', color: '#7a8aff', fontWeight: 500

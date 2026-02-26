@@ -113,7 +113,7 @@ export default function MonitoringPage() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
                 <div className="stat-card">
                     <div className="stat-icon" style={{ background: 'rgba(90,100,246,0.15)' }}>
-                        <Activity size={22} color="#5a64f6" />
+                        <Activity size={22} color="var(--color-brand-500)" />
                     </div>
                     <div>
                         <div className="stat-value">{latestHbs.length + unseenDevices.length}</div>

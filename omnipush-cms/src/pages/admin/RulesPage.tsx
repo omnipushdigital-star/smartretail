@@ -334,8 +334,8 @@ export default function RulesPage() {
                                             onClick={() => setDayToggles(t => t.map((v, j) => j === i ? !v : v))}
                                             style={{
                                                 padding: '0.25rem 0.625rem', borderRadius: 6, border: '1px solid', fontSize: '0.8125rem', cursor: 'pointer', transition: 'all 0.15s',
-                                                background: dayToggles[i] ? '#5a64f6' : 'transparent',
-                                                borderColor: dayToggles[i] ? '#5a64f6' : '#334155',
+                                                background: dayToggles[i] ? 'var(--color-brand-500)' : 'transparent',
+                                                borderColor: dayToggles[i] ? 'var(--color-brand-500)' : '#334155',
                                                 color: dayToggles[i] ? 'white' : '#64748b'
                                             }}>
                                             {day}

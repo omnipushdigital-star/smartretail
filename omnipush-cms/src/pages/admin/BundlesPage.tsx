@@ -313,7 +313,7 @@ function CreateBundleModal({
                             type="checkbox"
                             checked={form.snapshot}
                             onChange={e => setForm(f => ({ ...f, snapshot: e.target.checked }))}
-                            style={{ accentColor: '#5a64f6', width: 15, height: 15 }}
+                            style={{ accentColor: 'var(--color-brand-500)', width: 15, height: 15 }}
                         />
                         Snapshot media from a Layout
                     </label>
