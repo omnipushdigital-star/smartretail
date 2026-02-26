@@ -137,8 +137,11 @@ export default function PlaylistsPage() {
             payload.web_url = addUrl
         }
 
-        // Insert and then resolve the media manually
-        const { data: newItem, error } = await supabase.from('playlist_items').insert(payload).select().single()
+        // Insert and then resolve the media manually to avoid ambiguity
+        const { data: newItem, error } = await supabase.from('playlist_items')
+            .insert(payload)
+            .select('id, playlist_id, type, sort_order, media_id, web_url, duration_seconds')
+            .single()
         if (error) { toast.error(error.message); return }
 
         let resolvedItem = { ...newItem, media: null }

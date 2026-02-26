@@ -73,12 +73,22 @@ function BundleRow({
     const loadFiles = async () => {
         if (files.length > 0) { setOpen(o => !o); return }
         setLoadingFiles(true)
-        const { data } = await supabase
+        const { data: rawFiles } = await supabase
             .from('bundle_files')
-            .select('*, media:media_assets!media_id(id,name,type,bytes,url,storage_path)')
+            .select('*')
             .eq('bundle_id', bundle.id)
             .order('created_at')
-        setFiles((data as BundleFileRow[]) || [])
+
+        const mediaIds = (rawFiles || []).map((f: any) => f.media_id).filter(Boolean)
+        const { data: media } = await supabase.from('media_assets').select('id,name,type,bytes,url,storage_path').in('id', mediaIds)
+        const mediaMap = Object.fromEntries((media || []).map(m => [m.id, m]))
+
+        const resolved = (rawFiles || []).map(f => ({
+            ...f,
+            media: mediaMap[f.media_id] || null
+        }))
+
+        setFiles(resolved as BundleFileRow[])
         setLoadingFiles(false)
         setOpen(true)
     }
