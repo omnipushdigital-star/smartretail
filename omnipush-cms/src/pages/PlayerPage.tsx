@@ -78,9 +78,10 @@ function LiveClock() {
 interface PlaybackProps {
     items: ManifestItem[]
     assets: ManifestAsset[]
+    region: { id: string; x: number; y: number; width: number; height: number }
 }
 
-function PlaybackEngine({ items, assets }: PlaybackProps) {
+function PlaybackEngine({ items, assets, region }: PlaybackProps) {
     const [idx, setIdx] = useState(0)
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const videoRef = useRef<HTMLVideoElement>(null)
@@ -126,9 +127,11 @@ function PlaybackEngine({ items, assets }: PlaybackProps) {
 
     return (
         <div style={{
-            position: 'fixed',
-            top: 0, left: 0,
-            width: '100vw', height: '100vh',
+            position: 'absolute',
+            top: `${region.y}%`,
+            left: `${region.x}%`,
+            width: `${region.width}%`,
+            height: `${region.height}%`,
             background: '#000',
             overflow: 'hidden',
             margin: 0, padding: 0,
@@ -722,36 +725,24 @@ export default function PlayerPage() {
         )
     }
 
-    // Playing
-    const items = getPlaylistItems()
-
-    if (!manifest || items.length === 0) {
-        // No content — show standby screen
-        return (
-            <div style={bgStyle}>
-                <AmbientOrbs />
-                <div style={{ zIndex: 1, position: 'relative', textAlign: 'center' }}>
-                    <Logo />
-                    <div style={{ marginTop: '2.5rem', color: 'rgba(255,255,255,0.3)', fontSize: '0.9rem', lineHeight: 1.7 }}>
-                        <div>Display is registered and online.</div>
-                        <div>No content has been published to this screen yet.</div>
-                        <div style={{ marginTop: '0.5rem', fontFamily: 'monospace', fontSize: '0.75rem', color: '#475569' }}>
-                            Role: {manifest?.device.role_id} · Scope: {manifest?.resolved.scope || '—'}
-                        </div>
-                    </div>
-                    <div style={{ marginTop: '2rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', borderRadius: 999, background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', color: '#22c55e', fontSize: '0.8rem' }}>
-                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', display: 'inline-block', boxShadow: '0 0 6px #22c55e', animation: 'pulse 2s infinite' }} />
-                        Device Online · Awaiting content
-                    </div>
-                </div>
-                <BottomBar device_code={dc} version={version} offline={offline} />
-            </div>
-        )
-    }
+    // Multi-Region Rendering
+    if (!manifest) return <LoadingState device_code={dc} />
+    const regions = manifest.layout?.regions || [{ id: 'full', x: 0, y: 0, width: 100, height: 100 }]
 
     return (
-        <>
-            <PlaybackEngine items={items} assets={manifest.assets} />
+        <div style={{ position: 'fixed', inset: 0, background: '#000' }}>
+            {regions.map((reg) => {
+                const regionItems = manifest.region_playlists?.[reg.id] || []
+                return (
+                    <PlaybackEngine
+                        key={reg.id}
+                        region={reg}
+                        items={regionItems}
+                        assets={manifest.assets}
+                    />
+                )
+            })}
+
             {/* Offline indicator overlay */}
             {offline && (
                 <div style={{
@@ -764,8 +755,9 @@ export default function PlayerPage() {
                     <WifiOff size={14} /> Offline — playing cached content
                 </div>
             )}
+
             {/* Bottom bar on top of content */}
             <BottomBar device_code={dc} version={version} offline={offline} />
-        </>
+        </div>
     )
 }
