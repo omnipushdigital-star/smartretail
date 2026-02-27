@@ -27,22 +27,27 @@ serve(async (req: Request) => {
             const pin = Math.floor(100000 + Math.random() * 900000).toString();
             const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 mins
 
-            // 1. Try to find existing device
+            // Find existing device
             const { data: device } = await supabase
                 .from("devices")
-                .select("id")
+                .select("id, device_secret")
                 .eq("device_code", device_code)
                 .maybeSingle();
 
             if (device) {
-                // Update existing device with new pin
+                // IMPORTANT: We set a new PIN but we DO NOT clear the secret yet.
+                // However, we want to ensure CLAIM_POLL doesn't use the old secret.
                 const { error } = await supabase
                     .from("devices")
-                    .update({ pairing_pin: pin, pairing_expires_at: expiresAt })
+                    .update({
+                        pairing_pin: pin,
+                        pairing_expires_at: expiresAt
+                        // We keep device_secret but CLAIM_POLL will ignore it if pairing_pin exists.
+                    })
                     .eq("id", device.id);
                 if (error) throw error;
             } else {
-                // Create a temporary "Unclaimed" device record
+                // Create a new record
                 const { error } = await supabase
                     .from("devices")
                     .insert({
@@ -63,13 +68,15 @@ serve(async (req: Request) => {
         if (action === 'CLAIM_POLL') {
             if (!device_code) throw new Error("device_code required");
 
+            // Only return secret if the pairing_pin has been cleared (meaning CLAIM was called)
             const { data: device, error } = await supabase
                 .from("devices")
-                .select("device_secret")
+                .select("device_secret, pairing_pin")
                 .eq("device_code", device_code)
                 .single();
 
-            if (error || !device?.device_secret) {
+            // If there is still a pairing_pin, it means the user hasn't claimed it in CMS yet.
+            if (error || !device?.device_secret || device.pairing_pin) {
                 return Response.json({ status: 'PENDING' }, { headers: corsHeaders });
             }
 
@@ -98,10 +105,10 @@ serve(async (req: Request) => {
             const { data: updated, error: updateErr } = await supabase
                 .from("devices")
                 .update({
-                    tenant_id: DEFAULT_TENANT_ID, // Link to current user's tenant
+                    tenant_id: DEFAULT_TENANT_ID,
                     device_secret: secret,
                     active: true,
-                    pairing_pin: null, // Clear pin
+                    pairing_pin: null, // CLEAR PIN -> This triggers CLAIM_POLL success
                     pairing_expires_at: null
                 })
                 .eq("id", device.id)
@@ -110,7 +117,7 @@ serve(async (req: Request) => {
 
             if (updateErr) throw updateErr;
 
-            console.log(`[Pairing] CLAIM: ${device.device_code} paired to tenant.`);
+            console.log(`[Pairing] CLAIM: ${device.device_code} paired successfully.`);
             return Response.json({ device: updated }, { headers: corsHeaders });
         }
 

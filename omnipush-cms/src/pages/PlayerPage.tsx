@@ -419,10 +419,12 @@ export default function PlayerPage() {
     const initPairing = useCallback(async () => {
         try {
             const data = await callEdgeFn('device-pairing', { action: 'INIT', device_code: dc })
+            if (data.error) throw new Error(data.error)
             setPairingPin(data.pairing_pin)
         } catch (err: any) {
             console.error('[Pairing] Init error:', err.message)
-            setPhase('secret') // Fallback to manual entry if function not deployed
+            setErrorMsg(`Pairing Service Error: ${err.message}`)
+            setPhase('secret') // Fallback to manual entry
         }
     }, [dc])
 
