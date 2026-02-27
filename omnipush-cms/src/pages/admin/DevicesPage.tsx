@@ -16,7 +16,18 @@ function isOnline(lastSeen?: string) {
     return Date.now() - new Date(lastSeen).getTime() < ONLINE_THRESHOLD_MS
 }
 
-function generateDeviceCode() {
+function generateDeviceCode(storeName?: string, roleName?: string) {
+    const slugify = (s: string) => s.toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9]/g, '').substring(0, 6);
+
+    if (storeName || roleName) {
+        const p1 = storeName ? slugify(storeName) : 'UNK';
+        const p2 = roleName ? slugify(roleName) : 'DEV';
+        // Add a small 3-char random suffix to ensure uniqueness while keeping it identifyable
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        const suffix = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+        return `${p1}_${p2}_${suffix}`;
+    }
+
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
     return Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('') +
         '-' + Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
@@ -146,7 +157,10 @@ export default function DevicesPage() {
                 loadAll()
             } else {
                 // Auto-generate device_code + secret
-                const device_code = generateDeviceCode()
+                const selectedStore = stores.find(s => s.id === form.store_id);
+                const selectedRole = roles.find(r => r.id === form.role_id);
+
+                const device_code = generateDeviceCode(selectedStore?.name, selectedRole?.name)
                 const device_secret = generateSecret()
                 const { error } = await supabase.from('devices').insert({
                     device_code, device_secret,
