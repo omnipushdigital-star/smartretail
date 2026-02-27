@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react'
-import { Plus, Search, Edit2, Trash2, Monitor, Copy, Check, Loader2, RefreshCw, Info, Eye, EyeOff, QrCode } from 'lucide-react'
-import { supabase, DEFAULT_TENANT_ID } from '../../lib/supabase'
+import React, { useState, useEffect, useCallback } from 'react'
+import { Plus, Search, Edit2, Trash2, Monitor, Copy, Check, Loader2, RefreshCw, Info, Eye, EyeOff, QrCode, Download, Tv2 } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
+import { supabase, DEFAULT_TENANT_ID, callEdgeFn } from '../../lib/supabase'
 import { Device, Store, Role, DeviceHeartbeat } from '../../types'
 import Modal from '../../components/ui/Modal'
 import Pagination from '../../components/ui/Pagination'
@@ -45,6 +46,9 @@ export default function DevicesPage() {
     const [page, setPage] = useState(1)
     const [showModal, setShowModal] = useState(false)
     const [showPairingModal, setShowPairingModal] = useState(false)
+    const [showClaimModal, setShowClaimModal] = useState(false)
+    const [claimPin, setClaimPin] = useState('')
+    const [claiming, setClaiming] = useState(false)
     const [editing, setEditing] = useState<Device | null>(null)
     const [form, setForm] = useState(emptyForm)
     const [saving, setSaving] = useState(false)
@@ -71,6 +75,37 @@ export default function DevicesPage() {
         setRoles(rolesRes.data || [])
         setHeartbeats(hbMap)
         setLoading(false)
+    }
+
+    const fetchDevices = async () => {
+        setLoading(true)
+        try {
+            const { data, error } = await supabase.from('devices').select('*, store:stores(id,code,name), role:roles(id,name,key)')
+                .eq('tenant_id', DEFAULT_TENANT_ID).order('display_name')
+            if (error) throw error
+            setDevices(data || [])
+        } catch (err: any) {
+            toast.error(err.message)
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const handleClaim = async () => {
+        if (claimPin.length !== 6) return toast.error('Please enter a 6-digit PIN')
+        setClaiming(true)
+        try {
+            const res = await callEdgeFn('device-pairing', { action: 'CLAIM', pairing_pin: claimPin })
+            if (res.error) throw new Error(res.error)
+            toast.success(`Device "${res.device.display_name}" paired successfully!`)
+            setShowClaimModal(false)
+            setClaimPin('')
+            fetchDevices()
+        } catch (err: any) {
+            toast.error(err.message || 'Invalid or expired PIN')
+        } finally {
+            setClaiming(false)
+        }
     }
 
     useEffect(() => { loadAll() }, [])
@@ -162,6 +197,10 @@ export default function DevicesPage() {
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <button className="btn-secondary" onClick={loadAll} title="Refresh"><RefreshCw size={14} /></button>
+                    <button className="btn-secondary" onClick={() => setShowClaimModal(true)}>
+                        <Tv2 size={16} />
+                        Pair with Code
+                    </button>
                     <button id="create-device-btn" className="btn-primary" onClick={openCreate}><Plus size={16} /> Add Device</button>
                 </div>
             </div>
@@ -375,10 +414,25 @@ export default function DevicesPage() {
                     <div style={{ fontSize: '0.875rem', color: '#94a3b8', marginBottom: '1.25rem' }}>
                         Device registered! Use the credentials below to configure the Player app on the screen.
                     </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: '#0f172a', borderRadius: 12, padding: '1.5rem', marginBottom: '1.5rem', border: '1px solid #1e293b' }}>
+                        <div style={{ background: 'white', padding: '1rem', borderRadius: 8, marginBottom: '1rem' }}>
+                            <QRCodeSVG
+                                id="pairing-qr"
+                                value={pairing.device_code.includes('code=') ? pairing.device_code : `${window.location.origin}/player/${pairing.device_code}?secret=${pairing.device_secret}`}
+                                size={180}
+                                level="H"
+                                includeMargin={false}
+                            />
+                        </div>
+                        <div style={{ color: '#94a3b8', fontSize: '0.8rem', textAlign: 'center' }}>
+                            Scan this QR code with the display's camera <br /> to auto-configure instantly.
+                        </div>
+                    </div>
+
                     {[
                         { label: 'Device Code', value: pairing.device_code, mono: true, highlight: true },
                         { label: 'Device Secret', value: pairing.device_secret, mono: true },
-                        { label: 'Player URL', value: `https://YOUR_PLAYER_DOMAIN/?code=${pairing.device_code}`, mono: true },
+                        { label: 'Auto-Pair URL', value: `${window.location.origin}/player/${pairing.device_code}?secret=${pairing.device_secret}`, mono: true },
                     ].map(row => (
                         <div key={row.label} style={{ marginBottom: '1rem' }}>
                             <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.375rem' }}>
@@ -403,6 +457,49 @@ export default function DevicesPage() {
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
                         <button className="btn-primary" onClick={() => setShowPairingModal(false)}>Done</button>
+                    </div>
+                </Modal>
+            )}
+            {/* Claim Device via PIN Modal */}
+            {showClaimModal && (
+                <Modal title="🔗 Pair Screen with Code" onClose={() => setShowClaimModal(false)}>
+                    <div style={{ fontSize: '0.875rem', color: '#94a3b8', marginBottom: '1.5rem', lineHeight: 1.6 }}>
+                        Enter the 6-digit code displayed on your player screen to securely link it to this account.
+                    </div>
+
+                    <div className="form-group">
+                        <label>Pairing Code</label>
+                        <input
+                            type="text"
+                            placeholder="000000"
+                            maxLength={6}
+                            value={claimPin}
+                            onChange={(e) => setClaimPin(e.target.value.replace(/[^0-9]/g, ''))}
+                            style={{
+                                textAlign: 'center',
+                                fontSize: '2rem',
+                                letterSpacing: '0.3em',
+                                fontWeight: 700,
+                                fontFamily: 'monospace',
+                                height: 'auto',
+                                padding: '1rem'
+                            }}
+                        />
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
+                        <button className="btn-secondary" onClick={() => setShowClaimModal(false)}>Cancel</button>
+                        <button
+                            className="btn-primary"
+                            disabled={claiming || claimPin.length !== 6}
+                            onClick={handleClaim}
+                        >
+                            {claiming ? 'Pairing…' : 'Pair Device'}
+                        </button>
+                    </div>
+
+                    <div style={{ marginTop: '1.5rem', padding: '1rem', background: '#0f172a', borderRadius: 8, fontSize: '0.75rem', color: '#64748b', textAlign: 'center' }}>
+                        The code is unique and expires every 10 minutes for security.
                     </div>
                 </Modal>
             )}

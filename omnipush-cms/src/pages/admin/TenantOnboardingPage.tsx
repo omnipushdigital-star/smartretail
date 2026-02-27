@@ -10,6 +10,7 @@ export default function TenantOnboardingPage() {
     const [uploading, setUploading] = useState(false)
     const [tenantData, setTenantData] = useState({
         name: 'Apache Pizza',
+        slug: 'default',
         logo_url: 'https://i.ibb.co/vzB7K8N/apache-pizza-logo.png',
         primary_color: '#ef4444',
         secondary_color: '#991b1b',
@@ -33,6 +34,7 @@ export default function TenantOnboardingPage() {
             if (data) {
                 setTenantData({
                     name: data.name || 'Apache Pizza',
+                    slug: data.slug || 'default',
                     logo_url: data.settings?.logo_url || 'https://i.ibb.co/vzB7K8N/apache-pizza-logo.png',
                     primary_color: data.settings?.primary_color || '#ef4444',
                     secondary_color: data.settings?.secondary_color || '#991b1b',
@@ -144,6 +146,7 @@ export default function TenantOnboardingPage() {
                 .upsert({
                     id: DEFAULT_TENANT_ID,
                     name: tenantData.name,
+                    slug: tenantData.slug,
                     settings: {
                         logo_url: tenantData.logo_url,
                         primary_color: tenantData.primary_color,
@@ -153,6 +156,7 @@ export default function TenantOnboardingPage() {
                     },
                     updated_at: new Date().toISOString()
                 })
+
 
             if (error) throw error
             toast.success('Branding updated successfully')

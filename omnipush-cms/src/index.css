@@ -16,6 +16,7 @@
   --color-brand-800: #991b1b;
   --color-brand-900: #7f1d1d;
   --color-brand-950: #450a0a;
+  --color-brand-500-rgb: 239, 68, 68;
 
   --color-surface-50: #f8fafc;
   --color-surface-100: #f1f5f9;
@@ -344,7 +345,7 @@ body.light thead tr {
 }
 
 body.light tbody tr:hover {
-  background: rgba(90, 100, 246, 0.04);
+  background: rgba(239, 68, 68, 0.04);
 }
 
 .modal-overlay {
@@ -492,7 +493,7 @@ body.light .nav-item {
 }
 
 body.light .nav-item:hover {
-  background: rgba(90, 100, 246, 0.07);
+  background: rgba(239, 68, 68, 0.07);
   color: #020617;
 }
 

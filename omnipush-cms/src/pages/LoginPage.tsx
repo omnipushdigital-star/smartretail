@@ -29,13 +29,13 @@ export default function LoginPage() {
     return (
         <div style={{
             minHeight: '100vh',
-            background: 'linear-gradient(135deg, #020617 0%, #0f172a 50%, #1a1a5c 100%)',
+            background: 'linear-gradient(135deg, #020617 0%, #0f172a 50%, #450a0a 100%)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             padding: '1rem'
         }}>
             {/* Background orbs */}
-            <div style={{ position: 'fixed', top: '20%', left: '10%', width: 400, height: 400, borderRadius: '50%', background: 'rgba(90,100,246,0.08)', filter: 'blur(80px)', pointerEvents: 'none' }} />
-            <div style={{ position: 'fixed', bottom: '20%', right: '10%', width: 300, height: 300, borderRadius: '50%', background: 'rgba(67,71,234,0.06)', filter: 'blur(60px)', pointerEvents: 'none' }} />
+            <div style={{ position: 'fixed', top: '20%', left: '10%', width: 400, height: 400, borderRadius: '50%', background: 'rgba(239, 68, 68, 0.08)', filter: 'blur(80px)', pointerEvents: 'none' }} />
+            <div style={{ position: 'fixed', bottom: '20%', right: '10%', width: 300, height: 300, borderRadius: '50%', background: 'rgba(220, 38, 38, 0.06)', filter: 'blur(60px)', pointerEvents: 'none' }} />
 
             <div style={{ width: '100%', maxWidth: 420, position: 'relative', zIndex: 1 }}>
                 {/* Logo */}
@@ -111,7 +111,7 @@ export default function LoginPage() {
                         </button>
                     </form>
 
-                    <div style={{ marginTop: '1.5rem', padding: '1rem', background: 'rgba(90,100,246,0.05)', borderRadius: 8, border: '1px solid rgba(90,100,246,0.15)' }}>
+                    <div style={{ marginTop: '1.5rem', padding: '1rem', background: 'rgba(239, 68, 68, 0.05)', borderRadius: 8, border: '1px solid rgba(239, 68, 68, 0.15)' }}>
                         <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b', textAlign: 'center' }}>
                             🔐 This portal is restricted to authorized administrators only.
                         </p>

@@ -97,16 +97,13 @@ export default function AdminLayout() {
                 <header className="topbar">
                     <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
                         <span style={{
-                            fontSize: '1.125rem',
-                            fontWeight: 800,
-                            background: `linear-gradient(90deg, ${tenant?.primary_color || '#ef4444'}, ${tenant?.secondary_color || '#f97316'})`,
-                            WebkitBackgroundClip: 'text',
-                            backgroundClip: 'text',
-                            WebkitTextFillColor: 'transparent',
-                            color: 'transparent',
-                            letterSpacing: '0.04em',
+                            fontSize: '1.25rem',
+                            fontWeight: 900,
+                            color: tenant?.primary_color || '#ef4444',
+                            letterSpacing: '0.05em',
                             textTransform: 'uppercase',
-                            display: 'inline-block'
+                            display: 'inline-block',
+                            textShadow: '0 2px 4px rgba(0,0,0,0.1)'
                         }}>
                             OMNIPUSH SMART RETAIL DISPLAY
                         </span>

@@ -7,6 +7,8 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 
+import { supabase, DEFAULT_TENANT_ID } from '../../lib/supabase'
+
 const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', to: '/admin/dashboard' },
     { icon: Store, label: 'Stores', to: '/admin/stores' },
@@ -31,20 +33,21 @@ export default function Sidebar() {
     const navigate = useNavigate()
 
     const handleSignOut = async () => {
+
         await signOut()
         navigate('/login')
     }
 
     return (
         <aside className="sidebar">
-            {/* Logo */}
-            <div style={{ padding: '1rem 1rem 0.875rem', borderBottom: '1px solid #1e293b' }}>
+            <div style={{ height: '64px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', overflow: 'hidden' }}>
                 <img
                     src="/logo.png"
                     alt="OmniPush"
-                    style={{ height: 40, width: 'auto', display: 'block', objectFit: 'contain' }}
+                    style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
                 />
             </div>
+
 
             {/* Navigation */}
             <nav style={{ flex: 1, padding: '0.75rem 0', overflow: 'auto' }}>
@@ -62,7 +65,7 @@ export default function Sidebar() {
 
             {/* User section */}
             <div style={{ padding: '0.75rem', borderTop: '1px solid #1e293b' }}>
-                <div style={{ padding: '0.75rem', borderRadius: 8, background: 'rgba(90,100,246,0.05)', marginBottom: '0.5rem' }}>
+                <div style={{ padding: '0.75rem', borderRadius: 8, background: 'rgba(var(--color-brand-500-rgb), 0.05)', marginBottom: '0.5rem' }}>
                     <div style={{ fontSize: '0.75rem', color: '#f1f5f9', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {user?.email}
                     </div>

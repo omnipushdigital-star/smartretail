@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { WifiOff, Tv2, Lock, RefreshCw, Clock } from 'lucide-react'
-import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from '../lib/supabase'
+import { QRCodeSVG } from 'qrcode.react'
+import { supabase, DEFAULT_TENANT_ID, callEdgeFn } from '../lib/supabase'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -54,56 +55,7 @@ const DEFAULT_WEB_DURATION = 15
 function secretKey(code: string) { return `omnipush_device_secret:${code}` }
 function manifestKey(code: string) { return `omnipush_manifest:${code}` }
 
-// ─── API helpers ─────────────────────────────────────────────────────────────
-
-async function callEdgeFn(fn: string, body: object): Promise<any> {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 15000) // 15s timeout
-
-    let res: Response
-    try {
-        res = await fetch(`${SUPABASE_URL}/functions/v1/${fn}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            },
-            body: JSON.stringify(body),
-            signal: controller.signal,
-        })
-        clearTimeout(timeoutId)
-    } catch (networkErr: any) {
-        clearTimeout(timeoutId)
-        if (networkErr.name === 'AbortError') {
-            throw new Error('Connection timed out. Checking network...')
-        }
-        throw new Error(`Network error — check internet connection. (${networkErr.message})`)
-    }
-
-    // Read as text first so we never crash on empty / HTML responses
-    const text = await res.text()
-    let json: any = null
-    try {
-        json = text ? JSON.parse(text) : null
-    } catch {
-        if (res.status === 404) {
-            throw new Error(
-                `Edge Function "${fn}" is not deployed. Go to Admin → Edge Functions and follow the deploy steps.`
-            )
-        }
-        throw new Error(
-            `Server returned an unexpected response (HTTP ${res.status}). ` +
-            `Make sure the Edge Functions are deployed in your Supabase project.`
-        )
-    }
-
-    if (!res.ok) {
-        const err: any = new Error(json?.error || json?.message || `HTTP ${res.status}`)
-        err.data = json // Attach payload for diagnostics
-        throw err
-    }
-    return json
-}
+// Local callEdgeFn removed, imported from lib/supabase
 
 // ─── Live Clock ───────────────────────────────────────────────────────────────
 
@@ -267,7 +219,7 @@ function LoadingState({ device_code }: { device_code: string }) {
                 <Logo />
                 <div style={{ width: 40, height: 40, borderRadius: '50%', border: '3px solid #1e293b', borderTopColor: 'var(--color-brand-500)', animation: 'spin 0.8s linear infinite', margin: '2rem auto 1rem' }} />
                 <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>Connecting to network…</div>
-                <div style={{ fontFamily: 'monospace', color: '#7a8aff', fontSize: '0.8rem', marginTop: '0.5rem' }}>{device_code}</div>
+                <div style={{ fontFamily: 'monospace', color: '#f87171', fontSize: '0.8rem', marginTop: '0.5rem' }}>{device_code}</div>
             </div>
             <BottomBar device_code={device_code} />
         </div>
@@ -282,13 +234,13 @@ function SecretPrompt({ device_code, onSubmit }: { device_code: string; onSubmit
             <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem', maxWidth: 420 }}>
                 <Logo />
                 <div style={{ marginTop: '2.5rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 16, padding: '2rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '1rem', color: '#7a8aff' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '1rem', color: '#f87171' }}>
                         <Lock size={18} />
                         <span style={{ fontWeight: 600, color: '#f1f5f9', fontSize: '1rem' }}>Device Authentication</span>
                     </div>
                     <div style={{ color: '#64748b', fontSize: '0.8125rem', marginBottom: '1.25rem', lineHeight: 1.6 }}>
                         Enter the <strong style={{ color: '#94a3b8' }}>Device Secret</strong> for <br />
-                        <code style={{ fontFamily: 'monospace', color: '#7a8aff', fontSize: '0.875rem' }}>{device_code}</code>
+                        <code style={{ fontFamily: 'monospace', color: '#f87171', fontSize: '0.875rem' }}>{device_code}</code>
                     </div>
                     <input
                         type="password"
@@ -342,8 +294,8 @@ function ErrorState({ device_code, msg, onRetry }: { device_code: string; msg: s
                         style={{
                             display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center',
                             width: '100%', padding: '0.75rem', borderRadius: 8,
-                            background: 'rgba(90,100,246,0.15)', border: '1px solid rgba(90,100,246,0.3)',
-                            color: '#7a8aff', fontWeight: 600, cursor: 'pointer', fontSize: '0.875rem',
+                            background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)',
+                            color: '#f87171', fontWeight: 600, cursor: 'pointer', fontSize: '0.875rem',
                         }}
                     >
                         <RefreshCw size={14} /> Retry
@@ -359,7 +311,7 @@ function ErrorState({ device_code, msg, onRetry }: { device_code: string; msg: s
 
 const bgStyle: React.CSSProperties = {
     position: 'fixed', inset: 0,
-    background: 'linear-gradient(135deg, #020617 0%, #0f172a 60%, #1a1a5c 100%)',
+    background: 'linear-gradient(135deg, #020617 0%, #0f172a 60%, #450a0a 100%)',
     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
     color: 'white', overflow: 'hidden',
 }
@@ -367,13 +319,47 @@ const bgStyle: React.CSSProperties = {
 function AmbientOrbs() {
     return (
         <>
-            <div style={{ position: 'absolute', top: '15%', left: '10%', width: 500, height: 500, borderRadius: '50%', background: 'rgba(90,100,246,0.06)', filter: 'blur(100px)', pointerEvents: 'none' }} />
-            <div style={{ position: 'absolute', bottom: '10%', right: '10%', width: 400, height: 400, borderRadius: '50%', background: 'rgba(67,71,234,0.05)', filter: 'blur(80px)', pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', top: '15%', left: '10%', width: 500, height: 500, borderRadius: '50%', background: 'rgba(239, 68, 68, 0.06)', filter: 'blur(100px)', pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', bottom: '10%', right: '10%', width: 400, height: 400, borderRadius: '50%', background: 'rgba(220, 38, 38, 0.05)', filter: 'blur(80px)', pointerEvents: 'none' }} />
         </>
     )
 }
 
 function Logo() {
+    const [logoUrl, setLogoUrl] = useState<string | null>(null)
+
+    useEffect(() => {
+        supabase
+            .from('tenants')
+            .select('settings')
+            .eq('id', DEFAULT_TENANT_ID)
+            .single()
+            .then(({ data }) => {
+                if (data?.settings?.logo_url) {
+                    setLogoUrl(data.settings.logo_url)
+                }
+            })
+    }, [])
+
+    if (logoUrl) {
+        return (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' }}>
+                <div style={{
+                    height: 52,
+                    padding: '8px',
+                    background: 'white',
+                    borderRadius: 12,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
+                }}>
+                    <img src={logoUrl} alt="Logo" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
+                </div>
+            </div>
+        )
+    }
+
     return (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' }}>
             <div style={{ width: 48, height: 48, borderRadius: 14, background: 'linear-gradient(135deg, var(--color-brand-500), var(--color-brand-600))', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 32px rgba(239, 68, 68, 0.5)' }}>
@@ -399,7 +385,7 @@ function BottomBar({ device_code, version, offline }: { device_code: string; ver
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                 <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.25)' }}>OmniPush Digital Services</span>
                 <span style={{ fontFamily: 'monospace', fontSize: '0.7rem', color: '#475569' }}>{device_code}</span>
-                {version && <span style={{ fontSize: '0.7rem', color: '#5a64f6' }}>{version}</span>}
+                {version && <span style={{ fontSize: '0.7rem', color: '#ef4444' }}>{version}</span>}
                 {offline && (
                     <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', color: '#ef4444' }}>
                         <WifiOff size={11} /> Offline — cached content
@@ -413,7 +399,7 @@ function BottomBar({ device_code, version, offline }: { device_code: string; ver
 
 // ─── Main PlayerPage ──────────────────────────────────────────────────────────
 
-type Phase = 'loading' | 'secret' | 'playing' | 'standby' | 'error'
+type Phase = 'loading' | 'pairing' | 'secret' | 'playing' | 'standby' | 'error'
 
 export default function PlayerPage() {
     const { device_code } = useParams<{ device_code: string }>()
@@ -426,8 +412,19 @@ export default function PlayerPage() {
     const [errorMsg, setErrorMsg] = useState('')
     const [version, setVersion] = useState<string | null>(null)
 
+    const [pairingPin, setPairingPin] = useState('')
     const secretRef = useRef(secret)
     useEffect(() => { secretRef.current = secret }, [secret])
+
+    const initPairing = useCallback(async () => {
+        try {
+            const data = await callEdgeFn('device-pairing', { action: 'INIT', device_code: dc })
+            setPairingPin(data.pairing_pin)
+        } catch (err: any) {
+            console.error('[Pairing] Init error:', err.message)
+            setPhase('secret') // Fallback to manual entry if function not deployed
+        }
+    }, [dc])
 
     // ── Fetch manifest ──
     const fetchManifest = useCallback(async (sec: string): Promise<boolean> => {
@@ -535,9 +532,23 @@ export default function PlayerPage() {
                 else setPhase('error')
             })
         } else {
-            setPhase('secret')
+            setPhase('pairing')
+            initPairing()
         }
-    }, [dc]) // eslint-disable-line
+    }, [dc, initPairing]) // eslint-disable-line
+
+    useEffect(() => {
+        if (phase !== 'pairing' || !dc) return
+        const timer = setInterval(async () => {
+            try {
+                const data = await callEdgeFn('device-pairing', { action: 'CLAIM_POLL', device_code: dc })
+                if (data.device_secret) {
+                    handleSecret(data.device_secret)
+                }
+            } catch { /* wait for next poll */ }
+        }, 5000)
+        return () => clearInterval(timer)
+    }, [phase, dc]) // eslint-disable-line
 
     // ── Polling: manifest every poll_seconds, heartbeat every 30s ──
     useEffect(() => {
@@ -608,6 +619,55 @@ export default function PlayerPage() {
 
     // ── Render ──
     if (phase === 'loading') return <LoadingState device_code={dc} />
+    if (phase === 'pairing') return (
+        <div style={bgStyle}>
+            <AmbientOrbs />
+            <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem', maxWidth: 450 }}>
+                <Logo />
+                <div style={{ marginTop: '2.5rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: '2.5rem 2rem' }}>
+                    <div style={{ marginBottom: '1.5rem' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#f87171', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700, marginBottom: '0.5rem' }}>Device Pairing Mode</div>
+                        <div style={{ color: '#f1f5f9', fontSize: '1.125rem', fontWeight: 600 }}>Get started in 30 seconds</div>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', marginBottom: '2rem' }}>
+                        {(pairingPin || '------').split('').map((char, i) => (
+                            <div key={i} style={{
+                                width: 48, height: 64, background: '#0f172a', border: '1px solid #1e293b',
+                                borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: '2rem', fontWeight: 800, color: '#f1f5f9', fontFamily: 'monospace',
+                                boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.5)'
+                            }}>
+                                {char}
+                            </div>
+                        ))}
+                    </div>
+
+                    <div style={{ color: '#94a3b8', fontSize: '0.875rem', lineHeight: 1.6, marginBottom: '2rem' }}>
+                        Go to <strong style={{ color: '#f1f5f9' }}>Admin → Devices</strong> on your CMS <br />
+                        and enter this 6-digit code to link this screen.
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+                        <div style={{ background: 'white', padding: '0.75rem', borderRadius: 10 }}>
+                            <QRCodeSVG value={`${window.location.origin}/player/${dc}?pairing=${pairingPin}`} size={120} level="M" />
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: '#475569' }}>
+                            Or scan to pair with your mobile phone
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={() => setPhase('secret')}
+                        style={{ marginTop: '2rem', background: 'none', border: 'none', color: '#475569', fontSize: '0.75rem', cursor: 'pointer', textDecoration: 'underline' }}
+                    >
+                        I have a secret key - manual entry
+                    </button>
+                </div>
+            </div>
+            <BottomBar device_code={dc} />
+        </div>
+    )
     if (phase === 'secret') return <SecretPrompt device_code={dc} onSubmit={handleSecret} />
     if (phase === 'error') return <ErrorState device_code={dc} msg={errorMsg} onRetry={handleRetry} />
 
@@ -621,7 +681,7 @@ export default function PlayerPage() {
                     <div style={{ marginTop: '2.5rem', color: 'rgba(255,255,255,0.35)', fontSize: '0.9rem', lineHeight: 1.8 }}>
                         <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📺</div>
                         <div style={{ fontWeight: 600, color: '#f1f5f9', marginBottom: '0.25rem' }}>Display is Online</div>
-                        <div style={{ color: '#94a3b8' }}>Connected as <strong style={{ color: '#7a8aff' }}>{manifest?.resolved?.role || 'Unassigned'}</strong> role</div>
+                        <div style={{ color: '#94a3b8' }}>Connected as <strong style={{ color: '#f87171' }}>{manifest?.resolved?.role || 'Unassigned'}</strong> role</div>
                         <div style={{ marginTop: '1rem', color: 'rgba(255,255,255,0.3)', fontSize: '0.8125rem' }}>No active publication found for this role.</div>
 
                         {manifest?.resolved?.debug && (

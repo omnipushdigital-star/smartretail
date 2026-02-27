@@ -16,3 +16,36 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 })
 
 export const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000001'
+
+export async function callEdgeFn(fn: string, body: object): Promise<any> {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 15000)
+
+    try {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/${fn}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify(body),
+            signal: controller.signal,
+        })
+        clearTimeout(timeoutId)
+
+        const text = await res.text()
+        const json = text ? JSON.parse(text) : null
+
+        if (!res.ok) {
+            if (res.status === 404) {
+                throw new Error(`Edge Function "${fn}" is not deployed. Please follow the instructions in the Developer Portal.`)
+            }
+            throw new Error(json?.error || `Server error (HTTP ${res.status})`)
+        }
+        return json
+    } catch (err: any) {
+        clearTimeout(timeoutId)
+        if (err.name === 'AbortError') throw new Error('Connection timed out.')
+        throw err
+    }
+}
