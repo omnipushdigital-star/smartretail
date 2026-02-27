@@ -445,15 +445,26 @@ export default function PlayerPage() {
             setOffline(false)
             return true
         } catch (err: any) {
-            // "No active publication" is not a real error — show standby
             const msg: string = (err.message || '').toLowerCase()
+
+            // Handle de-authorization (Device deleted or inactive)
+            if (msg.includes('invalid credentials') || msg.includes('inactive device')) {
+                console.warn('[Player] Device de-authorized by server. Clearing local cache.')
+                localStorage.removeItem(secretKey(dc))
+                localStorage.removeItem(manifestKey(dc))
+                setSecret('')
+                setPhase('pairing')
+                initPairing()
+                return false
+            }
+
+            // "No active publication" is not a real error — show standby
             if (
                 msg.includes('no active publication') ||
                 msg.includes('no publication') ||
                 msg.includes('not found for this device')
             ) {
                 setPhase('standby')
-                // Use diagnostic device info if returned by the Edge Function
                 if (err.data?.device) {
                     setManifest({
                         resolved: {
@@ -463,17 +474,20 @@ export default function PlayerPage() {
                         }
                     } as any)
                 }
-                return true // authenticated OK, just no content yet
+                return true
             }
-            // Try cache for real network errors
+
+            // Try cache ONLY for network/server errors (500, timeout, fetch failure)
             const cached = localStorage.getItem(manifestKey(dc))
             if (cached) {
                 try {
+                    console.log('[Player] Server unreachable, using cached manifest.')
                     setManifest(JSON.parse(cached))
                     setOffline(true)
                     return true
                 } catch { /* ignore */ }
             }
+
             setErrorMsg(err.message || 'Failed to reach server')
             return false
         }
@@ -496,6 +510,12 @@ export default function PlayerPage() {
             }
         } catch (err: any) {
             console.error('[Player] Heartbeat Network Error:', err.message)
+            const msg = (err.message || '').toLowerCase()
+            if (msg.includes('invalid credentials') || msg.includes('inactive device')) {
+                localStorage.removeItem(secretKey(dc))
+                localStorage.removeItem(manifestKey(dc))
+                window.location.reload()
+            }
         }
     }, [dc, version, phase])
 
