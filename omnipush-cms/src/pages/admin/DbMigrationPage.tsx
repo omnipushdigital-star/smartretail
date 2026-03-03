@@ -102,6 +102,52 @@ ON public.layout_publications (tenant_id, scope, store_id, device_id, role_id, i
 CREATE INDEX IF NOT EXISTS heartbeat_device_last_seen_idx
 ON public.device_heartbeats (device_id, last_seen_at DESC);`,
     },
+    {
+        id: 'E',
+        label: 'SQL BLOCK E — Digital Menu Builder Tables',
+        description: 'Creates tables for persistent menus, categories, and items with custom layout configurations.',
+        color: '#f43f5e',
+        sql: `CREATE TABLE IF NOT EXISTS public.menus (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    tenant_id uuid NOT NULL REFERENCES public.tenants(id),
+    name text NOT NULL,
+    config jsonb NOT NULL DEFAULT '{"columns": 2, "theme": "dark", "logo_placement": "center", "show_promo": false, "promo_position": "right", "aspect_ratio": "16:9"}'::jsonb,
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.menu_categories (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    menu_id uuid NOT NULL REFERENCES public.menus(id) ON DELETE CASCADE,
+    name text NOT NULL,
+    sort_order integer DEFAULT 0,
+    created_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.menu_items (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    category_id uuid NOT NULL REFERENCES public.menu_categories(id) ON DELETE CASCADE,
+    name text NOT NULL,
+    description text,
+    price numeric(10,2) NOT NULL DEFAULT 0,
+    sort_order integer DEFAULT 0,
+    created_at timestamptz DEFAULT now()
+);
+
+-- Basic RLS (Open for now based on project stage, but structured)
+ALTER TABLE public.menus ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public menus access" ON public.menus FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Public menu_categories access" ON public.menu_categories FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Public menu_items access" ON public.menu_items FOR ALL USING (true) WITH CHECK (true);`,
+    },
+    {
+        id: 'F',
+        label: 'SQL BLOCK F — Bundle Snapshot Metadata',
+        description: 'Adds total_items column to bundles table to track the total number of items (media + web) captured during snapshot.',
+        color: '#f59e0b',
+        sql: `ALTER TABLE public.bundles
+ADD COLUMN IF NOT EXISTS total_items integer DEFAULT 0;`,
+    },
 ]
 
 export default function DbMigrationPage() {
@@ -133,7 +179,7 @@ export default function DbMigrationPage() {
                 <AlertTriangle size={18} color="#f59e0b" style={{ flexShrink: 0, marginTop: 1 }} />
                 <div>
                     <div style={{ fontWeight: 600, color: '#fbbf24', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
-                        Run blocks in order: A → B → C → D
+                        Run blocks in order: A → B → C → D → E → F
                     </div>
                     <div style={{ color: '#94a3b8', fontSize: '0.8125rem', lineHeight: 1.5 }}>
                         Go to <strong style={{ color: '#e2e8f0' }}>Supabase Dashboard → SQL Editor</strong>, paste each block and click <strong style={{ color: '#e2e8f0' }}>Run</strong>.

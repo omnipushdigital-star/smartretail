@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import AdminLayout from './components/layout/AdminLayout'
+import { TenantProvider } from './contexts/TenantContext'
 import LoginPage from './pages/LoginPage'
 import PlayerPage from './pages/PlayerPage'
 import DashboardPage from './pages/admin/DashboardPage'
@@ -22,6 +23,10 @@ import EdgeFunctionsPage from './pages/admin/EdgeFunctionsPage'
 import RlsSetupPage from './pages/admin/RlsSetupPage'
 import BundlesPage from './pages/admin/BundlesPage'
 import TenantOnboardingPage from './pages/admin/TenantOnboardingPage'
+import MenuBuilderPage from './pages/admin/MenuBuilderPage'
+import SchedulePage from './pages/admin/SchedulePage'
+import SuperAdminPage from './pages/admin/SuperAdminPage'
+import DisplayMenu from './pages/DisplayMenu'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -45,6 +50,7 @@ function AppRoutes() {
       {/* Public */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/player/:device_code" element={<PlayerPage />} />
+      <Route path="/display/menu/:menuId" element={<DisplayMenu />} />
 
       {/* Admin (protected) */}
       <Route path="/admin" element={
@@ -68,7 +74,10 @@ function AppRoutes() {
         <Route path="db-migration" element={<DbMigrationPage />} />
         <Route path="edge-functions" element={<EdgeFunctionsPage />} />
         <Route path="rls-setup" element={<RlsSetupPage />} />
-        <Route path="onboarding" element={<TenantOnboardingPage />} />
+        <Route path="branding" element={<TenantOnboardingPage />} />
+        <Route path="menu-builder" element={<MenuBuilderPage />} />
+        <Route path="scheduling" element={<SchedulePage />} />
+        <Route path="global" element={<SuperAdminPage />} />
       </Route>
 
       {/* Redirect root */}
@@ -83,7 +92,9 @@ export default function App() {
     <BrowserRouter>
       <ThemeProvider>
         <AuthProvider>
-          <AppRoutes />
+          <TenantProvider>
+            <AppRoutes />
+          </TenantProvider>
           <Toaster
             position="top-right"
             toastOptions={{

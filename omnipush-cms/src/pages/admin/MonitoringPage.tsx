@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react'
 import { Activity, Wifi, WifiOff, Search, RefreshCw } from 'lucide-react'
-import { supabase, DEFAULT_TENANT_ID } from '../../lib/supabase'
+import { supabase } from '../../lib/supabase'
 import { DeviceHeartbeat, Store, Role } from '../../types'
+import { useTenant } from '../../contexts/TenantContext'
 import Pagination from '../../components/ui/Pagination'
 import { formatDistanceToNow } from 'date-fns'
 
-const ONLINE_THRESHOLD_MS = 3 * 60 * 1000  // 3 minutes to match DevicesPage
+const ONLINE_THRESHOLD_MS = 10 * 60 * 1000  // 10 minutes (lenient for debugging)
 const PAGE_SIZE = 20
 
 function isOnline(lastSeen: string) {
@@ -35,22 +36,39 @@ export default function MonitoringPage() {
     const [filterStatus, setFilterStatus] = useState('')
     const [page, setPage] = useState(1)
     const [lastRefresh, setLastRefresh] = useState(new Date())
+    const { currentTenantId } = useTenant()
 
     const loadAll = async () => {
+        if (!currentTenantId) return
         setLoading(true)
-        const [hbRes, devsRes, storesRes, rolesRes] = await Promise.all([
-            supabase.from('device_heartbeats').select('*').order('last_seen_at', { ascending: false }).limit(500),
+        const [devsRes, storesRes, rolesRes] = await Promise.all([
             supabase.from('devices')
                 .select('id, device_code, display_name, store_id, role_id, active, store:stores(name,code), role:roles(name,key)')
-                .eq('tenant_id', DEFAULT_TENANT_ID),
-            supabase.from('stores').select('*').eq('tenant_id', DEFAULT_TENANT_ID).order('name'),
-            supabase.from('roles').select('*').eq('tenant_id', DEFAULT_TENANT_ID).order('name'),
+                .eq('tenant_id', currentTenantId),
+            supabase.from('stores').select('*').eq('tenant_id', currentTenantId).order('name'),
+            supabase.from('roles').select('*').eq('tenant_id', currentTenantId).order('name'),
         ])
+
+        const devices = devsRes.data || []
+        const deviceIds = devices.map(d => d.id)
+        const deviceCodes = devices.map(d => d.device_code)
+
+        // Fetch ANY heartbeat for these devices or codes (Manual join fallback)
+        const { data: hData, error: hbErr } = await supabase.from('device_heartbeats')
+            .select('*')
+            .or(`device_id.in.(${deviceIds.map(id => `"${id}"`).join(',')}),device_code.in.(${deviceCodes.map(c => `"${c}"`).join(',')})`)
+            .order('last_seen_at', { ascending: false })
+            .limit(500)
+
+        if (hbErr) {
+            console.error('[Monitoring] Heartbeat Query Failed:', hbErr)
+        }
+
         const dMap: Record<string, DeviceInfo> = {}
-        for (const d of (devsRes.data || []) as unknown as DeviceInfo[]) {
+        for (const d of devices as unknown as DeviceInfo[]) {
             dMap[d.device_code] = d
         }
-        setHeartbeats(hbRes.data || [])
+        setHeartbeats(hData || [])
         setDeviceMap(dMap)
         setStores(storesRes.data || [])
         setRoles(rolesRes.data || [])
@@ -58,11 +76,11 @@ export default function MonitoringPage() {
         setLoading(false)
     }
 
-    useEffect(() => { loadAll() }, [])
     useEffect(() => {
-        const interval = setInterval(loadAll, 30000)
-        return () => clearInterval(interval)
-    }, [])
+        loadAll()
+        const timer = setInterval(loadAll, 60000)
+        return () => clearInterval(timer)
+    }, [currentTenantId])
 
     // Dedupe: latest heartbeat per device
     const latestHbMap = new Map<string, DeviceHeartbeat>()

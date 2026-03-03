@@ -37,10 +37,18 @@ export async function callEdgeFn(fn: string, body: object): Promise<any> {
         const json = text ? JSON.parse(text) : null
 
         if (!res.ok) {
-            if (res.status === 404) {
-                throw new Error(`Edge Function "${fn}" is not deployed. Please follow the instructions in the Developer Portal.`)
+            // If the function returned a structured JSON error, always use it first
+            if (json?.error) {
+                const err = new Error(json.error) as any
+                err.data = json  // attach full response for debug
+                err.status = res.status
+                throw err
             }
-            throw new Error(json?.error || `Server error (HTTP ${res.status})`)
+            // Only show "not deployed" if it's a gateway-level 404 with no body
+            if (res.status === 404) {
+                throw new Error(`Edge Function "${fn}" is not deployed or cannot be found.`)
+            }
+            throw new Error(`Server error (HTTP ${res.status})`)
         }
         return json
     } catch (err: any) {

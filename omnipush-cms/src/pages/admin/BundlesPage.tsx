@@ -3,7 +3,8 @@ import {
     Package, Plus, Trash2, Loader2, Image as ImageIcon,
     Film, Globe, Layers, AlertTriangle, Check, ChevronDown, ChevronUp, RefreshCw
 } from 'lucide-react'
-import { supabase, DEFAULT_TENANT_ID } from '../../lib/supabase'
+import { supabase } from '../../lib/supabase'
+import { useTenant } from '../../contexts/TenantContext'
 import { Bundle, Layout, MediaAsset } from '../../types'
 import Modal from '../../components/ui/Modal'
 import toast from 'react-hot-toast'
@@ -59,11 +60,15 @@ function versionSuggest(existing: string[]): string {
 
 function BundleRow({
     bundle,
+    layouts,
     onDelete,
+    onSnapshot,
     onRefresh,
 }: {
     bundle: BundleWithFiles
+    layouts: Layout[]
     onDelete: (id: string, version: string) => void
+    onSnapshot: (bundleId: string, layoutId: string) => void
     onRefresh: () => void
 }) {
     const [open, setOpen] = useState(false)
@@ -83,10 +88,15 @@ function BundleRow({
         const { data: media } = await supabase.from('media_assets').select('id,name,type,bytes,url,storage_path').in('id', mediaIds)
         const mediaMap = Object.fromEntries((media || []).map(m => [m.id, m]))
 
-        const resolved = (rawFiles || []).map(f => ({
-            ...f,
-            media: mediaMap[f.media_id] || null
-        }))
+        const resolved = (rawFiles || []).map(f => {
+            const meta = f.metadata as any || {}
+            return {
+                ...f,
+                media: meta.web_url
+                    ? { name: meta.name || 'Web URL', type: 'web_url', url: meta.web_url } as any
+                    : mediaMap[f.media_id] || null
+            }
+        })
 
         setFiles(resolved as BundleFileRow[])
         setLoadingFiles(false)
@@ -111,10 +121,9 @@ function BundleRow({
                     {bundle.notes || <span style={{ color: '#334155' }}>No notes</span>}
                 </span>
 
-                {/* File count */}
                 <span style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.8125rem', color: '#64748b' }}>
                     <Layers size={13} />
-                    {bundle.file_count ?? '?'} file{bundle.file_count !== 1 ? 's' : ''}
+                    {bundle.file_count ?? 0} item{bundle.file_count !== 1 ? 's' : ''}
                 </span>
 
                 {/* Published count */}
@@ -138,8 +147,27 @@ function BundleRow({
                         disabled={loadingFiles}
                     >
                         {loadingFiles ? <Loader2 size={12} /> : open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                        Files
+                        View Items
                     </button>
+                    <div style={{ position: 'relative' }}>
+                        <button
+                            onClick={() => {
+                                const lId = window.prompt(`Refresh Snapshot? Select Layout:\n${layouts.map(l => `${l.name} (${l.id.slice(0, 4)})`).join('\n')}\n\nEnter full ID or Name:`)
+                                if (lId) {
+                                    const found = layouts.find(l => l.id === lId || l.name === lId)
+                                    if (found) onSnapshot(bundle.id, found.id)
+                                    else if (lId.length > 20) onSnapshot(bundle.id, lId)
+                                    else toast.error('Layout not found')
+                                }
+                            }}
+                            className="btn-secondary"
+                            style={{ padding: '0.375rem 0.625rem', gap: '0.25rem', fontSize: '0.75rem', borderColor: 'rgba(90,100,246,0.2)' }}
+                            title="Snapshot items from a layout"
+                        >
+                            <RefreshCw size={12} className="text-brand-400" />
+                            Snapshot Items
+                        </button>
+                    </div>
                     <button
                         onClick={() => onDelete(bundle.id, bundle.version)}
                         className="btn-danger"
@@ -178,11 +206,11 @@ function BundleRow({
                                     <span style={{ flex: 1, color: '#e2e8f0', fontSize: '0.8125rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                         {f.media?.name || f.media_id}
                                     </span>
-                                    <span className={`badge badge-${f.media?.type === 'image' ? 'blue' : f.media?.type === 'video' ? 'gray' : 'green'}`} style={{ fontSize: '0.6875rem' }}>
+                                    <span className={`badge badge-${f.media?.type === 'image' ? 'blue' : f.media?.type === 'video' ? 'gray' : f.media?.type === 'web_url' ? 'brand' : 'green'}`} style={{ fontSize: '0.6875rem' }}>
                                         {f.media?.type || '—'}
                                     </span>
                                     <span style={{ fontSize: '0.75rem', color: '#475569', minWidth: 60, textAlign: 'right' }}>
-                                        {formatBytes(f.media?.bytes)}
+                                        {f.media?.type === 'web_url' ? 'Link' : formatBytes(f.media?.bytes)}
                                     </span>
                                 </div>
                             ))}
@@ -190,7 +218,7 @@ function BundleRow({
                     )}
                 </div>
             )}
-        </div>
+        </div >
     )
 }
 
@@ -208,11 +236,13 @@ function CreateBundleModal({
     suggestedVersion,
     onClose,
     onCreated,
+    currentTenantId
 }: {
     layouts: Layout[]
     suggestedVersion: string
     onClose: () => void
     onCreated: () => void
+    currentTenantId: string | null
 }) {
     const [form, setForm] = useState<CreateForm>({
         version: suggestedVersion,
@@ -231,7 +261,12 @@ function CreateBundleModal({
             // 1. Insert bundle
             const { data: bundle, error: bErr } = await supabase
                 .from('bundles')
-                .insert({ tenant_id: DEFAULT_TENANT_ID, version: form.version.trim(), notes: form.notes.trim() || null })
+                .insert({
+                    tenant_id: currentTenantId,
+                    version: form.version.trim(),
+                    notes: form.notes.trim() || null,
+                    total_items: 0 // Will update if snapshotting
+                })
                 .select('id, version')
                 .single()
             if (bErr) throw bErr
@@ -249,19 +284,29 @@ function CreateBundleModal({
                 if (playlistIds.length > 0) {
                     const { data: items } = await supabase
                         .from('playlist_items')
-                        .select('media_id')
+                        .select('id, media_id, web_url, type')
                         .in('playlist_id', playlistIds)
-                    mediaIds = [...new Set((items || []).map((i: any) => i.media_id).filter(Boolean))]
-                }
 
-                if (mediaIds.length > 0) {
-                    const { error: filesErr } = await supabase
-                        .from('bundle_files')
-                        .insert(mediaIds.map(mid => ({ bundle_id: bundle.id, media_id: mid })))
-                    if (filesErr) throw filesErr
-                    toast.success(`Bundle ${bundle.version} created — ${mediaIds.length} asset${mediaIds.length !== 1 ? 's' : ''} snapshotted`)
+                    if (items && items.length > 0) {
+                        // Insert bundle files for items that HAVE a media_id
+                        const mediaItems = items.filter(i => i.media_id)
+                        if (mediaItems.length > 0) {
+                            const { error: filesErr } = await supabase
+                                .from('bundle_files')
+                                .insert(mediaItems.map(i => ({ bundle_id: bundle.id, media_id: i.media_id })))
+                            if (filesErr) throw filesErr
+                        }
+
+                        // Update TRUE total items in bundle record (including web URLs)
+                        await supabase.from('bundles').update({ total_items: items.length }).eq('id', bundle.id)
+
+                        // Also record total count for UI feedback
+                        toast.success(`Bundle ${bundle.version} created — ${items.length} item${items.length !== 1 ? 's' : ''} snapshotted (includes ${items.length - mediaItems.length} web/external links)`)
+                    } else {
+                        toast.success(`Bundle ${bundle.version} created (no content found in layout)`)
+                    }
                 } else {
-                    toast.success(`Bundle ${bundle.version} created (no media found in layout)`)
+                    toast.success(`Bundle ${bundle.version} created (no playlists assigned)`)
                 }
             } else {
                 toast.success(`Bundle ${bundle.version} created`)
@@ -368,24 +413,26 @@ function CreateBundleModal({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function BundlesPage() {
+    const { currentTenantId } = useTenant()
     const [bundles, setBundles] = useState<BundleWithFiles[]>([])
     const [layouts, setLayouts] = useState<Layout[]>([])
     const [loading, setLoading] = useState(true)
     const [showCreate, setShowCreate] = useState(false)
 
     const loadAll = async () => {
+        if (!currentTenantId) return
         setLoading(true)
 
         const [bRes, lRes] = await Promise.all([
             supabase
                 .from('bundles')
                 .select('*')
-                .eq('tenant_id', DEFAULT_TENANT_ID)
+                .eq('tenant_id', currentTenantId)
                 .order('created_at', { ascending: false }),
             supabase
                 .from('layouts')
                 .select('id, name, tenant_id')
-                .eq('tenant_id', DEFAULT_TENANT_ID)
+                .eq('tenant_id', currentTenantId)
                 .order('name'),
         ])
 
@@ -406,7 +453,8 @@ export default function BundlesPage() {
                 ; (pcRes.data || []).forEach((r: any) => { pubCounts[r.bundle_id] = (pubCounts[r.bundle_id] || 0) + 1 })
 
             bundleList.forEach(b => {
-                b.file_count = fileCounts[b.id] || 0
+                // If total_items is 0 or null (old bundle), fallback to file count from bundle_files
+                b.file_count = b.total_items || fileCounts[b.id] || 0
                 b.publication_count = pubCounts[b.id] || 0
             })
         }
@@ -416,7 +464,47 @@ export default function BundlesPage() {
         setLoading(false)
     }
 
-    useEffect(() => { loadAll() }, [])
+    useEffect(() => { loadAll() }, [currentTenantId])
+
+    const handleSnapshot = async (bundleId: string, layoutId: string) => {
+        setLoading(true)
+        try {
+            const { data: regionMaps } = await supabase
+                .from('layout_region_playlists')
+                .select('playlist_id')
+                .eq('layout_id', layoutId)
+
+            const playlistIds = (regionMaps || []).map((r: any) => r.playlist_id).filter(Boolean)
+            if (playlistIds.length === 0) throw new Error('No playlists found in this layout.')
+
+            const { data: items } = await supabase
+                .from('playlist_items')
+                .select('id, media_id, web_url, type')
+                .in('playlist_id', playlistIds)
+
+            if (!items || items.length === 0) throw new Error('No items found in playlists.')
+
+            // Clear old bundle files
+            await supabase.from('bundle_files').delete().eq('bundle_id', bundleId)
+
+            // Insert new ones
+            const mediaItems = items.filter(i => i.media_id)
+            if (mediaItems.length > 0) {
+                await supabase.from('bundle_files').insert(mediaItems.map(i => ({ bundle_id: bundleId, media_id: i.media_id })))
+            }
+
+            // Update count
+            const { error: updErr } = await supabase.from('bundles').update({ total_items: items.length }).eq('id', bundleId)
+            if (updErr) throw updErr
+
+            toast.success(`Bundle updated with ${items.length} items`)
+            loadAll()
+        } catch (err: any) {
+            toast.error(err.message)
+        } finally {
+            setLoading(false)
+        }
+    }
 
     const handleDelete = async (id: string, version: string) => {
         const b = bundles.find(x => x.id === id)
@@ -459,7 +547,7 @@ export default function BundlesPage() {
             <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
                 {[
                     { label: 'Total Bundles', value: bundles.length, color: '#7a8aff' },
-                    { label: 'Total Files', value: totalFiles, color: '#f59e0b' },
+                    { label: 'Network Items', value: totalFiles, color: '#f59e0b' },
                     { label: 'Active Publications', value: activePubs, color: '#22c55e' },
                 ].map(s => (
                     <div key={s.label} className="card" style={{ flex: 1, padding: '0.875rem 1.25rem', display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
@@ -516,7 +604,14 @@ export default function BundlesPage() {
             ) : (
                 <div>
                     {bundles.map(b => (
-                        <BundleRow key={b.id} bundle={b} onDelete={handleDelete} onRefresh={loadAll} />
+                        <BundleRow
+                            key={b.id}
+                            bundle={b}
+                            layouts={layouts}
+                            onDelete={handleDelete}
+                            onSnapshot={handleSnapshot}
+                            onRefresh={loadAll}
+                        />
                     ))}
                 </div>
             )}
@@ -540,6 +635,7 @@ export default function BundlesPage() {
                     suggestedVersion={suggested}
                     onClose={() => setShowCreate(false)}
                     onCreated={loadAll}
+                    currentTenantId={currentTenantId}
                 />
             )}
         </div>

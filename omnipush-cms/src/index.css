@@ -27,8 +27,8 @@
   --color-surface-600: #475569;
   --color-surface-700: #334155;
   --color-surface-800: #1e293b;
-  --color-surface-900: #0f172a;
-  --color-surface-950: #020617;
+  --color-surface-900: #131b2e;
+  --color-surface-950: #0a0f1d;
 
   --color-success-500: #22c55e;
   --color-success-600: #16a34a;
@@ -47,7 +47,7 @@ html {
 
 body {
   margin: 0;
-  background: #0f172a;
+  background: var(--color-surface-950);
   color: #ffffff;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
@@ -208,6 +208,25 @@ body.light .btn-secondary:hover {
   background: #b91c1c;
 }
 
+.btn-success {
+  background: #059669;
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.875rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s;
+}
+
+.btn-success:hover {
+  background: #047857;
+}
+
 .input-field {
   width: 100%;
   background: #0f172a;
@@ -218,6 +237,7 @@ body.light .btn-secondary:hover {
   font-size: 0.875rem;
   outline: none;
   transition: border-color 0.2s;
+  color-scheme: dark;
 }
 
 .input-field:focus {
@@ -379,12 +399,11 @@ body.light .modal-box {
 
 .sidebar {
   width: 260px;
-  background: #0f172a;
-  border-right: 1px solid #1e293b;
+  background: var(--color-surface-900);
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
   height: 100vh;
-  position: fixed;
+  position: sticky;
   top: 0;
-  left: 0;
   z-index: 40;
   display: flex;
   flex-direction: column;
@@ -397,9 +416,11 @@ body.light .sidebar {
 }
 
 .main-content {
-  margin-left: 260px;
+  flex: 1;
   min-height: 100vh;
-  background: #0f172a;
+  background: var(--color-surface-950);
+  display: flex;
+  flex-direction: column;
 }
 
 body.light .main-content {
@@ -408,13 +429,14 @@ body.light .main-content {
 
 .topbar {
   height: 64px;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   padding: 0 1.5rem;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 1rem;
-  background: #0f172a;
+  background: var(--color-surface-950);
+  backdrop-filter: blur(12px);
   position: sticky;
   top: 0;
   z-index: 30;
@@ -694,4 +716,82 @@ select.input-field {
 
 .drag-handle:active {
   cursor: grabbing;
+}
+
+/* Premium Layout & Animations — Claude Design Upgrades */
+.pattern-dots {
+  background-image: radial-gradient(#ffffff0a 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+@keyframes float {
+  0% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
+
+  100% {
+    transform: translateY(0px);
+  }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+/* Premium Card Effects */
+.card-glass {
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-glass:hover {
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 12px 48px 0 rgba(0, 0, 0, 0.5);
+  transform: translateY(-2px);
+}
+
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 1.5rem;
+  border-radius: 1.25rem;
+  transition: all 0.2s;
+}
+
+.stat-icon {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  margin-top: 0.25rem;
+}
+
+/* Utilities */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

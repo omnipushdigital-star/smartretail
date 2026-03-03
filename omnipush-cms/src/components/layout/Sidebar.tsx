@@ -1,83 +1,80 @@
 import React from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import {
     LayoutDashboard, Store, Users, Monitor, Image, ListVideo,
     LayoutTemplate, Layout, CalendarRange, Upload, Activity,
-    LogOut, ChevronRight, Database, Zap, Shield, Package, Building2
+    LogOut, ChevronRight, Database, Zap, Shield, Package, Building2,
+    Settings, FileVideo, LayoutList, Layers, Calendar, Maximize, Palette, Globe
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 
-import { supabase, DEFAULT_TENANT_ID } from '../../lib/supabase'
-
 const navItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', to: '/admin/dashboard' },
-    { icon: Store, label: 'Stores', to: '/admin/stores' },
-    { icon: Users, label: 'Roles', to: '/admin/roles' },
-    { icon: Monitor, label: 'Devices', to: '/admin/devices' },
-    { icon: Building2, label: 'Onboarding', to: '/admin/onboarding' },
-    { icon: Image, label: 'Media Library', to: '/admin/media' },
-    { icon: ListVideo, label: 'Playlists', to: '/admin/playlists' },
-    { icon: LayoutTemplate, label: 'Layout Templates', to: '/admin/layout-templates' },
-    { icon: Layout, label: 'Layouts', to: '/admin/layouts' },
-    { icon: CalendarRange, label: 'Rules & Scheduling', to: '/admin/rules' },
-    { icon: Upload, label: 'Publish', to: '/admin/publish' },
-    { icon: Package, label: 'Bundles', to: '/admin/bundles' },
-    { icon: Activity, label: 'Monitoring', to: '/admin/monitoring' },
-    { icon: Database, label: 'DB Migration', to: '/admin/db-migration' },
-    { icon: Zap, label: 'Edge Functions', to: '/admin/edge-functions' },
-    { icon: Shield, label: 'RLS Setup', to: '/admin/rls-setup' },
+    { icon: <LayoutDashboard size={20} />, label: 'Dashboard', path: '/admin/dashboard' },
+    { icon: <Store size={20} />, label: 'Stores', path: '/admin/stores' },
+    { icon: <Shield size={20} />, label: 'Display Roles', path: '/admin/roles' },
+    { icon: <Settings size={20} />, label: 'Devices', path: '/admin/devices' },
+    { icon: <Building2 size={20} />, label: 'Tenant Branding', path: '/admin/branding' },
+    { icon: <Globe size={20} />, label: 'Global Management', path: '/admin/global' },
+    { icon: <FileVideo size={20} />, label: 'Media Library', path: '/admin/media' },
+    { icon: <LayoutList size={20} />, label: 'Playlists', path: '/admin/playlists' },
+    { icon: <LayoutTemplate size={20} />, label: 'Layout Templates', path: '/admin/layout-templates' },
+    { icon: <Layers size={20} />, label: 'Layouts', path: '/admin/layouts' },
+    { icon: <Layout size={20} />, label: 'Menu Builder', path: '/admin/menu-builder' },
+    { icon: <Calendar size={20} />, label: 'Scheduling', path: '/admin/scheduling' },
+    { icon: <CalendarRange size={20} />, label: 'Rules & Scheduling', path: '/admin/rules' },
+    { icon: <Maximize size={20} />, label: 'Publish', path: '/admin/publish' },
+    { icon: <Activity size={20} />, label: 'Monitoring', path: '/admin/monitoring' },
+    { icon: <Package size={20} />, label: 'Bundles', path: '/admin/bundles' },
+    { icon: <Database size={20} />, label: 'DB Migration', path: '/admin/db-migration' },
+    { icon: <Zap size={20} />, label: 'Edge Functions', path: '/admin/edge-functions' },
+    { icon: <Shield size={20} />, label: 'RLS Setup', path: '/admin/rls-setup' },
 ]
 
 export default function Sidebar() {
-    const { user, signOut } = useAuth()
-    const navigate = useNavigate()
-
-    const handleSignOut = async () => {
-
-        await signOut()
-        navigate('/login')
-    }
+    const { signOut } = useAuth()
+    const location = useLocation()
 
     return (
         <aside className="sidebar">
-            <div style={{ height: '64px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', overflow: 'hidden' }}>
+            <div className="flex items-center justify-center p-2 mb-4 bg-white/5 border-b border-white/5">
                 <img
-                    src="/logo.png"
-                    alt="OmniPush"
-                    style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+                    src="/assets/omnipush-logo.png"
+                    alt="OmniPush Logo"
+                    className="h-16 w-full object-contain px-2"
                 />
             </div>
+            <div className="p-6 pt-2">
 
+                <nav className="space-y-1">
+                    {navItems.map((item) => {
+                        const isActive = location.pathname === item.path
+                        return (
+                            <Link
+                                key={item.path}
+                                to={item.path}
+                                className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all group ${isActive
+                                    ? 'bg-brand-600/10 text-brand-400'
+                                    : 'text-surface-400 hover:bg-white/5 hover:text-white'
+                                    }`}
+                            >
+                                <span className={`${isActive ? 'text-brand-400' : 'text-surface-500 group-hover:text-surface-300'}`}>
+                                    {item.icon}
+                                </span>
+                                {item.label}
+                                {isActive && <ChevronRight size={14} className="ml-auto" />}
+                            </Link>
+                        )
+                    })}
+                </nav>
+            </div>
 
-            {/* Navigation */}
-            <nav style={{ flex: 1, padding: '0.75rem 0', overflow: 'auto' }}>
-                <div style={{ padding: '0 0.75rem 0.375rem', fontSize: '0.6875rem', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>
-                    CMS Administration
-                </div>
-                {navItems.map(({ icon: Icon, label, to }) => (
-                    <NavLink key={to} to={to} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
-                        <Icon size={16} />
-                        <span style={{ flex: 1 }}>{label}</span>
-                        <ChevronRight size={12} style={{ opacity: 0.4 }} />
-                    </NavLink>
-                ))}
-            </nav>
-
-            {/* User section */}
-            <div style={{ padding: '0.75rem', borderTop: '1px solid #1e293b' }}>
-                <div style={{ padding: '0.75rem', borderRadius: 8, background: 'rgba(var(--color-brand-500-rgb), 0.05)', marginBottom: '0.5rem' }}>
-                    <div style={{ fontSize: '0.75rem', color: '#f1f5f9', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {user?.email}
-                    </div>
-                    <div style={{ fontSize: '0.6875rem', color: '#64748b' }}>Administrator</div>
-                </div>
+            <div className="mt-auto p-6 border-t border-white/5">
                 <button
-                    onClick={handleSignOut}
-                    className="btn-secondary"
-                    style={{ width: '100%', justifyContent: 'center' }}
+                    onClick={() => signOut()}
+                    className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-surface-400 hover:bg-red-500/10 hover:text-red-400 transition-all w-full"
                 >
-                    <LogOut size={14} />
-                    Sign Out
+                    <LogOut size={20} />
+                    Logout
                 </button>
             </div>
         </aside>

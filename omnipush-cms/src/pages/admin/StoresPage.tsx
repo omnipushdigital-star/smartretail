@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react'
-import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Store as StoreIcon, Loader2 } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, ToggleLeft, ToggleRight, Store as StoreIcon, Loader2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { Store } from '../../types'
-import { DEFAULT_TENANT_ID } from '../../lib/supabase'
+import { useTenant } from '../../contexts/TenantContext'
 import Modal from '../../components/ui/Modal'
 import Pagination from '../../components/ui/Pagination'
 import toast from 'react-hot-toast'
@@ -21,16 +21,19 @@ export default function StoresPage() {
     const [editing, setEditing] = useState<Store | null>(null)
     const [form, setForm] = useState(emptyForm)
     const [saving, setSaving] = useState(false)
+    const [deleting, setDeleting] = useState<string | null>(null)
     const [toggling, setToggling] = useState<string | null>(null)
+    const { currentTenantId } = useTenant()
 
     const loadStores = async () => {
+        if (!currentTenantId) return
         setLoading(true)
-        const { data } = await supabase.from('stores').select('*').eq('tenant_id', DEFAULT_TENANT_ID).order('name')
+        const { data } = await supabase.from('stores').select('*').eq('tenant_id', currentTenantId).order('name')
         setStores(data || [])
         setLoading(false)
     }
 
-    useEffect(() => { loadStores() }, [])
+    useEffect(() => { loadStores() }, [currentTenantId])
 
     const filtered = stores.filter(s => {
         const matchSearch = s.name.toLowerCase().includes(search.toLowerCase()) || s.code.toLowerCase().includes(search.toLowerCase())
@@ -53,7 +56,7 @@ export default function StoresPage() {
                 if (error) throw error
                 toast.success('Store updated')
             } else {
-                const { error } = await supabase.from('stores').insert({ ...form, code, tenant_id: DEFAULT_TENANT_ID })
+                const { error } = await supabase.from('stores').insert({ ...form, code, tenant_id: currentTenantId })
                 if (error) throw error
                 toast.success('Store created')
             }
@@ -75,6 +78,15 @@ export default function StoresPage() {
         if (error) toast.error(error.message)
         else { toast.success(s.active ? 'Store disabled' : 'Store enabled'); loadStores() }
         setToggling(null)
+    }
+
+    const handleDelete = async (id: string) => {
+        if (!confirm('Delete this store? All devices assigned to it will be unassigned.')) return
+        setDeleting(id)
+        const { error } = await supabase.from('stores').delete().eq('id', id)
+        if (error) toast.error(error.message)
+        else { toast.success('Store deleted'); loadStores() }
+        setDeleting(null)
     }
 
     return (
@@ -150,12 +162,15 @@ export default function StoresPage() {
                                                     </button>
                                                     <button
                                                         onClick={() => toggleActive(s)}
-                                                        className={s.active ? 'btn-danger' : 'btn-secondary'}
+                                                        className={s.active ? 'btn-danger' : 'btn-success'}
                                                         style={{ padding: '0.375rem 0.625rem' }}
                                                         disabled={toggling === s.id}
                                                         title={s.active ? 'Disable store' : 'Enable store'}
                                                     >
                                                         {toggling === s.id ? <Loader2 size={13} /> : s.active ? <ToggleRight size={13} /> : <ToggleLeft size={13} />}
+                                                    </button>
+                                                    <button onClick={() => handleDelete(s.id)} className="btn-danger" style={{ padding: '0.375rem 0.625rem' }} disabled={deleting === s.id} title="Delete store">
+                                                        {deleting === s.id ? <Loader2 size={13} /> : <Trash2 size={13} />}
                                                     </button>
                                                 </div>
                                             </td>

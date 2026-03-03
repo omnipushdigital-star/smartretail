@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { Plus, Edit2, Trash2, CalendarRange, Search, ToggleLeft, ToggleRight, Loader2, Eye } from 'lucide-react'
-import { supabase, DEFAULT_TENANT_ID } from '../../lib/supabase'
+import { supabase } from '../../lib/supabase'
 import { Rule, RuleSchedule, Layout, Store, Role, Device } from '../../types'
+import { useTenant } from '../../contexts/TenantContext'
 import Modal from '../../components/ui/Modal'
 import Pagination from '../../components/ui/Pagination'
 import toast from 'react-hot-toast'
@@ -43,15 +44,17 @@ export default function RulesPage() {
     const [saving, setSaving] = useState(false)
     const [previewDevice, setPreviewDevice] = useState('')
     const [previewResult, setPreviewResult] = useState<Rule | null>(null)
+    const { currentTenantId } = useTenant()
 
     const loadAll = async () => {
+        if (!currentTenantId) return
         setLoading(true)
         const [rRes, lRes, sRes, roRes, dRes] = await Promise.all([
-            supabase.from('rules').select('*, layout:layouts(id,name), schedules:rule_schedules(*)').order('priority', { ascending: false }),
-            supabase.from('layouts').select('*').order('name'),
-            supabase.from('stores').select('*').eq('active', true).order('name'),
-            supabase.from('roles').select('*').order('name'),
-            supabase.from('devices').select('*').eq('active', true).order('device_code'),
+            supabase.from('rules').select('*, layout:layouts(id,name), schedules:rule_schedules(*)').eq('tenant_id', currentTenantId).order('priority', { ascending: false }),
+            supabase.from('layouts').select('*').eq('tenant_id', currentTenantId).order('name'),
+            supabase.from('stores').select('*').eq('tenant_id', currentTenantId).eq('active', true).order('name'),
+            supabase.from('roles').select('*').eq('tenant_id', currentTenantId).order('name'),
+            supabase.from('devices').select('*').eq('tenant_id', currentTenantId).eq('active', true).order('device_code'),
         ])
         setRules(rRes.data || [])
         setLayouts(lRes.data || [])
@@ -61,7 +64,7 @@ export default function RulesPage() {
         setLoading(false)
     }
 
-    useEffect(() => { loadAll() }, [])
+    useEffect(() => { loadAll() }, [currentTenantId])
 
     const filtered = rules.filter(r => r.name.toLowerCase().includes(search.toLowerCase()))
     const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
@@ -114,10 +117,19 @@ export default function RulesPage() {
                 }
                 toast.success('Rule updated')
             } else {
-                const { data, error } = await supabase.from('rules').insert({ ...rulePayload, tenant_id: DEFAULT_TENANT_ID }).select('id').single()
-                if (error) throw error
-                ruleId = data.id
-                await supabase.from('rule_schedules').insert({ rule_id: ruleId, days_mask: mask, start_time: schedule.start_time || null, end_time: schedule.end_time || null, date_from: schedule.date_from || null, date_to: schedule.date_to || null })
+                const { data: newRule, error: ruleErr } = await supabase.from('rules').insert({ ...rulePayload, tenant_id: currentTenantId }).select().single()
+                if (ruleErr) throw ruleErr
+                const ruleId = newRule.id
+                // Insert schedule
+                const { error: schErr } = await supabase.from('rule_schedules').insert({
+                    rule_id: ruleId,
+                    days_mask: mask,
+                    start_time: schedule.start_time || '00:00:00',
+                    end_time: schedule.end_time || '23:59:59',
+                    date_from: schedule.date_from || null,
+                    date_to: schedule.date_to || null
+                })
+                if (schErr) throw schErr
                 toast.success('Rule created')
             }
             setShowModal(false)
@@ -343,22 +355,22 @@ export default function RulesPage() {
                                     ))}
                                 </div>
                             </div>
-                            <div className="form-row">
-                                <div className="form-group">
+                            <div className="flex gap-4 mb-4">
+                                <div className="flex-1">
                                     <label className="label">Start Time</label>
                                     <input type="time" className="input-field" value={schedule.start_time} onChange={e => setSchedule(s => ({ ...s, start_time: e.target.value }))} />
                                 </div>
-                                <div className="form-group">
+                                <div className="flex-1">
                                     <label className="label">End Time</label>
                                     <input type="time" className="input-field" value={schedule.end_time} onChange={e => setSchedule(s => ({ ...s, end_time: e.target.value }))} />
                                 </div>
                             </div>
-                            <div className="form-row">
-                                <div className="form-group">
+                            <div className="flex gap-4 mb-4">
+                                <div className="flex-1">
                                     <label className="label">Date From (optional)</label>
                                     <input type="date" className="input-field" value={schedule.date_from} onChange={e => setSchedule(s => ({ ...s, date_from: e.target.value }))} />
                                 </div>
-                                <div className="form-group">
+                                <div className="flex-1">
                                     <label className="label">Date To (optional)</label>
                                     <input type="date" className="input-field" value={schedule.date_to} onChange={e => setSchedule(s => ({ ...s, date_to: e.target.value }))} />
                                 </div>

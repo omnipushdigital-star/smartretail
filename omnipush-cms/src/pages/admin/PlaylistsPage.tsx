@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { Plus, Search, Edit2, Trash2, ListVideo, GripVertical, X, Image as ImageIcon, Film, Globe, Loader2 } from 'lucide-react'
-import { supabase, DEFAULT_TENANT_ID } from '../../lib/supabase'
+import { supabase } from '../../lib/supabase'
 import { Playlist, PlaylistItem, MediaAsset } from '../../types'
+import { useTenant } from '../../contexts/TenantContext'
 import Modal from '../../components/ui/Modal'
 import Pagination from '../../components/ui/Pagination'
 import toast from 'react-hot-toast'
@@ -46,21 +47,23 @@ export default function PlaylistsPage() {
     const [addMediaId, setAddMediaId] = useState('')
     const [addUrl, setAddUrl] = useState('')
     const [addDuration, setAddDuration] = useState('10')
+    const { currentTenantId } = useTenant()
 
     const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }))
 
     const loadAll = async () => {
+        if (!currentTenantId) return
         setLoading(true)
         const [plRes, mediaRes] = await Promise.all([
-            supabase.from('playlists').select('*').order('name'),
-            supabase.from('media_assets').select('*').order('name'),
+            supabase.from('playlists').select('*').eq('tenant_id', currentTenantId).order('name'),
+            supabase.from('media_assets').select('*').eq('tenant_id', currentTenantId).order('name'),
         ])
         setPlaylists(plRes.data || [])
         setMediaAssets(mediaRes.data || [])
         setLoading(false)
     }
 
-    useEffect(() => { loadAll() }, [])
+    useEffect(() => { loadAll() }, [currentTenantId])
 
     const filtered = playlists.filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
     const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
@@ -78,7 +81,7 @@ export default function PlaylistsPage() {
                 if (error) throw error
                 toast.success('Playlist updated')
             } else {
-                const { error } = await supabase.from('playlists').insert({ ...form, tenant_id: DEFAULT_TENANT_ID })
+                const { error } = await supabase.from('playlists').insert({ ...form, tenant_id: currentTenantId })
                 if (error) throw error
                 toast.success('Playlist created')
             }
@@ -172,7 +175,7 @@ export default function PlaylistsPage() {
         await Promise.all(newItems.map(item => supabase.from('playlist_items').update({ sort_order: item.sort_order }).eq('id', item.id)))
     }
 
-    const filteredMedia = mediaAssets.filter(m => addType === 'web_url' ? false : m.type === addType)
+    const filteredMedia = mediaAssets.filter(m => m.type === addType)
 
     return (
         <div>
@@ -280,56 +283,59 @@ export default function PlaylistsPage() {
                                     <option value="web_url">Web URL</option>
                                 </select>
                             </div>
-                            {addType !== 'web_url' ? (
-                                <div className="form-group">
-                                    <label className="label">
-                                        Select Media
-                                        {filteredMedia.length > 0 && (
-                                            <span style={{ marginLeft: '0.5rem', fontSize: '0.7rem', color: '#64748b', fontWeight: 400 }}>
-                                                ({filteredMedia.length} available)
-                                            </span>
-                                        )}
-                                    </label>
-                                    {filteredMedia.length === 0 ? (
-                                        <div style={{
-                                            padding: '0.75rem 1rem',
-                                            background: 'rgba(245,158,11,0.06)',
-                                            border: '1px solid rgba(245,158,11,0.2)',
-                                            borderRadius: 8,
-                                            fontSize: '0.8125rem',
-                                            color: '#92400e',
-                                            lineHeight: 1.5,
-                                        }}>
-                                            <span style={{ color: '#fbbf24' }}>⚠ No {addType} files found.</span><br />
-                                            <span style={{ color: '#94a3b8' }}>
-                                                Go to{' '}
-                                                <a href="/admin/media" target="_blank" rel="noreferrer"
-                                                    style={{ color: '#7a8aff', textDecoration: 'underline' }}>
-                                                    Media Library
-                                                </a>{' '}
-                                                and upload a {addType} file first.
-                                            </span>
-                                        </div>
-                                    ) : (
-                                        <select className="input-field" value={addMediaId} onChange={e => setAddMediaId(e.target.value)}>
-                                            <option value="">— Select {addType} —</option>
-                                            {filteredMedia.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                                        </select>
+                            <div className="form-group">
+                                <label className="label">
+                                    Select from Library
+                                    {filteredMedia.length > 0 && (
+                                        <span style={{ marginLeft: '0.5rem', fontSize: '0.7rem', color: '#64748b', fontWeight: 400 }}>
+                                            ({filteredMedia.length} available)
+                                        </span>
                                     )}
-                                </div>
-                            ) : (
-                                <div className="form-group">
-                                    <label className="label">URL</label>
-                                    <input className="input-field" type="url" value={addUrl} onChange={e => setAddUrl(e.target.value)} placeholder="https://..." />
+                                </label>
+                                {filteredMedia.length === 0 ? (
+                                    <div style={{
+                                        padding: '0.75rem 1rem',
+                                        background: 'rgba(245,158,11,0.06)',
+                                        border: '1px solid rgba(245,158,11,0.2)',
+                                        borderRadius: 8,
+                                        fontSize: '0.8125rem',
+                                        color: '#92400e',
+                                        lineHeight: 1.5,
+                                    }}>
+                                        <span style={{ color: '#fbbf24' }}>⚠ No {addType} assets found.</span><br />
+                                        <span style={{ color: '#94a3b8' }}>
+                                            {addType === 'web_url'
+                                                ? 'Use manual link or add to Media Library first.'
+                                                : `Go to Media Library and upload a ${addType} file first.`}
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <select className="input-field" value={addMediaId} onChange={e => { setAddMediaId(e.target.value); setAddUrl('') }}>
+                                        <option value="">— Select {addType} —</option>
+                                        {filteredMedia.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                    </select>
+                                )}
+                            </div>
+
+                            {addType === 'web_url' && (
+                                <div className="form-group" style={{ marginTop: '0.5rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                        <div style={{ height: '1px', flex: 1, background: '#1e293b' }}></div>
+                                        <span style={{ fontSize: '0.7rem', color: '#475569', textTransform: 'uppercase' }}>OR</span>
+                                        <div style={{ height: '1px', flex: 1, background: '#1e293b' }}></div>
+                                    </div>
+                                    <label className="label">Manual URL Entry</label>
+                                    <input className="input-field" type="url" value={addUrl} onChange={e => { setAddUrl(e.target.value); setAddMediaId('') }} placeholder="https://..." />
                                 </div>
                             )}
+
                             {addType === 'image' && (
                                 <div className="form-group">
                                     <label className="label">Duration (seconds)</label>
                                     <input className="input-field" type="number" min="1" value={addDuration} onChange={e => setAddDuration(e.target.value)} />
                                 </div>
                             )}
-                            <button className="btn-primary" onClick={addItem} style={{ width: '100%', justifyContent: 'center' }}>
+                            <button className="btn-primary" onClick={addItem} style={{ width: '100%', justifyContent: 'center', marginTop: '1rem' }}>
                                 <Plus size={14} /> Add to Playlist
                             </button>
                         </div>
@@ -353,7 +359,8 @@ export default function PlaylistsPage() {
                         </div>
                     </div>
                 </Modal>
-            )}
-        </div>
+            )
+            }
+        </div >
     )
 }

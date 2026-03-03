@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Plus, Edit2, Trash2, Layout as LayoutIcon, Loader2 } from 'lucide-react'
-import { supabase, DEFAULT_TENANT_ID } from '../../lib/supabase'
+import { supabase } from '../../lib/supabase'
+import { useTenant } from '../../contexts/TenantContext'
 import { Layout, LayoutTemplate, Playlist } from '../../types'
 import Modal from '../../components/ui/Modal'
 import Pagination from '../../components/ui/Pagination'
@@ -9,6 +10,7 @@ import toast from 'react-hot-toast'
 const PAGE_SIZE = 10
 
 export default function LayoutsPage() {
+    const { currentTenantId } = useTenant()
     const [layouts, setLayouts] = useState<Layout[]>([])
     const [templates, setTemplates] = useState<LayoutTemplate[]>([])
     const [playlists, setPlaylists] = useState<Playlist[]>([])
@@ -23,11 +25,12 @@ export default function LayoutsPage() {
     const [saving, setSaving] = useState(false)
 
     const loadAll = async () => {
+        if (!currentTenantId) return
         setLoading(true)
         const [lRes, tRes, pRes] = await Promise.all([
-            supabase.from('layouts').select('*, template:layout_templates(id,name,regions)').order('name'),
+            supabase.from('layouts').select('*, template:layout_templates(id,name,regions)').eq('tenant_id', currentTenantId).order('name'),
             supabase.from('layout_templates').select('*').order('name'),
-            supabase.from('playlists').select('*').order('name'),
+            supabase.from('playlists').select('*').eq('tenant_id', currentTenantId).order('name'),
         ])
         setLayouts(lRes.data || [])
         setTemplates(tRes.data || [])
@@ -35,7 +38,7 @@ export default function LayoutsPage() {
         setLoading(false)
     }
 
-    useEffect(() => { loadAll() }, [])
+    useEffect(() => { loadAll() }, [currentTenantId])
 
     const openCreate = () => {
         setEditing(null)
@@ -54,7 +57,7 @@ export default function LayoutsPage() {
                 if (error) throw error
                 toast.success('Layout updated')
             } else {
-                const { data, error } = await supabase.from('layouts').insert({ name: form.name, template_id: form.template_id || null, tenant_id: DEFAULT_TENANT_ID }).select('id').single()
+                const { data, error } = await supabase.from('layouts').insert({ name: form.name, template_id: form.template_id || null, tenant_id: currentTenantId }).select('id').single()
                 if (error) throw error
                 // Create default full region assignment
                 if (form.template_id) {

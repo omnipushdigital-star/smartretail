@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Building2, Save, Upload, Palette, Globe, ShieldCheck, Image as ImageIcon, Loader2 } from 'lucide-react'
-import { supabase, DEFAULT_TENANT_ID } from '../../lib/supabase'
+import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
+import { useTenant } from '../../contexts/TenantContext'
 
 export default function TenantOnboardingPage() {
     const fileInputRef = useRef<HTMLInputElement>(null)
@@ -9,18 +10,22 @@ export default function TenantOnboardingPage() {
     const [saving, setSaving] = useState(false)
     const [uploading, setUploading] = useState(false)
     const [tenantData, setTenantData] = useState({
-        name: 'Apache Pizza',
-        slug: 'default',
-        logo_url: 'https://i.ibb.co/vzB7K8N/apache-pizza-logo.png',
-        primary_color: '#ef4444',
-        secondary_color: '#991b1b',
-        domain: 'apachepizza.ie',
-        support_email: 'support@apachepizza.ie'
+        name: '',
+        slug: '',
+        logo_url: '',
+        primary_color: '#3b82f6',
+        secondary_color: '#1e40af',
+        domain: '',
+        support_email: ''
     })
 
+    const { currentTenantId, refreshTenants } = useTenant()
+
     useEffect(() => {
-        fetchTenantInfo()
-    }, [])
+        if (currentTenantId) {
+            fetchTenantInfo()
+        }
+    }, [currentTenantId])
 
     async function fetchTenantInfo() {
         try {
@@ -28,22 +33,25 @@ export default function TenantOnboardingPage() {
             const { data, error } = await supabase
                 .from('tenants')
                 .select('*')
-                .eq('id', DEFAULT_TENANT_ID)
+                .eq('id', currentTenantId)
                 .single()
+
+            if (error) throw error
 
             if (data) {
                 setTenantData({
-                    name: data.name || 'Apache Pizza',
-                    slug: data.slug || 'default',
-                    logo_url: data.settings?.logo_url || 'https://i.ibb.co/vzB7K8N/apache-pizza-logo.png',
-                    primary_color: data.settings?.primary_color || '#ef4444',
-                    secondary_color: data.settings?.secondary_color || '#991b1b',
-                    domain: data.settings?.domain || 'apachepizza.ie',
-                    support_email: data.settings?.support_email || 'support@apachepizza.ie'
+                    name: data.name || '',
+                    slug: data.slug || '',
+                    logo_url: data.settings?.logo_url || '',
+                    primary_color: data.settings?.primary_color || '#3b82f6',
+                    secondary_color: data.settings?.secondary_color || '#1e40af',
+                    domain: data.settings?.domain || '',
+                    support_email: data.settings?.support_email || ''
                 })
             }
         } catch (error: any) {
             console.error('Error fetching tenant:', error)
+            toast.error('Failed to load branding data')
         } finally {
             setLoading(false)
         }
@@ -58,7 +66,7 @@ export default function TenantOnboardingPage() {
 
             // 1. Upload to Supabase Storage
             const fileExt = file.name.split('.').pop()
-            const fileName = `${DEFAULT_TENANT_ID}/logo_${Date.now()}.${fileExt}`
+            const fileName = `${currentTenantId}/logo_${Date.now()}.${fileExt}`
 
             const { error: uploadError } = await supabase.storage
                 .from('public')
@@ -144,7 +152,7 @@ export default function TenantOnboardingPage() {
             const { error } = await supabase
                 .from('tenants')
                 .upsert({
-                    id: DEFAULT_TENANT_ID,
+                    id: currentTenantId,
                     name: tenantData.name,
                     slug: tenantData.slug,
                     settings: {
@@ -159,8 +167,9 @@ export default function TenantOnboardingPage() {
 
 
             if (error) throw error
+
             toast.success('Branding updated successfully')
-            setTimeout(() => window.location.reload(), 1000)
+            await refreshTenants()
         } catch (error: any) {
             toast.error(error.message || 'Failed to save settings')
         } finally {

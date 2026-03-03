@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
-import { WifiOff, Tv2, Lock, RefreshCw, Clock } from 'lucide-react'
+import { WifiOff, Tv2, Lock, RefreshCw, Clock, Image as ImageIcon } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { supabase, DEFAULT_TENANT_ID, callEdgeFn } from '../lib/supabase'
 
@@ -36,8 +36,10 @@ interface Manifest {
     resolved: {
         scope: string;
         role: string | null;
+        pub_id: string | null;
         bundle_id: string | null;
         version: string | null;
+        item_count?: number;
         debug?: any;
     }
     layout: { layout_id: string; template_id: string; regions: any[] }
@@ -49,8 +51,8 @@ interface Manifest {
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const HEARTBEAT_INTERVAL_MS = 30_000
-const DEFAULT_IMAGE_DURATION = 8
-const DEFAULT_WEB_DURATION = 15
+const DEFAULT_IMAGE_DURATION = 10 // 10s default for images
+const DEFAULT_WEB_DURATION = 30   // 30s default for web content
 
 function secretKey(code: string) { return `omnipush_device_secret:${code}` }
 function manifestKey(code: string) { return `omnipush_manifest:${code}` }
@@ -81,11 +83,128 @@ interface PlaybackProps {
     region: { id: string; x: number; y: number; width: number; height: number }
 }
 
+// ─── Double-Buffer Video Player ──────────────────────────────────────────────
+// Uses two persistent <video> elements and crossfades between them.
+// This eliminates the browser's default "video icon" flash that appears
+// when a <video> element is destroyed and recreated (e.g., on loop restart).
+
+interface VideoBufferProps {
+    url: string
+    onEnded: () => void
+    onError: () => void
+    style?: React.CSSProperties
+}
+
+function DoubleBufferVideo({ items, assets, onAdvance }: {
+    items: ManifestItem[]
+    assets: ManifestAsset[]
+    onAdvance: () => void
+}) {
+    const [activeSlot, setActiveSlot] = useState<0 | 1>(0)
+    const videoRefs = [useRef<HTMLVideoElement>(null), useRef<HTMLVideoElement>(null)]
+    const [slotUrls, setSlotUrls] = useState<[string, string]>(['', ''])
+    const [slotOpacity, setSlotOpacity] = useState<[number, number]>([1, 0])
+    const idxRef = useRef(0)
+
+    const sorted = React.useMemo(
+        () => [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
+        [items]
+    )
+    const memoizedAssets = React.useMemo(() => assets, [JSON.stringify(assets)])
+
+    const getUrl = useCallback((item: ManifestItem) => {
+        const asset = memoizedAssets.find(a => a.media_id === item.media_id)
+        return asset?.url || item.web_url || ''
+    }, [memoizedAssets])
+
+    // Initialize first video on mount
+    useEffect(() => {
+        if (sorted.length === 0) return
+        const firstUrl = getUrl(sorted[0])
+        setSlotUrls([firstUrl, ''])
+        setSlotOpacity([1, 0])
+        const v = videoRefs[0].current
+        if (v) {
+            v.src = firstUrl
+            v.load()
+            v.play().catch(() => { })
+        }
+    }, []) // Only on mount
+
+    const advanceBuffer = useCallback(() => {
+        const nextIdx = (idxRef.current + 1) % sorted.length
+        idxRef.current = nextIdx
+
+        const nextSlot: 0 | 1 = activeSlot === 0 ? 1 : 0
+        const nextUrl = getUrl(sorted[nextIdx])
+
+        // Load next URL into the inactive slot
+        const nextVideo = videoRefs[nextSlot].current
+        if (nextVideo) {
+            nextVideo.src = nextUrl
+            nextVideo.load()
+        }
+
+        setSlotUrls(prev => {
+            const updated: [string, string] = [...prev] as [string, string]
+            updated[nextSlot] = nextUrl
+            return updated
+        })
+
+        // Crossfade: fade in next, fade out current
+        setSlotOpacity(activeSlot === 0 ? [0, 1] : [1, 0])
+        setActiveSlot(nextSlot)
+
+        // Play next after a short delay to let the fade start
+        setTimeout(() => {
+            nextVideo?.play().catch(() => { })
+        }, 50)
+
+        onAdvance()
+    }, [activeSlot, sorted, getUrl, onAdvance])
+
+    if (sorted.length === 0) return null
+
+    const videoStyle: React.CSSProperties = {
+        position: 'absolute',
+        top: 0, left: 0,
+        width: '100%', height: '100%',
+        objectFit: 'cover',
+        background: '#000',
+        display: 'block',
+        transition: 'opacity 0.4s ease',
+    }
+
+    return (
+        <>
+            <video
+                ref={videoRefs[0]}
+                style={{ ...videoStyle, opacity: slotOpacity[0], zIndex: slotOpacity[0] > 0 ? 2 : 1 }}
+                autoPlay
+                muted
+                playsInline
+                preload="auto"
+                onEnded={advanceBuffer}
+                onError={() => setTimeout(advanceBuffer, 2000)}
+            />
+            <video
+                ref={videoRefs[1]}
+                style={{ ...videoStyle, opacity: slotOpacity[1], zIndex: slotOpacity[1] > 0 ? 2 : 1 }}
+                muted
+                playsInline
+                preload="auto"
+                onEnded={advanceBuffer}
+                onError={() => setTimeout(advanceBuffer, 2000)}
+            />
+        </>
+    )
+}
+
+// ─── Playback Engine ──────────────────────────────────────────────────────────
+
 function PlaybackEngine({ items, assets, region }: PlaybackProps) {
     const [idx, setIdx] = useState(0)
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-    const videoRef = useRef<HTMLVideoElement>(null)
-    const nextVideoRef = useRef<HTMLVideoElement>(null) // preload
     const [fade, setFade] = useState(true)
 
     const sorted = [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
@@ -98,32 +217,50 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
         }, 300)
     }, [sorted.length])
 
+    const memoizedAssets = React.useMemo(() => assets, [JSON.stringify(assets)])
+
     useEffect(() => {
         if (sorted.length === 0) return
         if (timerRef.current) clearTimeout(timerRef.current)
-        const item = sorted[idx]
-        const asset = assets.find(a => a.media_id === item.media_id)
-        if (!asset) { advance(); return }
 
-        if (asset.type === 'video') {
-            // Wait for video to end — handled by onEnded
-            return
-        }
-        const dur = (item.duration_seconds ?? (asset.type === 'web_url' ? DEFAULT_WEB_DURATION : DEFAULT_IMAGE_DURATION)) * 1000
+        const item = sorted[idx]
+        const asset = memoizedAssets.find(a => a.media_id === item.media_id)
+        const url = asset?.url || item.web_url
+        const type = asset?.type || item.type || (item.media_id ? 'video' : 'image')
+
+        if (!url) { advance(); return }
+        // Videos are handled by DoubleBufferVideo's own onEnded
+        if (type === 'video') return
+
+        const dur = (item.duration_seconds ?? (type === 'web_url' ? DEFAULT_WEB_DURATION : DEFAULT_IMAGE_DURATION)) * 1000
         timerRef.current = setTimeout(advance, dur)
         return () => { if (timerRef.current) clearTimeout(timerRef.current) }
-    }, [idx, sorted.length]) // eslint-disable-line
+    }, [idx, sorted.length, advance, memoizedAssets, region.id])
 
     if (sorted.length === 0) return null
 
     const item = sorted[idx]
-    const asset = assets.find(a => a.media_id === item.media_id)
+    const asset = memoizedAssets.find(a => a.media_id === item.media_id)
+    const url = asset?.url || item.web_url
+    const type = asset?.type || item.type || (item.media_id ? 'video' : 'image')
 
-    // Preload next asset
+    // Check if ALL items in playlist are videos (use double-buffer for entire region)
+    const allVideos = sorted.every(i => {
+        const a = memoizedAssets.find(x => x.media_id === i.media_id)
+        return (a?.type || i.type) === 'video'
+    })
+
+    // Preload next image
     const nextItem = sorted[(idx + 1) % sorted.length]
-    const nextAsset = assets.find(a => a.media_id === nextItem?.media_id)
+    const nextAsset = memoizedAssets.find(a => a.media_id === nextItem?.media_id)
+    const nextUrl = nextAsset?.url || nextItem?.web_url
+    const nextType = nextAsset?.type || nextItem?.type
 
-    if (!asset || !asset.url) return null
+    if (!url) return (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', color: 'rgba(255,255,255,0.2)', fontSize: '0.7rem' }}>
+            <RefreshCw className="animate-spin" size={16} />
+        </div>
+    )
 
     return (
         <div style={{
@@ -136,77 +273,66 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
             overflow: 'hidden',
             margin: 0, padding: 0,
         }}>
-            {/* Current item */}
-            <div style={{
-                position: 'absolute',
-                top: 0, left: 0, right: 0, bottom: 0,
-                opacity: fade ? 1 : 0,
-                transition: 'opacity 0.3s ease',
-            }}>
-                {asset.type === 'image' && (
-                    <img
-                        key={item.playlist_item_id}
-                        src={asset.url}
-                        alt=""
-                        style={{
-                            position: 'absolute',
-                            top: 0, left: 0,
-                            width: '100%', height: '100%',
-                            objectFit: 'cover',
-                            display: 'block',
-                        }}
-                    />
-                )}
-                {asset.type === 'video' && (
-                    <video
-                        key={item.playlist_item_id}
-                        ref={videoRef}
-                        src={asset.url}
-                        style={{
-                            position: 'absolute',
-                            top: 0, left: 0,
-                            width: '100%', height: '100%',
-                            objectFit: 'contain',
-                            background: '#000',
-                            display: 'block',
-                        }}
-                        autoPlay
-                        muted
-                        playsInline
-                        loop={sorted.length === 1} // Smooth loop for single-video ads
-                        onEnded={advance}
-                        onError={advance}
-                    />
-                )}
-                {asset.type === 'web_url' && (
-                    <iframe
-                        key={item.playlist_item_id}
-                        src={asset.url}
-                        style={{
-                            position: 'absolute',
-                            top: 0, left: 0,
-                            width: '100%', height: '100%',
-                            border: 'none',
-                            display: 'block',
-                        }}
-                        sandbox="allow-scripts allow-same-origin"
-                        title="content"
-                    />
-                )}
-            </div>
-
-            {/* Preload next video */}
-            {nextAsset?.type === 'video' && nextAsset.url && (
-                <video
-                    ref={nextVideoRef}
-                    src={nextAsset.url}
-                    style={{ display: 'none' }}
-                    preload="auto"
-                    muted
+            {/* ✅ All-video playlist: use double buffer for flash-free looping */}
+            {allVideos ? (
+                <DoubleBufferVideo
+                    items={sorted}
+                    assets={memoizedAssets}
+                    onAdvance={() => { }} // buffer manages its own index
                 />
+            ) : (
+                /* Mixed content: use fade-based switching */
+                <div style={{
+                    position: 'absolute',
+                    top: 0, left: 0, right: 0, bottom: 0,
+                    opacity: fade ? 1 : 0,
+                    transition: 'opacity 0.3s ease',
+                }}>
+                    {type === 'image' && url && (
+                        <img
+                            key={item.playlist_item_id}
+                            src={url}
+                            alt=""
+                            style={{
+                                position: 'absolute', top: 0, left: 0,
+                                width: '100%', height: '100%',
+                                objectFit: 'cover', display: 'block',
+                            }}
+                        />
+                    )}
+                    {type === 'video' && url && (
+                        <video
+                            key={item.playlist_item_id}
+                            src={url}
+                            style={{
+                                position: 'absolute', top: 0, left: 0,
+                                width: '100%', height: '100%',
+                                objectFit: 'cover', background: '#000', display: 'block',
+                            }}
+                            autoPlay muted playsInline
+                            onEnded={advance}
+                            onError={() => setTimeout(advance, 5000)}
+                        />
+                    )}
+                    {type === 'web_url' && url && (
+                        <iframe
+                            key={item.playlist_item_id}
+                            src={url}
+                            style={{
+                                position: 'absolute', top: 0, left: 0,
+                                width: '100%', height: '100%',
+                                border: 'none', display: 'block',
+                            }}
+                            sandbox="allow-scripts allow-same-origin"
+                            title="content"
+                        />
+                    )}
+                </div>
             )}
-            {nextAsset?.type === 'image' && nextAsset.url && (
-                <img src={nextAsset.url} alt="" style={{ display: 'none' }} />
+
+            {/* Preload next image in background */}
+            {!allVideos && nextType === 'image' && nextUrl && (
+                <img src={nextUrl} alt="" style={{ display: 'none' }} />
             )}
         </div>
     )
@@ -382,8 +508,9 @@ function BottomBar({ device_code, version, offline }: { device_code: string; ver
             position: 'absolute', bottom: 0, left: 0, right: 0,
             padding: '0.625rem 1.25rem',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)',
-            borderTop: '1px solid rgba(255,255,255,0.05)',
+            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)',
+            borderTop: '1px solid rgba(255,255,255,0.08)',
+            zIndex: 10000,
         }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                 <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.25)' }}>OmniPush Digital Services</span>
@@ -416,8 +543,18 @@ export default function PlayerPage() {
     const [version, setVersion] = useState<string | null>(null)
 
     const [pairingPin, setPairingPin] = useState('')
+    const [showDiagnostics, setShowDiagnostics] = useState(false)
     const secretRef = useRef(secret)
     useEffect(() => { secretRef.current = secret }, [secret])
+
+    // Keyboard shortcut for diagnostics
+    useEffect(() => {
+        const handleKeys = (e: KeyboardEvent) => {
+            if (e.shiftKey && e.key === 'D') setShowDiagnostics(prev => !prev)
+        }
+        window.addEventListener('keydown', handleKeys)
+        return () => window.removeEventListener('keydown', handleKeys)
+    }, [])
 
     const initPairing = useCallback(async () => {
         try {
@@ -439,6 +576,37 @@ export default function PlayerPage() {
                 device_secret: sec,
                 current_version: version,
             })
+
+            // ─── CLIENT-SIDE REPAIR ───
+            // If the edge function failed to link some assets (e.g. due to null IDs in query)
+            // we fetch details for those IDs specifically from the public media_assets table.
+            if (data.region_playlists) {
+                const regionPlaylists = data.region_playlists as Record<string, ManifestItem[]>
+                const itemIds = Object.values(regionPlaylists).flatMap(items => items.map(i => i.media_id).filter(id => !!id))
+                const existingIds = new Set((data.assets || []).map((a: ManifestAsset) => a.media_id))
+                const missingIds = Array.from(new Set(itemIds.filter(id => !existingIds.has(id)))) as string[]
+
+                if (missingIds.length > 0) {
+                    console.warn(`[Player] ${missingIds.length} assets missing from manifest - repairing...`)
+                    const { data: repaired, error: rErr } = await supabase
+                        .from('media_assets')
+                        .select('id, type, url, checksum_sha256, bytes')
+                        .in('id', missingIds)
+
+                    if (!rErr && repaired) {
+                        const newAssets: ManifestAsset[] = repaired.map((m: any) => ({
+                            media_id: m.id,
+                            type: m.type as any,
+                            url: m.url, // Fallback to public URL stored in DB
+                            checksum_sha256: m.checksum_sha256,
+                            bytes: m.bytes
+                        }))
+                        data.assets = [...(data.assets || []), ...newAssets]
+                        console.log(`[Player] Repair complete. Processed ${newAssets.length} assets.`)
+                    }
+                }
+            }
+
             setManifest(data)
             setVersion(data.resolved?.version || null)
             localStorage.setItem(manifestKey(dc), JSON.stringify(data))
@@ -745,14 +913,106 @@ export default function PlayerPage() {
         )
     }
 
+    // ── Diagnostic Dashboard for Blank Screens ──
+    const DiagnosticOverlay = ({ visible }: { visible: boolean }) => {
+        if (!visible) return null
+        return (
+            <div style={{
+                position: 'fixed', bottom: '4rem', left: '1rem', zIndex: 1000,
+                background: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(8px)',
+                padding: '1rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)',
+                color: '#fff', fontSize: '0.75rem', maxWidth: '300px', boxShadow: '0 10px 25px rgba(0,0,0,0.5)'
+            }}>
+                <div style={{ fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>🔍 Diagnostics</span>
+                    <span style={{ color: offline ? '#ef4444' : '#22c55e' }}>● {offline ? 'Offline' : 'Online'}</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <div><strong>Device:</strong> {manifest?.device?.id?.slice(0, 8)}... ({dc})</div>
+                    <div><strong>Scope:</strong> {manifest?.resolved?.scope || 'Global'}</div>
+                    <div><strong>Pub ID:</strong> {manifest?.resolved?.pub_id?.slice(0, 8) || 'None'}</div>
+                    <div><strong>Layout:</strong> {manifest?.layout?.layout_id?.slice(0, 8)}...</div>
+                    <div><strong>Regions:</strong> {Object.keys(manifest?.region_playlists || {}).join(', ')}</div>
+                    <div><strong>Total Assets:</strong> {manifest?.assets?.length || 0}</div>
+                    <div style={{ marginTop: '0.8rem', display: 'flex', gap: '0.5rem' }}>
+                        <button
+                            onClick={() => window.location.reload()}
+                            style={{ flex: 1, padding: '4px', background: '#334155', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', fontSize: '10px' }}>
+                            Reload
+                        </button>
+                        <button
+                            onClick={() => {
+                                // Event based trigger for PlaybackEngines
+                                window.dispatchEvent(new CustomEvent('omnipush_force_advance'))
+                            }}
+                            style={{ flex: 1, padding: '4px', background: 'var(--color-brand-500)', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', fontSize: '10px' }}>
+                            Next Item
+                        </button>
+                    </div>
+                    <div style={{ marginTop: '0.5rem', opacity: 0.6 }}>Press SHIFT+D to toggle</div>
+                </div>
+            </div>
+        )
+    }
+
     // Multi-Region Rendering
     if (!manifest) return <LoadingState device_code={dc} />
+
     const regions = manifest.layout?.regions || [{ id: 'full', x: 0, y: 0, width: 100, height: 100 }]
+    const hasAnyContent = Object.values(manifest.region_playlists || {}).some(items => items.length > 0)
+
+    // If NO content is published anywhere, show the "Awaiting Content" screen instead of black
+    if (!hasAnyContent) {
+        return (
+            <div style={bgStyle}>
+                <AmbientOrbs />
+                <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem' }}>
+                    <div style={{ background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(16px)', padding: '2.5rem', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 20px 50px rgba(0,0,0,0.3)' }}>
+                        <div style={{ width: 80, height: 80, borderRadius: '20px', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 2rem' }}>
+                            <Tv2 size={40} color="#fff" />
+                        </div>
+                        <h1 style={{ color: '#fff', fontSize: '1.75rem', fontWeight: 700, margin: '0 0 1rem' }}>No Active Content</h1>
+                        <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '1rem', maxWidth: 300, margin: '0 auto 2rem', lineHeight: 1.5 }}>
+                            This screen is connected, but no content has been assigned to this layout's regions.
+                        </p>
+                        <div style={{ padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '12px', fontSize: '0.85rem', color: '#94a3b8', textAlign: 'left', fontFamily: 'monospace' }}>
+                            Layout ID:   {manifest.layout?.layout_id?.slice(0, 8)}...<br />
+                            Pub Scope:   {manifest.resolved?.scope || 'N/A'}<br />
+                            Bundle ID:   {manifest.resolved?.bundle_id?.slice(0, 8) || 'N/A'}<br />
+                            Device Role: {manifest.device?.role_id?.slice(0, 8) || 'None'}
+                        </div>
+                    </div>
+                </div>
+                <DiagnosticOverlay visible={showDiagnostics} />
+                <BottomBar device_code={dc} version={version} offline={offline} />
+            </div>
+        )
+    }
 
     return (
         <div style={{ position: 'fixed', inset: 0, background: '#000' }}>
             {regions.map((reg) => {
                 const regionItems = manifest.region_playlists?.[reg.id] || []
+
+                // Fallback for empty region to prevent black hole
+                if (regionItems.length === 0) {
+                    return (
+                        <div key={reg.id} style={{
+                            position: 'absolute',
+                            top: `${reg.y}%`, left: `${reg.x}%`,
+                            width: `${reg.width}%`, height: `${reg.height}%`,
+                            background: '#0f172a', border: '1px solid rgba(255,255,255,0.05)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            flexDirection: 'column'
+                        }}>
+                            <div style={{ opacity: 0.2 }}>
+                                <ImageIcon size={32} color="#fff" />
+                            </div>
+                            <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.1)', marginTop: '0.5rem' }}>Region: {reg.id}</span>
+                        </div>
+                    )
+                }
+
                 return (
                     <PlaybackEngine
                         key={reg.id}
@@ -762,6 +1022,8 @@ export default function PlayerPage() {
                     />
                 )
             })}
+
+            <DiagnosticOverlay visible={showDiagnostics} />
 
             {/* Offline indicator overlay */}
             {offline && (

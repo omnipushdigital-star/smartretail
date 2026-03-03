@@ -41,9 +41,9 @@ export default function LoginPage() {
                 {/* Logo */}
                 <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
                     <img
-                        src="/logo.png"
+                        src="/assets/omnipush-logo.png"
                         alt="OmniPush"
-                        style={{ height: 72, width: 'auto', margin: '0 auto 1rem', display: 'block', objectFit: 'contain' }}
+                        style={{ height: 100, width: 'auto', margin: '0 auto 1rem', display: 'block', objectFit: 'contain' }}
                     />
                     <p style={{ color: '#64748b', marginTop: '0.375rem', fontSize: '0.875rem' }}>
                         Retail Display CMS — Admin Portal

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { Plus, Search, Edit2, Trash2, Monitor, Copy, Check, Loader2, RefreshCw, Info, Eye, EyeOff, QrCode, Download, Tv2 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
-import { supabase, DEFAULT_TENANT_ID, callEdgeFn } from '../../lib/supabase'
+import { supabase, callEdgeFn } from '../../lib/supabase'
+import { useTenant } from '../../contexts/TenantContext'
 import { Device, Store, Role, DeviceHeartbeat } from '../../types'
 import Modal from '../../components/ui/Modal'
 import Pagination from '../../components/ui/Pagination'
@@ -9,7 +10,7 @@ import toast from 'react-hot-toast'
 import { formatDistanceToNow } from 'date-fns'
 
 const PAGE_SIZE = 10
-const ONLINE_THRESHOLD_MS = 3 * 60 * 1000 // 3 minutes per spec
+const ONLINE_THRESHOLD_MS = 10 * 60 * 1000 // 10 minutes (lenient for debugging)
 
 function isOnline(lastSeen?: string) {
     if (!lastSeen) return false
@@ -65,34 +66,46 @@ export default function DevicesPage() {
     const [saving, setSaving] = useState(false)
     const [deleting, setDeleting] = useState<string | null>(null)
     const [copiedId, setCopiedId] = useState<string | null>(null)
-    const [pairing, setPairing] = useState<PairingInfo | null>(null)
+    const [pairingInfo, setPairingInfo] = useState<PairingInfo | null>(null)
     const [revealedId, setRevealedId] = useState<string | null>(null)
+    const { currentTenantId } = useTenant()
 
-    const loadAll = async () => {
+    const loadData = useCallback(async () => {
+        if (!currentTenantId) return
         setLoading(true)
-        const [devsRes, storesRes, rolesRes, hbRes] = await Promise.all([
+        const [devicesRes, storesRes, rolesRes] = await Promise.all([
             supabase.from('devices').select('*, store:stores(id,code,name), role:roles(id,name,key)')
-                .eq('tenant_id', DEFAULT_TENANT_ID).order('display_name'),
-            supabase.from('stores').select('*').eq('tenant_id', DEFAULT_TENANT_ID).eq('active', true).order('name'),
-            supabase.from('roles').select('*').eq('tenant_id', DEFAULT_TENANT_ID).order('name'),
-            supabase.from('device_heartbeats').select('*').order('last_seen_at', { ascending: false }).limit(500),
+                .eq('tenant_id', currentTenantId).order('display_name'),
+            supabase.from('stores').select('*').eq('tenant_id', currentTenantId).eq('active', true).order('name'),
+            supabase.from('roles').select('*').eq('tenant_id', currentTenantId).order('name'),
         ])
-        const hbMap: Record<string, DeviceHeartbeat> = {}
-        for (const hb of (hbRes.data || [])) {
-            if (!hbMap[hb.device_code]) hbMap[hb.device_code] = hb
-        }
-        setDevices(devsRes.data || [])
+        setDevices(devicesRes.data || [])
         setStores(storesRes.data || [])
         setRoles(rolesRes.data || [])
-        setHeartbeats(hbMap)
         setLoading(false)
-    }
+
+        const deviceIds = devicesRes.data?.map(d => d.id) || []
+        const deviceCodes = devicesRes.data?.map(d => d.device_code) || []
+
+        // Fetch ANY heartbeat for these devices or codes (Manual join fallback)
+        const { data: hbData } = await supabase.from('device_heartbeats')
+            .select('*')
+            .or(`device_id.in.(${deviceIds.map(id => `"${id}"`).join(',')}),device_code.in.(${deviceCodes.map(c => `"${c}"`).join(',')})`)
+            .order('last_seen_at', { ascending: false })
+
+        const hbMap: Record<string, DeviceHeartbeat> = {}
+        // Only keep the most recent heartbeat for each device_code in the map
+        for (const hb of hbData || []) {
+            if (!hbMap[hb.device_code]) hbMap[hb.device_code] = hb
+        }
+        setHeartbeats(hbMap)
+    }, [currentTenantId])
 
     const fetchDevices = async () => {
         setLoading(true)
         try {
             const { data, error } = await supabase.from('devices').select('*, store:stores(id,code,name), role:roles(id,name,key)')
-                .eq('tenant_id', DEFAULT_TENANT_ID).order('display_name')
+                .eq('tenant_id', currentTenantId).order('display_name')
             if (error) throw error
             setDevices(data || [])
         } catch (err: any) {
@@ -119,7 +132,7 @@ export default function DevicesPage() {
         }
     }
 
-    useEffect(() => { loadAll() }, [])
+    useEffect(() => { loadData() }, [loadData])
 
     const filtered = devices.filter(d => {
         const matchSearch = (d.device_code + (d.display_name || '') + ((d as any).store?.name || '')).toLowerCase().includes(search.toLowerCase())
@@ -154,7 +167,7 @@ export default function DevicesPage() {
                 if (error) throw error
                 toast.success('Device updated')
                 setShowModal(false)
-                loadAll()
+                loadData()
             } else {
                 // Auto-generate device_code + secret
                 const selectedStore = stores.find(s => s.id === form.store_id);
@@ -163,18 +176,17 @@ export default function DevicesPage() {
                 const device_code = generateDeviceCode(selectedStore?.name, selectedRole?.name)
                 const device_secret = generateSecret()
                 const { error } = await supabase.from('devices').insert({
-                    device_code, device_secret,
-                    display_name: form.display_name || null,
-                    store_id: form.store_id || null, role_id: form.role_id || null,
-                    orientation: form.orientation, resolution: form.resolution,
-                    active: form.active, tenant_id: DEFAULT_TENANT_ID,
+                    ...form,
+                    device_code: device_code,
+                    device_secret: device_secret,
+                    tenant_id: currentTenantId,
                 })
                 if (error) throw error
                 toast.success('Device registered')
                 setShowModal(false)
-                setPairing({ device_code, device_secret })
+                setPairingInfo({ device_code, device_secret })
                 setShowPairingModal(true)
-                loadAll()
+                loadData()
             }
         } catch (err: any) {
             if (err.message?.includes('devices_tenant_device_code_ux')) {
@@ -191,7 +203,7 @@ export default function DevicesPage() {
         setDeleting(id)
         const { error } = await supabase.from('devices').delete().eq('id', id)
         if (error) toast.error(error.message)
-        else { toast.success('Device deleted'); loadAll() }
+        else { toast.success('Device deleted'); loadData() }
         setDeleting(null)
     }
 
@@ -210,7 +222,7 @@ export default function DevicesPage() {
                     <p className="page-subtitle">Manage display devices across store locations</p>
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button className="btn-secondary" onClick={loadAll} title="Refresh"><RefreshCw size={14} /></button>
+                    <button className="btn-secondary" onClick={loadData} title="Refresh"><RefreshCw size={14} /></button>
                     <button className="btn-secondary" onClick={() => setShowClaimModal(true)}>
                         <Tv2 size={16} />
                         Pair with Code
@@ -335,7 +347,7 @@ export default function DevicesPage() {
                                                             <Edit2 size={13} />
                                                         </button>
                                                         <button
-                                                            onClick={() => { setPairing({ device_code: d.device_code, device_secret: d.device_secret }); setShowPairingModal(true) }}
+                                                            onClick={() => { setPairingInfo({ device_code: d.device_code, device_secret: d.device_secret }); setShowPairingModal(true) }}
                                                             className="btn-secondary"
                                                             style={{ padding: '0.375rem 0.625rem' }}
                                                             title="Show pairing info"
@@ -423,7 +435,7 @@ export default function DevicesPage() {
             )}
 
             {/* Pairing Instructions Modal */}
-            {showPairingModal && pairing && (
+            {showPairingModal && pairingInfo && (
                 <Modal title="📺 Device Pairing Instructions" onClose={() => setShowPairingModal(false)}>
                     <div style={{ fontSize: '0.875rem', color: '#94a3b8', marginBottom: '1.25rem' }}>
                         Device registered! Use the credentials below to configure the Player app on the screen.
@@ -432,7 +444,7 @@ export default function DevicesPage() {
                         <div style={{ background: 'white', padding: '1rem', borderRadius: 8, marginBottom: '1rem' }}>
                             <QRCodeSVG
                                 id="pairing-qr"
-                                value={pairing.device_code.includes('code=') ? pairing.device_code : `${window.location.origin}/player/${pairing.device_code}?secret=${pairing.device_secret}`}
+                                value={pairingInfo.device_code.includes('code=') ? pairingInfo.device_code : `${window.location.origin}/player/${pairingInfo.device_code}?secret=${pairingInfo.device_secret}`}
                                 size={180}
                                 level="H"
                                 includeMargin={false}
@@ -444,9 +456,9 @@ export default function DevicesPage() {
                     </div>
 
                     {[
-                        { label: 'Device Code', value: pairing.device_code, mono: true, highlight: true },
-                        { label: 'Device Secret', value: pairing.device_secret, mono: true },
-                        { label: 'Auto-Pair URL', value: `${window.location.origin}/player/${pairing.device_code}?secret=${pairing.device_secret}`, mono: true },
+                        { label: 'Device Code', value: pairingInfo.device_code, mono: true, highlight: true },
+                        { label: 'Device Secret', value: pairingInfo.device_secret, mono: true },
+                        { label: 'Auto-Pair URL', value: `${window.location.origin}/player/${pairingInfo.device_code}?secret=${pairingInfo.device_secret}`, mono: true },
                     ].map(row => (
                         <div key={row.label} style={{ marginBottom: '1rem' }}>
                             <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.375rem' }}>

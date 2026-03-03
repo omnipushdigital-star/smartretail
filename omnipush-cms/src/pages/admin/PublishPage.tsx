@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import { Upload, FileCheck, Loader2, Globe, Store as StoreIcon, Monitor, ChevronDown, ChevronRight, Package, ArrowUpRight } from 'lucide-react'
-import { supabase, DEFAULT_TENANT_ID } from '../../lib/supabase'
+import { supabase } from '../../lib/supabase'
 import { Layout, Bundle } from '../../types'
 import { Store, Role, Device } from '../../types'
+import { useTenant } from '../../contexts/TenantContext'
 import Modal from '../../components/ui/Modal'
 import toast from 'react-hot-toast'
 import { useNavigate } from 'react-router-dom'
@@ -46,6 +47,7 @@ export default function PublishPage() {
     const [showPublishModal, setShowPublishModal] = useState(false)
     const [publishing, setPublishing] = useState(false)
     const [expandedPub, setExpandedPub] = useState<string | null>(null)
+    const { currentTenantId } = useTenant()
 
     const [form, setForm] = useState({
         role_id: '',
@@ -57,18 +59,23 @@ export default function PublishPage() {
     })
 
     const loadAll = async () => {
+        if (!currentTenantId) return
         setLoading(true)
-        const [lRes, bRes, sRes, rRes, dRes] = await Promise.all([
-            supabase.from('layouts').select('*').order('name'),
-            supabase.from('bundles').select('*').order('created_at', { ascending: false }),
-            supabase.from('stores').select('*').eq('tenant_id', DEFAULT_TENANT_ID).eq('active', true).order('name'),
-            supabase.from('roles').select('*').eq('tenant_id', DEFAULT_TENANT_ID).order('name'),
-            supabase.from('devices').select('*').eq('tenant_id', DEFAULT_TENANT_ID).eq('active', true).order('device_code'),
+        const [lRes, bRes, sRes, roRes, dRes, pRes] = await Promise.all([
+            supabase.from('layouts').select('*').eq('tenant_id', currentTenantId).order('name'),
+            supabase.from('bundles').select('*').eq('tenant_id', currentTenantId).order('version', { ascending: false }),
+            supabase.from('stores').select('*').eq('tenant_id', currentTenantId).eq('active', true).order('name'),
+            supabase.from('roles').select('*').eq('tenant_id', currentTenantId).order('name'),
+            supabase.from('devices').select('*').eq('tenant_id', currentTenantId).eq('active', true).order('device_code'),
+            supabase.from('layout_publications')
+                .select('*, layout:layouts(name), bundle:bundles(version), store:stores(name,code), role:roles(name,key), device:devices(device_code,display_name)')
+                .eq('tenant_id', currentTenantId)
+                .order('published_at', { ascending: false })
         ])
         const layouts_ = lRes.data || []
         const bundles_ = bRes.data || []
         const stores_ = sRes.data || []
-        const roles_ = rRes.data || []
+        const roles_ = roRes.data || []
         const devices_ = dRes.data || []
         setLayouts(layouts_)
         setBundles(bundles_)
@@ -76,23 +83,15 @@ export default function PublishPage() {
         setRoles(roles_)
         setDevices(devices_)
 
-        // Try the join query first; fall back to plain select if schema cache is stale
-        const pJoin = await supabase
-            .from('layout_publications')
-            .select('*, layout:layouts(name), bundle:bundles(version), store:stores(name,code), device:devices(device_code,display_name), role:roles(name,key)')
-            .eq('tenant_id', DEFAULT_TENANT_ID)
-            .eq('is_active', true)
-            .order('published_at', { ascending: false })
-
-        if (!pJoin.error) {
-            setPublications((pJoin.data as ActivePub[]) || [])
+        if (!pRes.error) {
+            setPublications((pRes.data as ActivePub[]) || [])
         } else {
-            // Schema cache stale — fall back to simple select and resolve names client-side
-            console.warn('Join query failed, falling back to simple select:', pJoin.error.message)
+            // Schema cache stale or new table not yet deployed — fall back to simple select and resolve names client-side
+            console.warn('Join query failed, falling back to simple select:', pRes.error.message)
             const pSimple = await supabase
                 .from('layout_publications')
                 .select('*')
-                .eq('tenant_id', DEFAULT_TENANT_ID)
+                .eq('tenant_id', currentTenantId)
                 .eq('is_active', true)
                 .order('published_at', { ascending: false })
             const pubs = (pSimple.data || []).map((p: any) => ({
@@ -108,7 +107,7 @@ export default function PublishPage() {
         setLoading(false)
     }
 
-    useEffect(() => { loadAll() }, [])
+    useEffect(() => { loadAll() }, [currentTenantId])
 
     const handlePublish = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -123,7 +122,7 @@ export default function PublishPage() {
             // Step 1: Deactivate previous active publication for same target
             let deactivateQ = supabase.from('layout_publications')
                 .update({ is_active: false })
-                .eq('tenant_id', DEFAULT_TENANT_ID)
+                .eq('tenant_id', currentTenantId)
                 .eq('is_active', true)
                 .eq('scope', form.scope)
                 .eq('role_id', form.role_id)
@@ -153,7 +152,7 @@ export default function PublishPage() {
 
             // Step 4: Insert new publication
             const { error: pubErr } = await supabase.from('layout_publications').insert({
-                tenant_id: DEFAULT_TENANT_ID,
+                tenant_id: currentTenantId,
                 layout_id: form.layout_id,
                 bundle_id: form.bundle_id,
                 scope: form.scope,
@@ -184,20 +183,20 @@ export default function PublishPage() {
         try {
             // 1. Ensure Tenant
             await supabase.from('tenants').upsert({
-                id: DEFAULT_TENANT_ID,
+                id: currentTenantId,
                 name: 'Default Tenant',
                 slug: 'default',
                 active: true
             })
 
             // 2. Link orphans
-            await supabase.from('roles').update({ tenant_id: DEFAULT_TENANT_ID }).eq('id', '642ed289-53e7-49f3-80f4-d50d32159074')
-            await supabase.from('devices').update({ tenant_id: DEFAULT_TENANT_ID }).eq('device_code', 'DUB01_MAIN_001')
+            await supabase.from('roles').update({ tenant_id: currentTenantId }).eq('id', '642ed289-53e7-49f3-80f4-d50d32159074')
+            await supabase.from('devices').update({ tenant_id: currentTenantId }).eq('device_code', 'DUB01_MAIN_001')
 
             // 3. Fix publication
             await supabase.from('layout_publications').update({
-                tenant_id: DEFAULT_TENANT_ID,
-                is_active: true
+                tenant_id: currentTenantId,
+                scope: form.scope,
             }).eq('role_id', '642ed289-53e7-49f3-80f4-d50d32159074')
 
             toast.success('Database links restored! Refreshing playout...', { id: loading })

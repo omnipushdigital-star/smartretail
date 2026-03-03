@@ -155,6 +155,7 @@ export interface Bundle {
     tenant_id: string
     version: string
     notes?: string
+    total_items?: number
     created_at: string
     files?: BundleFile[]
 }
@@ -184,5 +185,43 @@ export interface DeviceHeartbeat {
     current_version?: string
     ip_address?: string
     status: string
+    created_at: string
+}
+
+// --- Menu Builder Types ---
+
+export interface Menu {
+    id: string
+    tenant_id: string
+    name: string
+    config: {
+        columns: number
+        logo_placement: 'left' | 'center' | 'right'
+        show_promo: boolean
+        promo_position: 'left' | 'right'
+        theme: 'dark' | 'glass' | 'elegant'
+        aspect_ratio: '16:9' | '9:16'
+    }
+    created_at: string
+    updated_at: string
+    categories?: MenuCategory[]
+}
+
+export interface MenuCategory {
+    id: string
+    menu_id: string
+    name: string
+    sort_order: number
+    created_at: string
+    items?: MenuItem[]
+}
+
+export interface MenuItem {
+    id: string
+    category_id: string
+    name: string
+    description?: string
+    price: string | number
+    sort_order: number
     created_at: string
 }

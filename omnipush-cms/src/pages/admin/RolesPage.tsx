@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Plus, Search, Edit2, Trash2, Users as UsersIcon, Loader2, Info } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { Role } from '../../types'
-import { DEFAULT_TENANT_ID } from '../../lib/supabase'
+import { useTenant } from '../../contexts/TenantContext'
 import Modal from '../../components/ui/Modal'
 import Pagination from '../../components/ui/Pagination'
 import toast from 'react-hot-toast'
@@ -27,12 +27,14 @@ export default function RolesPage() {
     const [saving, setSaving] = useState(false)
     const [deleting, setDeleting] = useState<string | null>(null)
     const [keyTouched, setKeyTouched] = useState(false)
+    const { currentTenantId } = useTenant()
 
     const loadRoles = async () => {
+        if (!currentTenantId) return
         setLoading(true)
         const [rolesRes, devicesRes] = await Promise.all([
-            supabase.from('roles').select('*').eq('tenant_id', DEFAULT_TENANT_ID).order('name'),
-            supabase.from('devices').select('role_id').eq('active', true),
+            supabase.from('roles').select('*').eq('tenant_id', currentTenantId).order('name'),
+            supabase.from('devices').select('role_id').eq('active', true).eq('tenant_id', currentTenantId),
         ])
         const counts: Record<string, number> = {}
         for (const d of devicesRes.data || []) {
@@ -43,7 +45,7 @@ export default function RolesPage() {
         setLoading(false)
     }
 
-    useEffect(() => { loadRoles() }, [])
+    useEffect(() => { loadRoles() }, [currentTenantId])
 
     const filtered = roles.filter(r =>
         r.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -91,7 +93,7 @@ export default function RolesPage() {
             } else {
                 const { error } = await supabase.from('roles').insert({
                     name: form.name, key: form.key, description: form.description,
-                    tenant_id: DEFAULT_TENANT_ID
+                    tenant_id: currentTenantId
                 })
                 if (error) throw error
                 toast.success('Role created')

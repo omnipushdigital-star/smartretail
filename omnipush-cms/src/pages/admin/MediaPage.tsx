@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Plus, Search, Upload, Trash2, Image as ImageIcon, Film, Globe, Filter, Loader2, X, Download } from 'lucide-react'
-import { supabase, DEFAULT_TENANT_ID } from '../../lib/supabase'
+import { supabase } from '../../lib/supabase'
 import { MediaAsset } from '../../types'
+import { useTenant } from '../../contexts/TenantContext'
 import Modal from '../../components/ui/Modal'
 import Pagination from '../../components/ui/Pagination'
 import toast from 'react-hot-toast'
@@ -34,15 +35,17 @@ export default function MediaPage() {
     const [deleting, setDeleting] = useState<string | null>(null)
     const [preview, setPreview] = useState<MediaAsset | null>(null)
     const fileInput = useRef<HTMLInputElement>(null)
+    const { currentTenantId } = useTenant()
 
     const loadAssets = async () => {
+        if (!currentTenantId) return
         setLoading(true)
-        const { data } = await supabase.from('media_assets').select('*').order('created_at', { ascending: false })
+        const { data } = await supabase.from('media_assets').select('*').eq('tenant_id', currentTenantId).order('created_at', { ascending: false })
         setAssets(data || [])
         setLoading(false)
     }
 
-    useEffect(() => { loadAssets() }, [])
+    useEffect(() => { loadAssets() }, [currentTenantId])
 
     const filtered = assets.filter(a => {
         const matchSearch = a.name.toLowerCase().includes(search.toLowerCase())
@@ -58,13 +61,13 @@ export default function MediaPage() {
         setUploading(true)
         for (const file of Array.from(files)) {
             const ext = file.name.split('.').pop()
-            const path = `${DEFAULT_TENANT_ID}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
+            const path = `${currentTenantId}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
             const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file)
             if (upErr) { toast.error(`Upload failed: ${upErr.message}`); continue }
             const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path)
             const type = file.type.startsWith('video') ? 'video' : 'image'
             const { error: dbErr } = await supabase.from('media_assets').insert({
-                tenant_id: DEFAULT_TENANT_ID,
+                tenant_id: currentTenantId,
                 name: file.name.replace(/\.[^/.]+$/, ''),
                 type,
                 storage_path: path,
@@ -84,7 +87,7 @@ export default function MediaPage() {
         e.preventDefault()
         if (!urlForm.name || !urlForm.url) { toast.error('Name and URL required'); return }
         const { error } = await supabase.from('media_assets').insert({
-            tenant_id: DEFAULT_TENANT_ID,
+            tenant_id: currentTenantId,
             name: urlForm.name,
             type: 'web_url',
             url: urlForm.url,
