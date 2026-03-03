@@ -75,7 +75,14 @@ function LiveClock() {
     )
 }
 
-// ─── Playback Engine ─────────────────────────────────────────────────────────
+// ─── Styles ──────────────────────────────────────────────────────────────────
+
+// CSS to hide the default video "play/icon" flash in Android WebView
+const globalStyle = `
+  video::-webkit-media-controls { display:none !important; }
+  video::-webkit-media-controls-enclosure { display:none !important; }
+  video::-webkit-media-controls-start-playback-button { display: none !important; -webkit-appearance: none; }
+`;
 
 interface PlaybackProps {
     items: ManifestItem[]
@@ -136,13 +143,35 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
         idxRef.current = nextIdx
 
         const nextSlot: 0 | 1 = activeSlot === 0 ? 1 : 0
+        const currentSlot: 0 | 1 = activeSlot
         const nextUrl = getUrl(sorted[nextIdx])
 
-        // Load next URL into the inactive slot
         const nextVideo = videoRefs[nextSlot].current
+        const currentVideo = videoRefs[currentSlot].current
+
         if (nextVideo) {
+            // Pre-seek slightly and start playing while STILL HIDDEN (opacity 0)
             nextVideo.src = nextUrl
             nextVideo.load()
+            nextVideo.currentTime = 0.1 // Force frame decode
+
+            const onReady = () => {
+                // ONLY SWAP once the next video is actually rendering a frame
+                setSlotOpacity(activeSlot === 0 ? [0, 1] : [1, 0])
+                setActiveSlot(nextSlot)
+
+                // Pause the previous one after it's hidden to save CPU
+                setTimeout(() => {
+                    if (currentVideo && activeSlot !== nextSlot) {
+                        currentVideo.pause()
+                    }
+                }, 500)
+
+                nextVideo.removeEventListener('playing', onReady)
+            }
+
+            nextVideo.addEventListener('playing', onReady)
+            nextVideo.play().catch(() => { })
         }
 
         setSlotUrls(prev => {
@@ -150,15 +179,6 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
             updated[nextSlot] = nextUrl
             return updated
         })
-
-        // Crossfade: fade in next, fade out current
-        setSlotOpacity(activeSlot === 0 ? [0, 1] : [1, 0])
-        setActiveSlot(nextSlot)
-
-        // Play next after a short delay to let the fade start
-        setTimeout(() => {
-            nextVideo?.play().catch(() => { })
-        }, 50)
 
         onAdvance()
     }, [activeSlot, sorted, getUrl, onAdvance])
@@ -172,17 +192,19 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
         objectFit: 'cover',
         background: '#000',
         display: 'block',
-        transition: 'opacity 0.4s ease',
+        transition: 'opacity 0.6s ease-in-out', // Slightly slower/smoother crossfade
     }
 
     return (
         <>
+            <style>{globalStyle}</style>
             <video
                 ref={videoRefs[0]}
                 style={{ ...videoStyle, opacity: slotOpacity[0], zIndex: slotOpacity[0] > 0 ? 2 : 1 }}
                 autoPlay
                 muted
                 playsInline
+                webkit-playsinline="true"
                 preload="auto"
                 onEnded={advanceBuffer}
                 onError={() => setTimeout(advanceBuffer, 2000)}
@@ -192,6 +214,7 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                 style={{ ...videoStyle, opacity: slotOpacity[1], zIndex: slotOpacity[1] > 0 ? 2 : 1 }}
                 muted
                 playsInline
+                webkit-playsinline="true"
                 preload="auto"
                 onEnded={advanceBuffer}
                 onError={() => setTimeout(advanceBuffer, 2000)}
