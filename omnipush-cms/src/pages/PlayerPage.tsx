@@ -233,12 +233,19 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
     const sorted = [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
 
     const advance = useCallback(() => {
+        // Critical: If only 1 item, NEVER advance/refresh (prevents reload flashes)
+        if (sorted.length <= 1) return
+
+        const nextIdx = (idx + 1) % sorted.length
+        // If we are about to switch to the SAME item, skip the fade cycle
+        if (nextIdx === idx) return
+
         setFade(false)
         setTimeout(() => {
-            setIdx(i => (i + 1) % sorted.length)
+            setIdx(nextIdx)
             setFade(true)
         }, 300)
-    }, [sorted.length])
+    }, [idx, sorted.length])
 
     const memoizedAssets = React.useMemo(() => assets, [JSON.stringify(assets)])
 
@@ -251,9 +258,16 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
         const url = asset?.url || item.web_url
         const type = asset?.type || item.type || (item.media_id ? 'video' : 'image')
 
-        if (!url) { advance(); return }
+        if (!url) {
+            if (sorted.length > 1) advance()
+            return
+        }
+
         // Videos are handled by DoubleBufferVideo's own onEnded
         if (type === 'video') return
+
+        // If only 1 item, we don't set a timer to advance
+        if (sorted.length <= 1) return
 
         const dur = (item.duration_seconds ?? (type === 'web_url' ? DEFAULT_WEB_DURATION : DEFAULT_IMAGE_DURATION)) * 1000
         timerRef.current = setTimeout(advance, dur)
@@ -931,7 +945,7 @@ export default function PlayerPage() {
                         Publish a layout via Admin → Publish to start displaying content.
                     </div>
                 </div>
-                <BottomBar device_code={dc} version={version} offline={offline} />
+                {showDiagnostics && <BottomBar device_code={dc} version={version} offline={offline} />}
             </div>
         )
     }
@@ -1007,7 +1021,7 @@ export default function PlayerPage() {
                     </div>
                 </div>
                 <DiagnosticOverlay visible={showDiagnostics} />
-                <BottomBar device_code={dc} version={version} offline={offline} />
+                {showDiagnostics && <BottomBar device_code={dc} version={version} offline={offline} />}
             </div>
         )
     }
@@ -1061,8 +1075,8 @@ export default function PlayerPage() {
                 </div>
             )}
 
-            {/* Bottom bar on top of content */}
-            <BottomBar device_code={dc} version={version} offline={offline} />
+            {/* Bottom bar on top of content - hidden by default unless diagnostics active */}
+            {showDiagnostics && <BottomBar device_code={dc} version={version} offline={offline} />}
         </div>
     )
 }
