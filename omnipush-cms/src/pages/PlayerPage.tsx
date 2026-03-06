@@ -724,51 +724,7 @@ export default function PlayerPage() {
                 origin: window.location.origin
             })
 
-            // ─── CLIENT-SIDE REPAIR ───
-            // If the edge function failed to link some assets (e.g. due to null IDs in query)
-            // we fetch details for those IDs specifically from the public media_assets table.
-            if (data.region_playlists) {
-                const regionPlaylists = data.region_playlists as Record<string, ManifestItem[]>
-                const itemIds = Object.values(regionPlaylists).flatMap(items => items.map(i => i.media_id).filter(id => !!id))
-                const existingIds = new Set((data.assets || []).map((a: ManifestAsset) => a.media_id))
-                const missingIds = Array.from(new Set(itemIds.filter(id => !existingIds.has(id)))) as string[]
-
-                if (missingIds.length > 0) {
-                    console.warn(`[Player] ${missingIds.length} assets missing from manifest - repairing...`)
-                    const { data: repaired, error: rErr } = await supabase
-                        .from('media_assets')
-                        .select('id, type, url, storage_path, checksum_sha256, bytes')
-                        .in('id', missingIds)
-
-                    if (!rErr && repaired) {
-                        const newAssets: ManifestAsset[] = []
-
-                        for (const m of repaired) {
-                            let finalUrl = m.url
-
-                            // If it's a storage path, generate a signed URL on the fly
-                            if (m.storage_path) {
-                                const { data: signed } = await supabase.storage
-                                    .from('signage_media')
-                                    .createSignedUrl(m.storage_path, 3600)
-                                if (signed) finalUrl = signed.signedUrl
-                            }
-
-                            newAssets.push({
-                                media_id: m.id,
-                                type: m.type as any,
-                                url: finalUrl,
-                                checksum_sha256: m.checksum_sha256,
-                                bytes: m.bytes
-                            })
-                        }
-
-                        data.assets = [...(data.assets || []), ...newAssets]
-                        console.log(`[Player] Repair complete. Processed ${newAssets.length} assets (with signing).`)
-                    }
-                }
-            }
-
+            console.log(`[Player] Manifest received. Assets: ${data.assets?.length || 0}`)
             setManifest(data)
             setVersion(data.resolved?.version || null)
             localStorage.setItem(manifestKey(dc), JSON.stringify(data))

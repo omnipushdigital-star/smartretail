@@ -19,7 +19,7 @@ export const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000001'
 
 export async function callEdgeFn(fn: string, body: object): Promise<any> {
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 15000)
+    const timeoutId = setTimeout(() => controller.abort(), 30000)
 
     try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/${fn}`, {
