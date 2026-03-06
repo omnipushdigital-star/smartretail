@@ -144,10 +144,10 @@ export default function StoresPage() {
                                 <tbody>
                                     {paginated.map(s => (
                                         <tr key={s.id}>
-                                            <td><span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#f1f5f9' }}>{s.code}</span></td>
-                                            <td style={{ color: '#f1f5f9', fontWeight: 500 }}>{s.name}</td>
-                                            <td style={{ color: '#94a3b8', fontSize: '0.8125rem' }}>{s.timezone}</td>
-                                            <td style={{ color: '#64748b', fontSize: '0.8125rem' }}>
+                                            <td><span style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--color-text-primary)' }}>{s.code}</span></td>
+                                            <td style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}>{s.name}</td>
+                                            <td style={{ color: 'var(--color-surface-400)', fontSize: '0.8125rem' }}>{s.timezone}</td>
+                                            <td style={{ color: 'var(--color-surface-500)', fontSize: '0.8125rem' }}>
                                                 {s.updated_at ? new Date(s.updated_at).toLocaleDateString() : '—'}
                                             </td>
                                             <td>

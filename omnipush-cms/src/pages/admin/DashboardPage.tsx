@@ -82,9 +82,27 @@ export default function DashboardPage() {
 
                     const hbMap = new Map<string, ProjectHeartbeat>()
                     for (const hb of (hData || [])) {
-                        if (!hbMap.has(hb.device_code)) {
-                            const dev = devices.find(d => d.device_code === hb.device_code || d.id === hb.device_id)
-                            hbMap.set(hb.device_code, { ...hb, device: dev as any })
+                        const code = hb.device_code
+                        if (!hbMap.has(code)) {
+                            const dev = devices.find(d => d.device_code === code || d.id === hb.device_id)
+                            hbMap.set(code, { ...hb, device: dev as any, meta: hb.meta || {} })
+                        } else {
+                            const current = hbMap.get(code)!
+                            const timeDiff = new Date(current.last_seen_at).getTime() - new Date(hb.last_seen_at).getTime()
+
+                            if (timeDiff < 60000) {
+                                // 1. Sticky 'playing' status
+                                if (current.status !== 'playing' && hb.status === 'playing') {
+                                    current.status = 'playing'
+                                }
+
+                                // 2. Merge meta: if current is missing health stats but previous (recent) has them, merge
+                                const curMeta = current.meta as any || {}
+                                const oldMeta = hb.meta as any || {}
+                                if (!curMeta.storage_total_gb && oldMeta.storage_total_gb) {
+                                    current.meta = { ...oldMeta, ...curMeta }
+                                }
+                            }
                         }
                     }
                     latest = Array.from(hbMap.values())
@@ -118,7 +136,7 @@ export default function DashboardPage() {
         <div className="p-6">
             <div className="flex justify-between items-start mb-8">
                 <div>
-                    <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+                    <h1 className="text-2xl font-bold flex items-center gap-2">
                         <Monitor className="text-brand-500" size={28} />
                         Network Dashboard
                     </h1>
@@ -182,14 +200,14 @@ export default function DashboardPage() {
                 {/* Live Screens List */}
                 <div className="lg:col-span-2 card-glass border border-white/5 rounded-2xl overflow-hidden bg-surface-900/50">
                     <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/5">
-                        <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                        <h3 className="text-lg font-semibold flex items-center gap-2">
                             <Wifi size={20} className="text-brand-400" />
                             Live Network Status
                         </h3>
                         <div className="flex gap-2">
-                            <button className="text-[10px] font-bold uppercase tracking-widest text-white px-3 py-1 bg-white/10 rounded">All</button>
-                            <button className="text-[10px] font-bold uppercase tracking-widest text-surface-500 px-3 py-1 hover:text-white transition-colors">Online</button>
-                            <button className="text-[10px] font-bold uppercase tracking-widest text-surface-500 px-3 py-1 hover:text-white transition-colors">Issues</button>
+                            <button className="text-[10px] font-bold uppercase tracking-widest text-white px-3 py-1 bg-brand-500 rounded">All</button>
+                            <button className="text-[10px] font-bold uppercase tracking-widest text-surface-400 px-3 py-1 hover:text-brand-400 transition-colors">Online</button>
+                            <button className="text-[10px] font-bold uppercase tracking-widest text-surface-400 px-3 py-1 hover:text-brand-400 transition-colors">Issues</button>
                         </div>
                     </div>
 
@@ -197,13 +215,13 @@ export default function DashboardPage() {
                         {heartbeats.map(hb => {
                             const online = isOnline(hb.last_seen_at)
                             return (
-                                <div key={hb.id} className="flex items-center justify-between p-4 bg-white/5 hover:bg-white/[0.08] border border-white/5 rounded-xl transition-all group">
+                                <div key={hb.id} className="flex items-center justify-between p-4 bg-surface-800/20 hover:bg-surface-800/40 border border-surface-700/30 rounded-xl transition-all group">
                                     <div className="flex items-center gap-4">
-                                        <div className={`w-12 h-12 rounded-lg flex items-center justify-center border ${online ? 'bg-green-500/10 border-green-500/20 text-green-400' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
+                                        <div className={`w-12 h-12 rounded-lg flex items-center justify-center border ${online ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
                                             <Monitor size={20} />
                                         </div>
                                         <div>
-                                            <div className="text-sm font-semibold text-white">{hb.device_code}</div>
+                                            <div className="text-sm font-semibold">{hb.device_code}</div>
                                             <div className="text-xs text-surface-500 flex items-center gap-2">
                                                 <span className={`w-2 h-2 rounded-full ${online ? 'bg-green-500' : 'bg-red-500'}`} />
                                                 {hb.device?.store?.name || hb.device?.display_name || 'Main Office'} · {hb.status || 'Active'}
@@ -227,7 +245,7 @@ export default function DashboardPage() {
                 {/* Quick Actions & High-level Alerts */}
                 <div className="space-y-6">
                     <div className="card-glass border border-white/5 rounded-2xl p-6 bg-surface-900/50">
-                        <h3 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
+                        <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
                             <Zap size={20} className="text-yellow-500" />
                             Quick Actions
                         </h3>
@@ -241,7 +259,7 @@ export default function DashboardPage() {
 
                     <div className="card-glass border border-white/5 rounded-2xl p-6 bg-surface-900/50">
                         <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                            <h3 className="text-lg font-semibold flex items-center gap-2">
                                 <AlertTriangle size={20} className="text-red-500" />
                                 Alerts
                             </h3>
@@ -250,10 +268,10 @@ export default function DashboardPage() {
                         {alerts.length > 0 ? (
                             <div className="space-y-4">
                                 {alerts.slice(0, 2).map((a, i) => (
-                                    <div key={i} className="p-3 bg-red-500/5 border border-red-500/10 rounded-xl flex gap-3">
+                                    <div key={i} className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex gap-3">
                                         <AlertTriangle size={16} className="text-red-500 shrink-0 mt-0.5" />
                                         <div>
-                                            <div className="text-xs font-bold text-white mb-1">{a.device_code} Offline</div>
+                                            <div className="text-xs font-bold text-red-500 mb-1">{a.device_code} Offline</div>
                                             <div className="text-[10px] text-surface-500">Last seen {formatDistanceToNow(new Date(a.last_seen_at), { addSuffix: true })}</div>
                                         </div>
                                     </div>
@@ -290,7 +308,7 @@ function MetricTile({ title, value, trend, icon, color, to }: any) {
                 <TrendingUp size={16} className="opacity-40" />
             </div>
             <div>
-                <div className="text-2xl font-bold text-white mb-1">{value}</div>
+                <div className="text-2xl font-bold mb-1">{value}</div>
                 <div className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-2">{title}</div>
                 <div className="text-[10px] font-semibold flex items-center gap-1 opacity-80">
                     <ArrowUpRight size={10} /> {trend}
@@ -305,7 +323,7 @@ function ActionTile({ title, sub, icon, onClick }: any) {
         <button onClick={onClick} className="flex flex-col items-center justify-center p-4 bg-white/5 hover:bg-white/[0.08] border border-white/5 rounded-xl transition-all gap-2 group">
             <div className="p-2 bg-white/5 rounded-lg group-hover:scale-110 transition-transform">{icon}</div>
             <div className="text-center">
-                <div className="text-[11px] font-bold text-white leading-tight">{title}</div>
+                <div className="text-[11px] font-bold leading-tight">{title}</div>
                 <div className="text-[9px] text-surface-500 leading-tight mt-0.5">{sub}</div>
             </div>
         </button>

@@ -170,12 +170,12 @@ export default function RolesPage() {
                                     {paginated.map(r => (
                                         <tr key={r.id}>
                                             <td>
-                                                <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '0.8125rem', color: '#7a8aff', background: 'rgba(90,100,246,0.1)', padding: '2px 8px', borderRadius: 4 }}>
+                                                <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '0.8125rem', color: 'var(--color-primary-400)', background: 'var(--color-primary-soft)', padding: '2px 8px', borderRadius: 4 }}>
                                                     {r.key || '—'}
                                                 </span>
                                             </td>
-                                            <td style={{ color: '#f1f5f9', fontWeight: 500 }}>{r.name}</td>
-                                            <td style={{ color: '#94a3b8', fontSize: '0.8125rem' }}>{r.description || '—'}</td>
+                                            <td style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}>{r.name}</td>
+                                            <td style={{ color: 'var(--color-text-secondary)', fontSize: '0.8125rem' }}>{r.description || '—'}</td>
                                             <td>
                                                 <span className="badge badge-blue">{deviceCounts[r.id] || 0} devices</span>
                                             </td>

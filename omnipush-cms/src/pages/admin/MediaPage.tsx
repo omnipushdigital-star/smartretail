@@ -175,8 +175,8 @@ export default function MediaPage() {
                                     </div>
                                 </div>
                                 <div style={{ padding: '0.75rem' }}>
-                                    <div style={{ fontWeight: 500, fontSize: '0.875rem', color: '#f1f5f9', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.name}</div>
-                                    <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem', display: 'flex', justifyContent: 'space-between' }}>
+                                    <div style={{ fontWeight: 500, fontSize: '0.875rem', color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.name}</div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--color-surface-500)', marginTop: '0.25rem', display: 'flex', justifyContent: 'space-between' }}>
                                         <span>{formatBytes(a.bytes)}</span>
                                         <button
                                             onClick={(e) => { e.stopPropagation(); handleDelete(a) }}
@@ -238,11 +238,11 @@ export default function MediaPage() {
                         <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
                             <div style={{ textAlign: 'left' }}>
                                 <div className="label" style={{ marginBottom: '0.25rem' }}>Type</div>
-                                <div style={{ color: '#f1f5f9' }}>{preview.type}</div>
+                                <div style={{ color: 'var(--color-text-primary)' }}>{preview.type}</div>
                             </div>
                             <div style={{ textAlign: 'left' }}>
                                 <div className="label" style={{ marginBottom: '0.25rem' }}>Size</div>
-                                <div style={{ color: '#f1f5f9' }}>{formatBytes(preview.bytes)}</div>
+                                <div style={{ color: 'var(--color-text-primary)' }}>{formatBytes(preview.bytes)}</div>
                             </div>
                             {preview.checksum_sha256 && (
                                 <div style={{ textAlign: 'left' }}>

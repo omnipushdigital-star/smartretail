@@ -26,6 +26,30 @@ interface MenuCategory {
     isOpen: boolean
 }
 
+const CURRENCIES = [
+    { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
+    { code: 'USD', symbol: '$', name: 'US Dollar' },
+    { code: 'EUR', symbol: '€', name: 'Euro' },
+    { code: 'GBP', symbol: '£', name: 'British Pound' },
+    { code: 'AED', symbol: 'د.إ', name: 'UAE Dirham' },
+    { code: 'SAR', symbol: '﷼', name: 'Saudi Riyal' },
+    { code: 'OMR', symbol: 'ر.ع.', name: 'Omani Rial' },
+    { code: 'KWD', symbol: 'د.ك', name: 'Kuwaiti Dinar' },
+    { code: 'QAR', symbol: 'ر.ق', name: 'Qatari Riyal' },
+    { code: 'PKR', symbol: '₨', name: 'Pakistani Rupee' },
+    { code: 'BDT', symbol: '৳', name: 'Bangladeshi Taka' },
+    { code: 'EGP', symbol: 'E£', name: 'Egyptian Pound' },
+    { code: 'CAD', symbol: 'C$', name: 'Canadian Dollar' },
+    { code: 'AUD', symbol: 'A$', name: 'Australian Dollar' },
+    { code: 'SGD', symbol: 'S$', name: 'Singapore Dollar' },
+    { code: 'JPY', symbol: '¥', name: 'Japanese Yen' },
+    { code: 'ZAR', symbol: 'R', name: 'South African Rand' },
+    { code: 'NZD', symbol: 'NZ$', name: 'New Zealand Dollar' },
+    { code: 'IDR', symbol: 'Rp', name: 'Indonesian Rupiah' },
+    { code: 'MYR', symbol: 'RM', name: 'Malaysian Ringgit' },
+    { code: 'THB', symbol: '฿', name: 'Thai Baht' },
+];
+
 export default function MenuBuilderPage() {
     const navigate = useNavigate()
     const { currentTenantId } = useTenant()
@@ -39,8 +63,11 @@ export default function MenuBuilderPage() {
         logoPlacement: 'center' as 'left' | 'center' | 'right',
         showPromo: false,
         promoPosition: 'right' as 'left' | 'right',
-        theme: 'dark' as 'dark' | 'glass' | 'elegant'
+        theme: 'dark' as 'dark' | 'glass' | 'elegant',
+        currency: CURRENCIES[0]
     })
+    const [currencySearch, setCurrencySearch] = useState('')
+    const [isCurrencyListOpen, setIsCurrencyListOpen] = useState(false)
     const [tenant, setTenant] = useState<TenantBranding | null>(null)
     const [loading, setLoading] = useState(false)
     const [showMenuList, setShowMenuList] = useState(false)
@@ -74,6 +101,10 @@ export default function MenuBuilderPage() {
     const addCategory = () => {
         const id = Math.random().toString(36).substr(2, 9)
         setCategories([...categories, { id, name: 'New Category', items: [], isOpen: true }])
+    }
+
+    const updateCategoryName = (id: string, name: string) => {
+        setCategories(categories.map(c => c.id === id ? { ...c, name } : c))
     }
 
     const addItem = (catId: string) => {
@@ -121,7 +152,8 @@ export default function MenuBuilderPage() {
                     aspect_ratio: aspectRatio,
                     logo_placement: layoutConfig.logoPlacement,
                     show_promo: layoutConfig.showPromo,
-                    promo_position: layoutConfig.promoPosition
+                    promo_position: layoutConfig.promoPosition,
+                    currency: layoutConfig.currency
                 }
             }
 
@@ -216,7 +248,8 @@ export default function MenuBuilderPage() {
                 logoPlacement: menu.config.logo_placement || 'center',
                 showPromo: menu.config.show_promo || false,
                 promoPosition: menu.config.promo_position || 'right',
-                theme: menu.config.theme || 'dark'
+                theme: menu.config.theme || 'dark',
+                currency: menu.config.currency || CURRENCIES[0]
             })
             setAspectRatio(menu.config.aspect_ratio || '16:9')
 
@@ -310,10 +343,16 @@ export default function MenuBuilderPage() {
                                             onClick={() => setCategories(categories.map(c => c.id === cat.id ? { ...c, isOpen: !c.isOpen } : c))}
                                             className="p-4 flex items-center justify-between cursor-pointer hover:bg-white/5 transition-colors"
                                         >
-                                            <div className="flex items-center gap-3">
+                                            <div className="flex items-center gap-3 flex-1 mr-4">
                                                 {cat.isOpen ? <ChevronDown size={18} className="text-surface-500" /> : <ChevronRight size={18} className="text-surface-500" />}
-                                                <span className="font-semibold text-white">{cat.name}</span>
-                                                <span className="text-xs text-surface-500 bg-white/5 px-2 py-0.5 rounded-full">{cat.items.length} items</span>
+                                                <input
+                                                    className="bg-transparent border-none focus:ring-0 font-semibold text-white p-0 w-full placeholder:text-surface-600"
+                                                    value={cat.name}
+                                                    onChange={e => updateCategoryName(cat.id, e.target.value)}
+                                                    onClick={e => e.stopPropagation()}
+                                                    placeholder="Category Name"
+                                                />
+                                                <span className="text-xs text-surface-500 bg-white/5 px-2 py-0.5 rounded-full whitespace-nowrap">{cat.items.length} items</span>
                                             </div>
                                             <button onClick={(e) => { e.stopPropagation(); setCategories(categories.filter(c => c.id !== cat.id)) }} className="text-surface-600 hover:text-red-400 p-1">
                                                 <Trash2 size={16} />
@@ -330,7 +369,7 @@ export default function MenuBuilderPage() {
                                                             onChange={e => updateItem(cat.id, item.id, 'name', e.target.value)}
                                                         />
                                                         <div className="relative w-24">
-                                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-500 text-xs">₹</span>
+                                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-500 text-xs">{layoutConfig.currency.symbol}</span>
                                                             <input
                                                                 className="input-field bg-surface-950/50 border-white/5 pl-8 text-right"
                                                                 value={item.price}
@@ -451,6 +490,64 @@ export default function MenuBuilderPage() {
                                     ))}
                                 </div>
                             </div>
+
+                            <div>
+                                <label className="label">Store Currency</label>
+                                <div className="relative">
+                                    <div
+                                        onClick={() => setIsCurrencyListOpen(!isCurrencyListOpen)}
+                                        className="input-field bg-surface-950/50 border-white/5 flex items-center justify-between cursor-pointer group hover:border-brand-500/30 transition-all"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-xl font-black text-brand-500 w-8">{layoutConfig.currency.symbol}</span>
+                                            <div>
+                                                <div className="text-sm font-bold text-white">{layoutConfig.currency.code}</div>
+                                                <div className="text-[10px] text-surface-500 uppercase tracking-tighter">{layoutConfig.currency.name}</div>
+                                            </div>
+                                        </div>
+                                        <ChevronDown size={18} className={`text-surface-500 transition-transform ${isCurrencyListOpen ? 'rotate-180' : ''}`} />
+                                    </div>
+
+                                    {isCurrencyListOpen && (
+                                        <div className="absolute z-50 left-0 right-0 mt-2 bg-surface-900 border border-white/10 rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+                                            <div className="p-3 border-b border-white/5">
+                                                <input
+                                                    className="w-full bg-surface-950 border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-brand-500/50 transition-all"
+                                                    placeholder="Search currency (e.g. USD, Rupee)"
+                                                    value={currencySearch}
+                                                    onChange={e => setCurrencySearch(e.target.value)}
+                                                    autoFocus
+                                                />
+                                            </div>
+                                            <div className="max-h-60 overflow-y-auto p-1 scrollbar-thin scrollbar-thumb-white/10">
+                                                {CURRENCIES.filter(c =>
+                                                    c.code.toLowerCase().includes(currencySearch.toLowerCase()) ||
+                                                    c.name.toLowerCase().includes(currencySearch.toLowerCase())
+                                                ).map(curr => (
+                                                    <button
+                                                        key={curr.code}
+                                                        onClick={() => {
+                                                            setLayoutConfig(l => ({ ...l, currency: curr }));
+                                                            setIsCurrencyListOpen(false);
+                                                            setCurrencySearch('');
+                                                        }}
+                                                        className={`w-full flex items-center justify-between p-3 rounded-lg hover:bg-white/5 transition-all ${layoutConfig.currency.code === curr.code ? 'bg-brand-600/10 border-brand-500/20' : ''}`}
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="text-lg font-black text-brand-500 w-8 text-center">{curr.symbol}</span>
+                                                            <div className="text-left">
+                                                                <div className="text-sm font-bold text-white">{curr.code}</div>
+                                                                <div className="text-[10px] text-surface-500 uppercase">{curr.name}</div>
+                                                            </div>
+                                                        </div>
+                                                        {layoutConfig.currency.code === curr.code && <div className="w-1.5 h-1.5 bg-brand-500 rounded-full shadow-[0_0_8px_rgba(239,68,68,0.5)]" />}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -481,116 +578,146 @@ export default function MenuBuilderPage() {
 
                         {/* Screen Canvas */}
                         <div className="flex justify-center items-center h-[500px] bg-black/40 rounded-3xl border border-white/5 overflow-hidden pattern-dots">
-                            <div
-                                className={`bg-gradient-to-br from-[#120a05] to-[#0a0502] shadow-2xl transition-all duration-500 overflow-hidden relative border-4 border-[#1e1e1e] rounded-lg`}
-                                style={{
-                                    width: aspectRatio === '16:9' ? '90%' : '280px',
-                                    aspectRatio: aspectRatio === '16:9' ? '16/9' : '9/16',
-                                }}
-                            >
-                                {/* Menu Content */}
-                                <div className={`h-full flex ${layoutConfig.showPromo ? (layoutConfig.promoPosition === 'left' ? 'flex-row' : 'flex-row-reverse') : 'flex-col'}`}>
-                                    {/* Menu Area */}
+                            {(() => {
+                                const themeStyles = {
+                                    dark: {
+                                        bg: 'bg-gradient-to-br from-[#120a05] to-[#0a0502]',
+                                        text: 'text-[#f3e5db]',
+                                        categoryText: 'text-orange-200',
+                                        accent: 'text-orange-500',
+                                        dot: 'bg-orange-500'
+                                    },
+                                    glass: {
+                                        bg: 'bg-gradient-to-br from-[#ffffff] to-[#f1f5f9]',
+                                        text: 'text-slate-900',
+                                        categoryText: 'text-brand-600',
+                                        accent: 'text-brand-600',
+                                        dot: 'bg-brand-500'
+                                    },
+                                    elegant: {
+                                        bg: 'bg-gradient-to-tr from-[#1a1c2e] to-[#2e1a1a]',
+                                        text: 'text-[#fdfcfb]',
+                                        categoryText: 'text-amber-200',
+                                        accent: 'text-amber-500',
+                                        dot: 'bg-amber-500'
+                                    }
+                                };
+                                const style = themeStyles[layoutConfig.theme as keyof typeof themeStyles] || themeStyles.dark;
+
+                                return (
                                     <div
-                                        className={`${aspectRatio === '16:9' ? 'p-4' : 'p-8'} h-full flex flex-col text-[#f3e5db] overflow-hidden`}
-                                        style={{ width: layoutConfig.showPromo ? '70%' : '100%' }}
+                                        className={`${style.bg} shadow-2xl transition-all duration-500 overflow-hidden relative border-4 border-[#1e1e1e] rounded-lg`}
+                                        style={{
+                                            width: aspectRatio === '16:9' ? '90%' : '280px',
+                                            aspectRatio: aspectRatio === '16:9' ? '16/9' : '9/16',
+                                        }}
                                     >
-                                        <div className={`mb-4 ${aspectRatio === '16:9' ? 'flex items-center gap-6' : 'flex flex-col'} ${layoutConfig.logoPlacement === 'center' ? 'justify-center text-center items-center' : layoutConfig.logoPlacement === 'left' ? 'justify-start text-left items-start' : 'justify-end text-right items-end'}`}>
-                                            {tenant?.logo_url ? (
-                                                <div className={`flex ${aspectRatio === '16:9' ? 'mb-0' : 'mb-3'}`}>
-                                                    <div className="bg-white p-1.5 rounded-xl shadow-lg border border-white/10">
-                                                        <img
-                                                            src={tenant.logo_url}
-                                                            alt={tenant.name}
-                                                            className={`${aspectRatio === '16:9' ? 'h-8' : 'h-10'} w-auto object-contain`}
-                                                        />
+                                        {/* Menu Content */}
+                                        <div className={`h-full flex ${layoutConfig.showPromo ? (layoutConfig.promoPosition === 'left' ? 'flex-row' : 'flex-row-reverse') : 'flex-col'}`}>
+                                            {/* Menu Area */}
+                                            <div
+                                                className={`${aspectRatio === '16:9' ? 'p-4' : 'p-8'} h-full flex flex-col ${style.text} overflow-hidden`}
+                                                style={{ width: layoutConfig.showPromo ? '70%' : '100%' }}
+                                            >
+                                                <div className={`mb-4 ${aspectRatio === '16:9' ? 'flex items-center gap-6' : 'flex flex-col'} ${layoutConfig.logoPlacement === 'center' ? 'justify-center text-center items-center' : layoutConfig.logoPlacement === 'left' ? 'justify-start text-left items-start' : 'justify-end text-right items-end'}`}>
+                                                    {tenant?.logo_url ? (
+                                                        <div className={`flex ${aspectRatio === '16:9' ? 'mb-0' : 'mb-3'}`}>
+                                                            <div className="bg-white p-1.5 rounded-xl shadow-lg border border-white/10">
+                                                                <img
+                                                                    src={tenant.logo_url}
+                                                                    alt={tenant.name}
+                                                                    className={`${aspectRatio === '16:9' ? 'h-8' : 'h-10'} w-auto object-contain`}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className={`flex ${aspectRatio === '16:9' ? 'mb-0' : 'mb-3'}`}>
+                                                            <div className="w-8 h-8 bg-orange-500/20 rounded-xl flex items-center justify-center border border-orange-500/30">
+                                                                <ImageIcon size={18} className="text-orange-500" />
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    <div className={`flex flex-col ${aspectRatio === '16:9' ? 'text-left' : ''} ${layoutConfig.logoPlacement === 'center' && aspectRatio !== '16:9' ? 'items-center' : layoutConfig.logoPlacement === 'right' && aspectRatio !== '16:9' ? 'items-end' : 'items-start'}`}>
+                                                        <h2 className={`font-display ${aspectRatio === '16:9' ? 'text-lg' : 'text-xl'} font-black tracking-[0.15em] uppercase mb-0.5`} style={{ color: tenant?.primary_color || '#f97316' }}>
+                                                            {tenant?.name || 'OmniPush Digital'}
+                                                        </h2>
+                                                        <div className={`h-0.5 w-10 ${aspectRatio === '16:9' ? 'mb-1' : 'mb-3'} ${layoutConfig.logoPlacement === 'center' && aspectRatio !== '16:9' ? 'mx-auto' : layoutConfig.logoPlacement === 'left' || aspectRatio === '16:9' ? 'mr-auto' : 'ml-auto'}`} style={{ background: tenant?.primary_color || '#ea580c' }} />
+                                                        <p className="text-[8px] text-surface-400 uppercase tracking-[0.3em] font-bold">
+                                                            {menuName.split(' — ')[0]}
+                                                        </p>
                                                     </div>
                                                 </div>
-                                            ) : (
-                                                <div className={`flex ${aspectRatio === '16:9' ? 'mb-0' : 'mb-3'}`}>
-                                                    <div className="w-8 h-8 bg-orange-500/20 rounded-xl flex items-center justify-center border border-orange-500/30">
-                                                        <ImageIcon size={18} className="text-orange-500" />
+
+                                                <div className="grid gap-x-6 gap-y-4 flex-1 content-start overflow-y-auto scrollbar-hide"
+                                                    style={{ gridTemplateColumns: `repeat(${layoutConfig.columns}, 1fr)` }}
+                                                >
+                                                    {categories.map(cat => (
+                                                        <div key={cat.id} className="space-y-2">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className={`w-1 h-1 ${style.dot} rounded-full`} />
+                                                                <h4 className={`text-[9px] font-bold uppercase tracking-widest ${style.categoryText} truncate`}>{cat.name}</h4>
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                {cat.items.map(item => (
+                                                                    <div key={item.id} className="flex justify-between items-baseline group">
+                                                                        <div className="overflow-hidden">
+                                                                            <div className="text-[10px] font-semibold truncate">{item.name}</div>
+                                                                            {item.description && <div className="text-[7px] text-surface-500 mt-0.5 truncate">{item.description}</div>}
+                                                                        </div>
+                                                                        <div className="flex-1 mx-2 border-b border-white/10 border-dotted translate-y-[-4px]" />
+                                                                        <div className={`text-[10px] font-bold ${style.accent}`}>
+                                                                            <span className="text-[8px] mr-1">{layoutConfig.currency.symbol}</span>{item.price}
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+
+                                                <div className="mt-8 text-center">
+                                                    <p className="text-[7px] text-surface-600 uppercase tracking-widest">Tax included · Ask staff for allergen info</p>
+                                                </div>
+                                            </div>
+
+                                            {/* Promo Area */}
+                                            {layoutConfig.showPromo && (
+                                                <div
+                                                    className="h-full bg-surface-950/80 border-l border-white/5 relative flex flex-col items-center justify-center p-4"
+                                                    style={{ width: '30%' }}
+                                                >
+                                                    <div className="absolute inset-0 opacity-20 overflow-hidden">
+                                                        <div className="absolute inset-0 bg-gradient-to-b from-brand-600/20 to-transparent" />
+                                                        <div className="grid grid-cols-4 gap-2 h-full p-4 grayscale opacity-30">
+                                                            {Array(12).fill(0).map((_, i) => (
+                                                                <div key={i} className="aspect-square bg-white/10 rounded" />
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="relative z-10 text-center">
+                                                        <div className="w-12 h-12 bg-brand-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-brand-500/30 animate-pulse">
+                                                            <Monitor size={24} className="text-brand-400" />
+                                                        </div>
+                                                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-white mb-2">PROMO ZONE</div>
+                                                        <div className="text-[8px] text-surface-400 leading-relaxed max-w-[120px]">
+                                                            Drag and drop media here or assign a dynamic video playlist
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="absolute bottom-4 left-4 right-4 h-1 bg-white/5 rounded-full overflow-hidden">
+                                                        <div className="h-full bg-brand-500 w-1/3 animate-[progress_2s_ease-in-out_infinite]" />
                                                     </div>
                                                 </div>
                                             )}
-
-                                            <div className={`flex flex-col ${aspectRatio === '16:9' ? 'text-left' : ''} ${layoutConfig.logoPlacement === 'center' && aspectRatio !== '16:9' ? 'items-center' : layoutConfig.logoPlacement === 'right' && aspectRatio !== '16:9' ? 'items-end' : 'items-start'}`}>
-                                                <h2 className={`font-display ${aspectRatio === '16:9' ? 'text-lg' : 'text-xl'} font-black tracking-[0.15em] uppercase mb-0.5`} style={{ color: tenant?.primary_color || '#f97316' }}>
-                                                    {tenant?.name || 'OmniPush Digital'}
-                                                </h2>
-                                                <div className={`h-0.5 w-10 ${aspectRatio === '16:9' ? 'mb-1' : 'mb-3'} ${layoutConfig.logoPlacement === 'center' && aspectRatio !== '16:9' ? 'mx-auto' : layoutConfig.logoPlacement === 'left' || aspectRatio === '16:9' ? 'mr-auto' : 'ml-auto'}`} style={{ background: tenant?.primary_color || '#ea580c' }} />
-                                                <p className="text-[8px] text-surface-400 uppercase tracking-[0.3em] font-bold">
-                                                    {menuName.split(' — ')[0]}
-                                                </p>
-                                            </div>
                                         </div>
 
-                                        <div
-                                            className="grid gap-x-6 gap-y-4 flex-1 content-start overflow-y-auto scrollbar-hide"
-                                            style={{ gridTemplateColumns: `repeat(${layoutConfig.columns}, 1fr)` }}
-                                        >
-                                            {categories.map(cat => (
-                                                <div key={cat.id} className="space-y-2">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-1 h-1 bg-orange-500 rounded-full" />
-                                                        <h4 className="text-[9px] font-bold uppercase tracking-widest text-orange-200 truncate">{cat.name}</h4>
-                                                    </div>
-                                                    <div className="space-y-2">
-                                                        {cat.items.map(item => (
-                                                            <div key={item.id} className="flex justify-between items-baseline group">
-                                                                <div className="overflow-hidden">
-                                                                    <div className="text-[10px] font-semibold text-[#f3e5db] truncate">{item.name}</div>
-                                                                    {item.description && <div className="text-[7px] text-surface-500 mt-0.5 truncate">{item.description}</div>}
-                                                                </div>
-                                                                <div className="flex-1 mx-2 border-b border-white/10 border-dotted translate-y-[-4px]" />
-                                                                <div className="text-[10px] font-bold text-orange-500">₹{item.price}</div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-
-                                        <div className="mt-8 text-center">
-                                            <p className="text-[7px] text-surface-600 uppercase tracking-widest">Tax included · Ask staff for allergen info</p>
-                                        </div>
+                                        {/* Gloss effect */}
+                                        <div className="absolute inset-0 bg-gradient-to-tr from-white/5 to-transparent pointer-events-none" />
                                     </div>
-
-                                    {/* Promo Area */}
-                                    {layoutConfig.showPromo && (
-                                        <div
-                                            className="h-full bg-surface-950/80 border-l border-white/5 relative flex flex-col items-center justify-center p-4"
-                                            style={{ width: '30%' }}
-                                        >
-                                            <div className="absolute inset-0 opacity-20 overflow-hidden">
-                                                <div className="absolute inset-0 bg-gradient-to-b from-brand-600/20 to-transparent" />
-                                                <div className="grid grid-cols-4 gap-2 h-full p-4 grayscale opacity-30">
-                                                    {Array(12).fill(0).map((_, i) => (
-                                                        <div key={i} className="aspect-square bg-white/10 rounded" />
-                                                    ))}
-                                                </div>
-                                            </div>
-
-                                            <div className="relative z-10 text-center">
-                                                <div className="w-12 h-12 bg-brand-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-brand-500/30 animate-pulse">
-                                                    <Monitor size={24} className="text-brand-400" />
-                                                </div>
-                                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-white mb-2">PROMO ZONE</div>
-                                                <div className="text-[8px] text-surface-400 leading-relaxed max-w-[120px]">
-                                                    Drag and drop media here or assign a dynamic video playlist
-                                                </div>
-                                            </div>
-
-                                            <div className="absolute bottom-4 left-4 right-4 h-1 bg-white/5 rounded-full overflow-hidden">
-                                                <div className="h-full bg-brand-500 w-1/3 animate-[progress_2s_ease-in-out_infinite]" />
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Gloss effect */}
-                                <div className="absolute inset-0 bg-gradient-to-tr from-white/5 to-transparent pointer-events-none" />
-                            </div>
+                                );
+                            })()}
                         </div>
 
                         <div className="grid grid-cols-2 gap-4 mt-6">

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { Plus, Search, Edit2, Trash2, Monitor, Copy, Check, Loader2, RefreshCw, Info, Eye, EyeOff, QrCode, Download, Tv2 } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, Monitor, Copy, Check, Loader2, RefreshCw, Info, Eye, EyeOff, QrCode, Download, Tv2, RotateCcw } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { supabase, callEdgeFn } from '../../lib/supabase'
 import { useTenant } from '../../contexts/TenantContext'
@@ -39,6 +39,7 @@ function generateSecret() {
 }
 
 const emptyForm = {
+    device_code: '',
     display_name: '', store_id: '', role_id: '',
     orientation: 'landscape' as 'landscape' | 'portrait',
     resolution: '1920x1080', active: true
@@ -94,9 +95,31 @@ export default function DevicesPage() {
             .order('last_seen_at', { ascending: false })
 
         const hbMap: Record<string, DeviceHeartbeat> = {}
-        // Only keep the most recent heartbeat for each device_code in the map
-        for (const hb of hbData || []) {
-            if (!hbMap[hb.device_code]) hbMap[hb.device_code] = hb
+        // Only keep the most recent heartbeat for each device_code, preferring 'playing'
+        if (hbData) {
+            for (const hb of hbData) {
+                const code = hb.device_code
+                if (!hbMap[code]) {
+                    hbMap[code] = { ...hb, meta: hb.meta || {} }
+                } else {
+                    const current = hbMap[code]
+                    const timeDiff = new Date(current.last_seen_at).getTime() - new Date(hb.last_seen_at).getTime()
+
+                    if (timeDiff < 60000) {
+                        // 1. Sticky 'playing' status
+                        if (current.status !== 'playing' && hb.status === 'playing') {
+                            current.status = 'playing'
+                        }
+
+                        // 2. Merge meta: if current is missing health stats but previous (recent) has them, merge
+                        const curMeta = current.meta as any || {}
+                        const oldMeta = hb.meta as any || {}
+                        if (!curMeta.storage_total_gb && oldMeta.storage_total_gb) {
+                            current.meta = { ...oldMeta, ...curMeta }
+                        }
+                    }
+                }
+            }
         }
         setHeartbeats(hbMap)
     }, [currentTenantId])
@@ -121,10 +144,19 @@ export default function DevicesPage() {
         try {
             const res = await callEdgeFn('device-pairing', { action: 'CLAIM', pairing_pin: claimPin })
             if (res.error) throw new Error(res.error)
-            toast.success(`Device "${res.device.display_name}" paired successfully!`)
+
+            toast.success(`Device "${res.device.display_name}" paired!`)
             setShowClaimModal(false)
             setClaimPin('')
-            fetchDevices()
+
+            // Immediately open edit modal for the new device so user can assign store/role
+            await loadData()
+            openEdit(res.device)
+
+            toast('Please assign a Store and Role to start displaying content.', {
+                icon: '📺',
+                duration: 5000
+            })
         } catch (err: any) {
             toast.error(err.message || 'Invalid or expired PIN')
         } finally {
@@ -146,6 +178,7 @@ export default function DevicesPage() {
     const openEdit = (d: Device) => {
         setEditing(d)
         setForm({
+            device_code: d.device_code,
             display_name: d.display_name || '',
             store_id: d.store_id || '', role_id: d.role_id || '',
             orientation: d.orientation, resolution: d.resolution, active: d.active
@@ -159,6 +192,7 @@ export default function DevicesPage() {
         try {
             if (editing) {
                 const { error } = await supabase.from('devices').update({
+                    device_code: form.device_code,
                     display_name: form.display_name || null,
                     store_id: form.store_id || null, role_id: form.role_id || null,
                     orientation: form.orientation, resolution: form.resolution,
@@ -189,8 +223,8 @@ export default function DevicesPage() {
                 loadData()
             }
         } catch (err: any) {
-            if (err.message?.includes('devices_tenant_device_code_ux')) {
-                toast.error('Device code already exists — please try again')
+            if (err.message?.includes('unique_device_code')) {
+                toast.error('This device code is already in use by another screen.')
             } else {
                 toast.error(err.message || 'Failed to save')
             }
@@ -212,6 +246,21 @@ export default function DevicesPage() {
         if (id) setCopiedId(id)
         toast.success(`${label} copied`)
         setTimeout(() => setCopiedId(null), 2000)
+    }
+
+    const handleReboot = async (deviceId: string, deviceCode: string) => {
+        if (!confirm(`Send reboot command to device ${deviceCode}?`)) return
+        try {
+            const { error } = await supabase.from('device_commands').insert({
+                device_id: deviceId,
+                command: 'REBOOT',
+                status: 'PENDING'
+            })
+            if (error) throw error
+            toast.success(`Reboot command queued for ${deviceCode}`)
+        } catch (err: any) {
+            toast.error(`Failed to queue reboot: ${err.message}`)
+        }
     }
 
     return (
@@ -290,22 +339,22 @@ export default function DevicesPage() {
                                         const online = isOnline(hb?.last_seen_at)
                                         return (
                                             <tr key={d.id}>
-                                                <td><span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.875rem', color: '#f1f5f9', letterSpacing: '0.05em' }}>{d.device_code}</span></td>
-                                                <td style={{ color: '#cbd5e1' }}>{d.display_name || '—'}</td>
-                                                <td style={{ color: '#94a3b8', fontSize: '0.8125rem' }}>{(d as any).store?.name || '—'}</td>
+                                                <td><span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-text-primary)', letterSpacing: '0.05em' }}>{d.device_code}</span></td>
+                                                <td style={{ color: 'var(--color-text-primary)' }}>{d.display_name || '—'}</td>
+                                                <td style={{ color: 'var(--color-surface-400)', fontSize: '0.8125rem' }}>{(d as any).store?.name || '—'}</td>
                                                 <td>
                                                     {(d as any).role?.key
                                                         ? <span className="badge badge-blue" style={{ fontFamily: 'monospace' }}>{(d as any).role.key}</span>
-                                                        : <span style={{ color: '#475569' }}>—</span>
+                                                        : <span style={{ color: 'var(--color-surface-600)' }}>—</span>
                                                     }
                                                 </td>
-                                                <td style={{ color: '#64748b', fontSize: '0.8125rem' }}>{d.orientation}</td>
+                                                <td style={{ color: 'var(--color-surface-500)', fontSize: '0.8125rem' }}>{d.orientation}</td>
                                                 {/* ── Device Secret cell ── */}
                                                 <td>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
                                                         <span style={{
                                                             fontFamily: 'monospace', fontSize: '0.7rem',
-                                                            color: revealedId === d.id ? '#a5b4fc' : '#334155',
+                                                            color: revealedId === d.id ? 'var(--color-brand-400)' : 'var(--color-surface-600)',
                                                             maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                                             letterSpacing: revealedId === d.id ? undefined : '0.1em',
                                                         }}>
@@ -332,19 +381,27 @@ export default function DevicesPage() {
                                                         {online ? '● Online' : hb ? '● Offline' : '○ Never'}
                                                     </span>
                                                 </td>
-                                                <td style={{ fontSize: '0.8125rem', color: '#64748b' }}>
+                                                <td style={{ fontSize: '0.8125rem', color: 'var(--color-surface-500)' }}>
                                                     {hb ? formatDistanceToNow(new Date(hb.last_seen_at), { addSuffix: true }) : '—'}
                                                 </td>
                                                 <td>
                                                     {hb?.current_version
                                                         ? <span className="badge badge-blue">{hb.current_version}</span>
-                                                        : <span style={{ color: '#475569' }}>—</span>
+                                                        : <span style={{ color: 'var(--color-surface-600)' }}>—</span>
                                                     }
                                                 </td>
                                                 <td>
                                                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                                                         <button onClick={() => openEdit(d)} className="btn-secondary" style={{ padding: '0.375rem 0.625rem' }} title="Edit device">
                                                             <Edit2 size={13} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleReboot(d.id, d.device_code)}
+                                                            className="btn-secondary"
+                                                            style={{ padding: '0.375rem 0.625rem' }}
+                                                            title="Remote Reboot"
+                                                        >
+                                                            <RotateCcw size={13} />
                                                         </button>
                                                         <button
                                                             onClick={() => { setPairingInfo({ device_code: d.device_code, device_secret: d.device_secret }); setShowPairingModal(true) }}
@@ -373,12 +430,31 @@ export default function DevicesPage() {
             {/* Register Device Modal */}
             {showModal && (
                 <Modal title={editing ? 'Edit Device' : 'Register Device'} onClose={() => setShowModal(false)}>
-                    {!editing && (
+                    {!editing ? (
                         <div style={{ padding: '0.75rem 1rem', marginBottom: '1rem', background: 'rgba(90,100,246,0.08)', border: '1px solid rgba(90,100,246,0.2)', borderRadius: 8, fontSize: '0.8125rem', color: '#94a3b8' }}>
-                            ✨ <strong style={{ color: '#c7d2fe' }}>Device Code and Secret will be auto-generated</strong> — shown after creation for pairing.
+                            ✨ <strong style={{ color: '#c7d2fe' }}>Device Secret will be auto-generated</strong> — shown after creation for pairing.
+                        </div>
+                    ) : (
+                        <div style={{ padding: '0.75rem 1rem', marginBottom: '1rem', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 8, fontSize: '0.8125rem', color: '#fbbf24' }}>
+                            ⚠️ <strong style={{ color: '#fbbf24' }}>Renaming the Device Code</strong> will require you to update the URL on the physical screen (TV).
                         </div>
                     )}
                     <form onSubmit={handleSave}>
+                        <div className="form-group">
+                            <label className="label">Device Code *</label>
+                            {editing ? (
+                                <input className="input-field"
+                                    value={form.device_code}
+                                    onChange={e => setForm(f => ({ ...f, device_code: e.target.value.toUpperCase().replace(/\s+/g, '') }))}
+                                    placeholder="e.g. SHOP01_SCREEN01"
+                                    required
+                                />
+                            ) : (
+                                <div style={{ color: '#64748b', fontSize: '0.8125rem', fontStyle: 'italic', padding: '0.5rem 0' }}>
+                                    Will be auto-generated based on Store/Role
+                                </div>
+                            )}
+                        </div>
                         <div className="form-row">
                             <div className="form-group">
                                 <label className="label">Store</label>

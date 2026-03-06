@@ -16,13 +16,13 @@ function SortableItem({ item, onRemove }: { item: PlaylistItem & { media?: Media
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: item.id })
     const style = { transform: CSS.Transform.toString(transform), transition }
     return (
-        <div ref={setNodeRef} style={{ ...style, display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.625rem 0.75rem', background: '#0f172a', borderRadius: 8, marginBottom: '0.5rem', border: '1px solid #1e293b' }}>
+        <div ref={setNodeRef} style={{ ...style, display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.625rem 0.75rem', background: 'var(--color-surface-900)', borderRadius: 8, marginBottom: '0.5rem', border: '1px solid var(--color-surface-800)' }} className="sortable-item">
             <span {...attributes} {...listeners} className="drag-handle"><GripVertical size={14} /></span>
             {item.type === 'image' ? <ImageIcon size={14} color="#60a5fa" /> : item.type === 'video' ? <Film size={14} color="#a78bfa" /> : <Globe size={14} color="#34d399" />}
-            <span style={{ flex: 1, fontSize: '0.875rem', color: '#f1f5f9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span style={{ flex: 1, fontSize: '0.875rem', color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {item.media?.name || item.web_url || 'Unknown'}
             </span>
-            {item.duration_seconds && <span style={{ fontSize: '0.75rem', color: '#64748b', flexShrink: 0 }}>{item.duration_seconds}s</span>}
+            {item.duration_seconds && <span style={{ fontSize: '0.75rem', color: 'var(--color-surface-500)', flexShrink: 0 }}>{item.duration_seconds}s</span>}
             <button onClick={() => onRemove(item.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '0.25rem', display: 'flex' }}>
                 <X size={14} />
             </button>
@@ -125,19 +125,30 @@ export default function PlaylistsPage() {
 
     const addItem = async () => {
         if (!editingPlaylist) return
-        if (addType !== 'web_url' && !addMediaId) { toast.error('Select a media asset'); return }
-        if (addType === 'web_url' && !addUrl) { toast.error('Enter a URL'); return }
+
+        // Validation: must have either a library asset OR a manual URL
+        const hasLibraryAsset = !!addMediaId
+        const hasManualUrl = !!addUrl.trim()
+
+        if (!hasLibraryAsset && !hasManualUrl) {
+            toast.error(addType === 'web_url' ? 'Enter a URL or select from library' : 'Select a media asset')
+            return
+        }
+
         const maxOrder = playlistItems.length > 0 ? Math.max(...playlistItems.map(i => i.sort_order)) + 1 : 0
         const payload: any = {
             playlist_id: editingPlaylist.id,
             type: addType,
             sort_order: maxOrder,
         }
-        if (addType !== 'web_url') {
+
+        if (hasLibraryAsset) {
             payload.media_id = addMediaId
-            if (addType === 'image') payload.duration_seconds = parseInt(addDuration) || 10
+            if (addType === 'image' || addType === 'web_url') payload.duration_seconds = parseInt(addDuration) || 15
         } else {
             payload.web_url = addUrl
+            // For manual web URLs, we still need a default duration if they play in a sequence
+            payload.duration_seconds = parseInt(addDuration) || 15
         }
 
         // Insert and then resolve the media manually to avoid ambiguity
@@ -220,8 +231,8 @@ export default function PlaylistsPage() {
                                 <tbody>
                                     {paginated.map(p => (
                                         <tr key={p.id}>
-                                            <td style={{ color: '#f1f5f9', fontWeight: 500 }}>{p.name}</td>
-                                            <td style={{ color: '#94a3b8', fontSize: '0.8125rem' }}>{p.description || '—'}</td>
+                                            <td style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}>{p.name}</td>
+                                            <td style={{ color: 'var(--color-surface-400)', fontSize: '0.8125rem' }}>{p.description || '—'}</td>
                                             <td>
                                                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                                                     <button onClick={() => openEditor(p)} className="btn-secondary" style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }}>
@@ -274,7 +285,7 @@ export default function PlaylistsPage() {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
                         {/* Add items */}
                         <div>
-                            <h3 style={{ margin: '0 0 1rem', fontSize: '0.875rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Add Item</h3>
+                            <h3 style={{ margin: '0 0 1rem', fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-surface-400)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Add Item</h3>
                             <div className="form-group">
                                 <label className="label">Type</label>
                                 <select className="input-field" value={addType} onChange={e => { setAddType(e.target.value as any); setAddMediaId('') }}>
@@ -329,7 +340,7 @@ export default function PlaylistsPage() {
                                 </div>
                             )}
 
-                            {addType === 'image' && (
+                            {(addType === 'image' || addType === 'web_url') && (
                                 <div className="form-group">
                                     <label className="label">Duration (seconds)</label>
                                     <input className="input-field" type="number" min="1" value={addDuration} onChange={e => setAddDuration(e.target.value)} />

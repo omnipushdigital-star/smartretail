@@ -85,7 +85,28 @@ export default function MonitoringPage() {
     // Dedupe: latest heartbeat per device
     const latestHbMap = new Map<string, DeviceHeartbeat>()
     for (const hb of heartbeats) {
-        if (!latestHbMap.has(hb.device_code)) latestHbMap.set(hb.device_code, hb)
+        const code = hb.device_code
+        if (!latestHbMap.has(code)) {
+            // This is the absolute latest heartbeat
+            latestHbMap.set(code, { ...hb, meta: hb.meta || {} })
+        } else {
+            const current = latestHbMap.get(code)!
+            const timeDiff = new Date(current.last_seen_at).getTime() - new Date(hb.last_seen_at).getTime()
+
+            if (timeDiff < 60000) {
+                // 1. Sticky 'playing' status
+                if (current.status !== 'playing' && hb.status === 'playing') {
+                    current.status = 'playing'
+                }
+
+                // 2. Merge meta: if current is missing health stats but previous (recent) has them, merge
+                const curMeta = current.meta as any || {}
+                const oldMeta = hb.meta as any || {}
+                if (!curMeta.storage_total_gb && oldMeta.storage_total_gb) {
+                    current.meta = { ...oldMeta, ...curMeta }
+                }
+            }
+        }
     }
     const latestHbs = Array.from(latestHbMap.values())
 
@@ -202,49 +223,78 @@ export default function MonitoringPage() {
                                 <tr>
                                     <th>Device Code</th>
                                     <th>Display Name</th>
-                                    <th>Store</th>
-                                    <th>Role</th>
+                                    <th>Store / Role</th>
                                     <th>Status</th>
+                                    <th>Health (Disk/RAM)</th>
                                     <th>Last Seen</th>
-                                    <th>Version</th>
-                                    <th>IP</th>
+                                    <th>Model & IP</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {filteredLatest.map(hb => {
                                     const device = deviceMap[hb.device_code]
                                     const online = isOnline(hb.last_seen_at)
+                                    const meta = hb.meta || {}
+
+                                    // Health metrics
+                                    const diskPercent = meta.storage_total_gb ? Math.round(((meta.storage_total_gb - meta.storage_free_gb) / meta.storage_total_gb) * 100) : null
+                                    const ramPercent = meta.ram_total_mb ? Math.round(((meta.ram_total_mb - meta.ram_free_mb) / meta.ram_total_mb) * 100) : null
+
                                     return (
                                         <tr key={hb.device_code}>
-                                            <td style={{ fontFamily: 'monospace', fontWeight: 700, color: '#f1f5f9', letterSpacing: '0.05em' }}>{hb.device_code}</td>
-                                            <td style={{ color: '#94a3b8', fontSize: '0.8125rem' }}>{device?.display_name || '—'}</td>
-                                            <td style={{ color: '#64748b', fontSize: '0.8125rem' }}>{(device?.store as any)?.name || '—'}</td>
+                                            <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--color-text-primary)' }}>{hb.device_code}</td>
                                             <td>
-                                                {(device?.role as any)?.key
-                                                    ? <span className="badge badge-blue" style={{ fontFamily: 'monospace' }}>{(device?.role as any).key}</span>
-                                                    : <span style={{ color: '#475569' }}>—</span>
-                                                }
+                                                <div style={{ fontWeight: 500, color: 'var(--color-text-primary)' }}>{device?.display_name || 'Unlabeled'}</div>
+                                                <div style={{ fontSize: '0.65rem', color: '#64748b' }}>v{hb.current_version || '?.?'}</div>
+                                            </td>
+                                            <td>
+                                                <div style={{ color: '#94a3b8', fontSize: '0.8125rem' }}>{(device?.store as any)?.name || '—'}</div>
+                                                {device?.role && <span className="badge badge-blue" style={{ fontSize: '0.6rem', padding: '0 4px', marginTop: 4 }}>{(device.role as any).key}</span>}
                                             </td>
                                             <td>
                                                 <span className={`badge ${online ? 'badge-green' : 'badge-red'}`}>
-                                                    <span style={{
-                                                        display: 'inline-block', width: 6, height: 6, borderRadius: '50%',
-                                                        background: online ? '#22c55e' : '#ef4444',
-                                                        marginRight: 4,
-                                                        boxShadow: online ? '0 0 6px #22c55e' : 'none',
-                                                        animation: online && hb.status === 'playing' ? 'pulse 2s infinite' : 'none'
-                                                    }} />
-                                                    {online
-                                                        ? (hb.status === 'playing' ? 'Playing' : hb.status === 'standby' ? 'Standby' : hb.status ? hb.status.charAt(0).toUpperCase() + hb.status.slice(1) : 'Online')
-                                                        : 'Offline'
-                                                    }
+                                                    {online ? (hb.status === 'playing' ? 'Playing' : 'Online') : 'Offline'}
                                                 </span>
                                             </td>
-                                            <td style={{ color: '#94a3b8', fontSize: '0.875rem' }}>
+                                            <td>
+                                                {(meta.storage_total_gb || meta.ram_total_mb) ? (
+                                                    <div style={{ fontSize: '0.75rem' }}>
+                                                        {meta.storage_total_gb !== undefined && (
+                                                            <div title={`Disk: ${meta.storage_free_gb ?? 0}GB free of ${meta.storage_total_gb}GB`}>
+                                                                💾 <strong>{meta.storage_free_gb ?? '—'}</strong>GB
+                                                                <span style={{ color: 'var(--color-surface-500)' }}> / {meta.storage_total_gb}GB</span>
+                                                            </div>
+                                                        )}
+                                                        {meta.storage_quota_unavailable && !meta.storage_total_gb && (
+                                                            <div style={{ color: 'var(--color-surface-500)', fontSize: '0.7rem' }}>💾 Quota unavailable</div>
+                                                        )}
+                                                        {meta.ram_total_mb !== undefined && (
+                                                            <div title={`RAM: ${meta.ram_free_mb ?? 0}MB free of ${meta.ram_total_mb}MB`}>
+                                                                🧠 <strong>{meta.ram_free_mb ?? '—'}</strong>MB
+                                                                <span style={{ color: 'var(--color-surface-500)' }}> / {meta.ram_total_mb}MB</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ) : meta.storage_quota_unavailable ? (
+                                                    <span style={{ color: 'var(--color-surface-500)', fontSize: '0.75rem' }}>💾 Restricted</span>
+                                                ) : (
+                                                    <span style={{ color: 'var(--color-surface-500)' }}>—</span>
+                                                )}
+                                            </td>
+                                            <td style={{ color: 'var(--color-surface-400)', fontSize: '0.8125rem' }}>
                                                 {formatDistanceToNow(new Date(hb.last_seen_at), { addSuffix: true })}
                                             </td>
-                                            <td>{hb.current_version ? <span className="badge badge-blue">{hb.current_version}</span> : <span style={{ color: '#475569' }}>—</span>}</td>
-                                            <td style={{ fontFamily: 'monospace', color: '#64748b', fontSize: '0.8125rem' }}>{hb.ip_address || '—'}</td>
+                                            <td>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 160 }}>
+                                                    {meta.device_model || '—'}
+                                                </div>
+                                                {meta.screen && (
+                                                    <div style={{ fontSize: '0.65rem', color: 'var(--color-surface-500)' }}>🖥 {meta.screen}</div>
+                                                )}
+                                                <div style={{ fontSize: '0.7rem', color: 'var(--color-surface-500)', fontFamily: 'monospace' }}>
+                                                    {meta.local_ip || hb.ip_address || '—'}
+                                                </div>
+                                            </td>
                                         </tr>
                                     )
                                 })}
@@ -259,20 +309,14 @@ export default function MonitoringPage() {
                                 }).map(code => {
                                     const device = deviceMap[code]
                                     return (
-                                        <tr key={code} style={{ opacity: 0.55 }}>
-                                            <td style={{ fontFamily: 'monospace', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.05em' }}>{code}</td>
-                                            <td style={{ color: '#64748b', fontSize: '0.8125rem' }}>{device?.display_name || '—'}</td>
-                                            <td style={{ color: '#64748b', fontSize: '0.8125rem' }}>{(device?.store as any)?.name || '—'}</td>
-                                            <td>
-                                                {(device?.role as any)?.key
-                                                    ? <span className="badge badge-blue" style={{ fontFamily: 'monospace' }}>{(device?.role as any).key}</span>
-                                                    : <span style={{ color: '#475569' }}>—</span>
-                                                }
-                                            </td>
-                                            <td><span className="badge badge-gray">○ Never seen</span></td>
-                                            <td style={{ color: '#475569' }}>—</td>
-                                            <td style={{ color: '#475569' }}>—</td>
-                                            <td style={{ color: '#475569' }}>—</td>
+                                        <tr key={code} style={{ opacity: 0.6 }}>
+                                            <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--color-surface-400)' }}>{code}</td>
+                                            <td style={{ color: 'var(--color-surface-400)' }}>{device?.display_name || '—'}</td>
+                                            <td style={{ color: 'var(--color-surface-500)' }}>{(device?.store as any)?.name || '—'}</td>
+                                            <td><span className="badge badge-gray">○ Never Seen</span></td>
+                                            <td><span style={{ color: 'var(--color-surface-500)', fontSize: '0.75rem' }}>Awaiting first heartbeat</span></td>
+                                            <td style={{ color: 'var(--color-surface-500)' }}>—</td>
+                                            <td style={{ color: 'var(--color-surface-500)', fontSize: '0.75rem' }}>Open Player URL to pair</td>
                                         </tr>
                                     )
                                 })}
@@ -301,7 +345,7 @@ export default function MonitoringPage() {
                         <tbody>
                             {paginatedLog.map(hb => (
                                 <tr key={hb.id}>
-                                    <td style={{ fontFamily: 'monospace', color: '#f1f5f9' }}>{hb.device_code}</td>
+                                    <td style={{ fontFamily: 'monospace', color: 'var(--color-text-primary)' }}>{hb.device_code}</td>
                                     <td>
                                         <span className={`badge ${hb.status === 'playing' ? 'badge-green' : hb.status === 'standby' ? 'badge-blue' : 'badge-gray'}`} style={{ fontSize: '0.65rem' }}>
                                             {hb.status ? hb.status.charAt(0).toUpperCase() + hb.status.slice(1) : 'Online'}

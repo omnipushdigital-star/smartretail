@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { WifiOff, Tv2, Lock, RefreshCw, Clock, Image as ImageIcon } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
@@ -82,6 +82,8 @@ const globalStyle = `
   video::-webkit-media-controls { display:none !important; }
   video::-webkit-media-controls-enclosure { display:none !important; }
   video::-webkit-media-controls-start-playback-button { display: none !important; -webkit-appearance: none; }
+  video { pointer-events: none !important; outline: none !important; }
+  * { -webkit-tap-highlight-color: transparent !important; }
 `;
 
 interface PlaybackProps {
@@ -124,21 +126,57 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
         return asset?.url || item.web_url || ''
     }, [memoizedAssets])
 
-    // Initialize first video on mount
+    // Switch sources when state changes
     useEffect(() => {
         if (sorted.length === 0) return
-        const firstUrl = getUrl(sorted[0])
-        setSlotUrls([firstUrl, ''])
-        setSlotOpacity([1, 0])
-        const v = videoRefs[0].current
-        if (v) {
-            v.src = firstUrl
-            v.load()
-            v.play().catch(() => { })
+        const currentUrl = getUrl(sorted[0])
+
+        // Always ensure the first slot has the current URL if we only have one item
+        if (sorted.length === 1) {
+            setSlotUrls([currentUrl, ''])
+            setSlotOpacity([1, 0])
+
+            const v = videoRefs[0].current
+            if (v && v.src !== currentUrl) {
+                v.src = currentUrl
+                v.load()
+            }
+            if (v && v.paused) {
+                v.play().catch(e => console.warn("[Video] Single-loop play failed:", e))
+            }
+            return
         }
-    }, []) // Only on mount
+
+        // Multiple items logic...
+        if (slotUrls[activeSlot] !== currentUrl) {
+            setSlotUrls(prev => {
+                const updated = [...prev] as [string, string]
+                updated[activeSlot] = currentUrl
+                return updated
+            })
+
+            const v = videoRefs[activeSlot].current
+            if (v) {
+                v.load()
+                v.play().catch(() => { })
+            }
+        }
+    }, [sorted, getUrl, activeSlot])
 
     const advanceBuffer = useCallback(() => {
+        if (sorted.length === 0) return
+
+        // If only 1 item, just loop it natively
+        if (sorted.length === 1) {
+            const v = videoRefs[activeSlot].current
+            if (v) {
+                v.currentTime = 0
+                v.play().catch(() => { })
+            }
+            onAdvance()
+            return
+        }
+
         const nextIdx = (idxRef.current + 1) % sorted.length
         idxRef.current = nextIdx
 
@@ -150,23 +188,18 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
         const currentVideo = videoRefs[currentSlot].current
 
         if (nextVideo) {
-            // Pre-seek slightly and start playing while STILL HIDDEN (opacity 0)
             nextVideo.src = nextUrl
             nextVideo.load()
-            nextVideo.currentTime = 0.1 // Force frame decode
+            nextVideo.currentTime = 0.1
 
             const onReady = () => {
-                // ONLY SWAP once the next video is actually rendering a frame
                 setSlotOpacity(activeSlot === 0 ? [0, 1] : [1, 0])
                 setActiveSlot(nextSlot)
-
-                // Pause the previous one after it's hidden to save CPU
                 setTimeout(() => {
                     if (currentVideo && activeSlot !== nextSlot) {
                         currentVideo.pause()
                     }
                 }, 500)
-
                 nextVideo.removeEventListener('playing', onReady)
             }
 
@@ -183,6 +216,35 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
         onAdvance()
     }, [activeSlot, sorted, getUrl, onAdvance])
 
+    // Global force-play listener and heartbeat for resilient autoplay
+    useEffect(() => {
+        const force = () => {
+            videoRefs.forEach(ref => {
+                if (ref.current && ref.current.paused) {
+                    ref.current.play().catch(() => { })
+                }
+            })
+        }
+
+        // Android TV sometimes needs a repeated "poke" to start the first video
+        // Faster interval (800ms) for the first 10 seconds to ensure a smooth start
+        const interval = setInterval(() => {
+            videoRefs.forEach((ref, i) => {
+                const v = ref.current
+                if (v && v.paused && v.readyState >= 2) {
+                    console.log(`[Video] ⚡ Auto-play heartbeat poke for slot ${i}...`)
+                    v.play().catch(() => { })
+                }
+            })
+        }, 800)
+
+        window.addEventListener('omnipush_force_play', force)
+        return () => {
+            clearInterval(interval)
+            window.removeEventListener('omnipush_force_play', force)
+        }
+    }, [])
+
     if (sorted.length === 0) return null
 
     const videoStyle: React.CSSProperties = {
@@ -192,33 +254,32 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
         objectFit: 'cover',
         background: '#000',
         display: 'block',
-        transition: 'opacity 0.6s ease-in-out', // Slightly slower/smoother crossfade
+        transition: 'opacity 0.6s ease-in-out',
     }
 
     return (
         <>
             <style>{globalStyle}</style>
-            <video
-                ref={videoRefs[0]}
-                style={{ ...videoStyle, opacity: slotOpacity[0], zIndex: slotOpacity[0] > 0 ? 2 : 1 }}
-                autoPlay
-                muted
-                playsInline
-                webkit-playsinline="true"
-                preload="auto"
-                onEnded={advanceBuffer}
-                onError={() => setTimeout(advanceBuffer, 2000)}
-            />
-            <video
-                ref={videoRefs[1]}
-                style={{ ...videoStyle, opacity: slotOpacity[1], zIndex: slotOpacity[1] > 0 ? 2 : 1 }}
-                muted
-                playsInline
-                webkit-playsinline="true"
-                preload="auto"
-                onEnded={advanceBuffer}
-                onError={() => setTimeout(advanceBuffer, 2000)}
-            />
+            {[0, 1].map(i => (
+                <video
+                    key={i}
+                    ref={videoRefs[i]}
+                    src={slotUrls[i]}
+                    style={{ ...videoStyle, opacity: slotOpacity[i], zIndex: slotOpacity[i] > 0 ? 10 : 1 }}
+                    muted
+                    autoPlay
+                    playsInline
+                    loop={sorted.length === 1}
+                    crossOrigin="anonymous"
+                    webkit-playsinline="true"
+                    preload="auto"
+                    onEnded={advanceBuffer}
+                    onError={(e) => {
+                        console.error("[Video] Error in slot", i, e);
+                        setTimeout(advanceBuffer, 2000);
+                    }}
+                />
+            ))}
         </>
     )
 }
@@ -281,11 +342,10 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
     const url = asset?.url || item.web_url
     const type = asset?.type || item.type || (item.media_id ? 'video' : 'image')
 
-    // Check if ALL items in playlist are videos (use double-buffer for entire region)
-    const allVideos = sorted.every(i => {
-        const a = memoizedAssets.find(x => x.media_id === i.media_id)
-        return (a?.type || i.type) === 'video'
-    })
+    // Use double buffer for videos to ensure smooth looping and better recovery
+    const allVideos = useMemo(() => {
+        return items.length >= 1 && items.every(i => i.type === 'video')
+    }, [items])
 
     // Preload next image
     const nextItem = sorted[(idx + 1) % sorted.length]
@@ -294,8 +354,15 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
     const nextType = nextAsset?.type || nextItem?.type
 
     if (!url) return (
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', color: 'rgba(255,255,255,0.2)', fontSize: '0.7rem' }}>
-            <RefreshCw className="animate-spin" size={16} />
+        <div style={{
+            position: 'absolute',
+            top: `${region.y}%`, left: `${region.x}%`,
+            width: `${region.width}%`, height: `${region.height}%`,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            background: '#0a0a0f', border: '1px solid #1e293b'
+        }}>
+            <div style={{ color: '#475569', fontSize: '0.65rem', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Region: {region.id}</div>
+            <div style={{ color: 'rgba(255,255,255,0.1)', fontSize: '0.8rem' }}>No Content Assigned</div>
         </div>
     )
 
@@ -347,6 +414,7 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
                                 objectFit: 'cover', background: '#000', display: 'block',
                             }}
                             autoPlay muted playsInline
+                            loop={sorted.length === 1}
                             onEnded={advance}
                             onError={() => setTimeout(advance, 5000)}
                         />
@@ -578,6 +646,8 @@ export default function PlayerPage() {
     const [offline, setOffline] = useState(false)
     const [errorMsg, setErrorMsg] = useState('')
     const [version, setVersion] = useState<string | null>(null)
+    const versionRef = useRef(version)
+    useEffect(() => { versionRef.current = version }, [version])
 
     const [pairingPin, setPairingPin] = useState('')
     const [showDiagnostics, setShowDiagnostics] = useState(false)
@@ -592,6 +662,45 @@ export default function PlayerPage() {
         window.addEventListener('keydown', handleKeys)
         return () => window.removeEventListener('keydown', handleKeys)
     }, [])
+
+    // ── Command Polling (Reboot, etc) ──
+    const checkCommands = useCallback(async () => {
+        if (!manifest?.device?.id) return
+        try {
+            const { data: commands, error } = await supabase
+                .from('device_commands')
+                .select('*')
+                .eq('device_id', manifest.device.id)
+                .eq('status', 'PENDING')
+                .order('created_at', { ascending: true })
+
+            if (error) throw error
+            if (!commands || commands.length === 0) return
+
+            for (const cmd of commands) {
+                console.log(`[Player] Executing remote command: ${cmd.command}`)
+
+                // Mark as executing/finished
+                await supabase.from('device_commands').update({
+                    status: 'EXECUTED',
+                    executed_at: new Date().toISOString()
+                }).eq('id', cmd.id)
+
+                if (cmd.command === 'REBOOT') {
+                    console.warn('[Player] Remote Reboot triggered via CMS. Reloading page...')
+                    window.location.reload()
+                }
+            }
+        } catch (err: any) {
+            console.error('[Commands] Polling error:', err.message)
+        }
+    }, [manifest?.device?.id])
+
+    useEffect(() => {
+        if (!manifest?.device?.id) return
+        const timer = setInterval(checkCommands, 10000) // Poll every 10s
+        return () => clearInterval(timer)
+    }, [manifest?.device?.id, checkCommands])
 
     const initPairing = useCallback(async () => {
         try {
@@ -627,19 +736,34 @@ export default function PlayerPage() {
                     console.warn(`[Player] ${missingIds.length} assets missing from manifest - repairing...`)
                     const { data: repaired, error: rErr } = await supabase
                         .from('media_assets')
-                        .select('id, type, url, checksum_sha256, bytes')
+                        .select('id, type, url, storage_path, checksum_sha256, bytes')
                         .in('id', missingIds)
 
                     if (!rErr && repaired) {
-                        const newAssets: ManifestAsset[] = repaired.map((m: any) => ({
-                            media_id: m.id,
-                            type: m.type as any,
-                            url: m.url, // Fallback to public URL stored in DB
-                            checksum_sha256: m.checksum_sha256,
-                            bytes: m.bytes
-                        }))
+                        const newAssets: ManifestAsset[] = []
+
+                        for (const m of repaired) {
+                            let finalUrl = m.url
+
+                            // If it's a storage path, generate a signed URL on the fly
+                            if (m.storage_path) {
+                                const { data: signed } = await supabase.storage
+                                    .from('signage_media')
+                                    .createSignedUrl(m.storage_path, 3600)
+                                if (signed) finalUrl = signed.signedUrl
+                            }
+
+                            newAssets.push({
+                                media_id: m.id,
+                                type: m.type as any,
+                                url: finalUrl,
+                                checksum_sha256: m.checksum_sha256,
+                                bytes: m.bytes
+                            })
+                        }
+
                         data.assets = [...(data.assets || []), ...newAssets]
-                        console.log(`[Player] Repair complete. Processed ${newAssets.length} assets.`)
+                        console.log(`[Player] Repair complete. Processed ${newAssets.length} assets (with signing).`)
                     }
                 }
             }
@@ -701,17 +825,72 @@ export default function PlayerPage() {
     // ── Send heartbeat ──
     const sendHeartbeat = useCallback(async (sec: string) => {
         if (!dc || !sec) return
+
+        // Gather basic hardware telemetry
+        const ua = navigator.userAgent
+        const meta: any = {
+            // Capture full OS/device info from user agent
+            device_model: (
+                ua.match(/\(([^)]+)\)/)?.[1] ||
+                ua.split(' ').slice(0, 3).join(' ') ||
+                'Unknown Device'
+            ).slice(0, 100), // truncate to 100 chars
+            local_ip: null,
+            platform: navigator.platform || 'unknown',
+            screen: `${screen.width}x${screen.height}`,
+        }
+
         try {
-            const res = await callEdgeFn('device-heartbeat', {
+            // 1. RAM (navigator.deviceMemory - Chrome/Android only)
+            if ((navigator as any).deviceMemory) {
+                meta.ram_total_mb = (navigator as any).deviceMemory * 1024
+                // Browsers don't expose free RAM for security reasons
+            }
+
+            // 2. Storage (Browser Storage Quota API)
+            if (navigator.storage && navigator.storage.estimate) {
+                const est = await navigator.storage.estimate()
+                if (est.quota && est.quota > 0) {
+                    // Use 2 decimal places to avoid rounding to 0 on small quotas
+                    meta.storage_total_gb = parseFloat((est.quota / (1024 * 1024 * 1024)).toFixed(2))
+                    if (est.usage !== undefined) {
+                        meta.storage_free_gb = parseFloat(Math.max(0, (est.quota - est.usage) / (1024 * 1024 * 1024)).toFixed(2))
+                    }
+                } else if (est.quota === 0) {
+                    // Some Android WebViews report 0 quota — note it but keep going
+                    meta.storage_quota_unavailable = true
+                }
+            }
+
+            // 3. Android Native Bridge (for custom APK/WebView wrappers)
+            // The Android app can expose a JavascriptInterface named 'AndroidHealth'
+            const win = window as any
+            if (win.AndroidHealth) {
+                if (win.AndroidHealth.getRamTotal) meta.ram_total_mb = Number(win.AndroidHealth.getRamTotal())
+                if (win.AndroidHealth.getRamFree) meta.ram_free_mb = Number(win.AndroidHealth.getRamFree())
+                if (win.AndroidHealth.getStorageTotal) meta.storage_total_gb = parseFloat(Number(win.AndroidHealth.getStorageTotal()).toFixed(2))
+                if (win.AndroidHealth.getStorageFree) meta.storage_free_gb = parseFloat(Number(win.AndroidHealth.getStorageFree()).toFixed(2))
+                if (win.AndroidHealth.getModel) meta.device_model = String(win.AndroidHealth.getModel())
+                if (win.AndroidHealth.getLocalIp) meta.local_ip = String(win.AndroidHealth.getLocalIp())
+            }
+        } catch (e) {
+            console.warn('[Telemetry] Error gathering stats:', e)
+        }
+
+        try {
+            const payload = {
                 device_code: dc,
                 device_secret: sec,
-                current_version: version,
-                status: phase, // Reports current player state (playing, standby, etc)
-            })
+                current_version: versionRef.current,
+                status: phase,
+                ...meta
+            }
+            console.log('[Player] Sending heartbeat payload:', JSON.stringify(payload))
+            const res = await callEdgeFn('device-heartbeat', payload)
             if (res.error) {
                 console.error('[Player] Heartbeat Server Error:', res.error)
             } else {
-                console.log(`[Player] Heartbeat Recorded ✅ (${phase})`)
+                console.log(`[Player] Heartbeat Recorded ✅ (${phase}) | Meta stored:`, res.meta_keys)
             }
         } catch (err: any) {
             console.error('[Player] Heartbeat Network Error:', err.message)
@@ -981,9 +1160,10 @@ export default function PlayerPage() {
                             onClick={() => {
                                 // Event based trigger for PlaybackEngines
                                 window.dispatchEvent(new CustomEvent('omnipush_force_advance'))
+                                window.dispatchEvent(new CustomEvent('omnipush_force_play'))
                             }}
                             style={{ flex: 1, padding: '4px', background: 'var(--color-brand-500)', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', fontSize: '10px' }}>
-                            Next Item
+                            Next / Play
                         </button>
                     </div>
                     <div style={{ marginTop: '0.5rem', opacity: 0.6 }}>Press SHIFT+D to toggle</div>

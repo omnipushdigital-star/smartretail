@@ -79,65 +79,91 @@ export default function DisplayMenu() {
     const logoPlacement = config.logo_placement || 'center'
     const showPromo = config.show_promo || false
     const promoPosition = config.promo_position || 'right'
+    const themeStyles = {
+        dark: {
+            bg: 'bg-gradient-to-br from-[#120a05] to-[#0a0502]',
+            text: 'text-[#f3e5db]',
+            categoryText: 'text-brand-200',
+            accent: 'text-brand-500',
+            dot: 'bg-brand-500'
+        },
+        glass: {
+            bg: 'bg-gradient-to-br from-[#ffffff] to-[#f1f5f9]',
+            text: 'text-slate-900',
+            categoryText: 'text-brand-600',
+            accent: 'text-brand-600',
+            dot: 'bg-brand-500'
+        },
+        elegant: {
+            bg: 'bg-gradient-to-tr from-[#1a1c2e] to-[#2e1a1a]',
+            text: 'text-[#fdfcfb]',
+            categoryText: 'text-amber-200',
+            accent: 'text-amber-500',
+            dot: 'bg-amber-500'
+        }
+    };
+    const style = themeStyles[config.theme as keyof typeof themeStyles] || themeStyles.dark;
     const columns = config.columns || 2
 
     return (
         <div className="h-screen w-screen bg-black overflow-hidden font-sans">
             <div
-                className="h-full w-full bg-gradient-to-br from-[#120a05] to-[#0a0502] relative overflow-hidden flex"
+                className={`h-full w-full ${style.bg} relative overflow-hidden flex`}
                 style={{ flexDirection: showPromo ? (promoPosition === 'left' ? 'row-reverse' : 'row') : 'column' }}
             >
                 {/* Menu Area */}
                 <div
-                    className={`${aspectRatio === '16:9' ? 'p-12' : 'p-12'} h-full flex flex-col text-[#f3e5db] overflow-hidden`}
+                    className={`${aspectRatio === '16:9' ? 'p-[4%]' : 'p-[6%]'} h-full flex flex-col ${style.text} overflow-hidden`}
                     style={{ width: showPromo ? '70%' : '100%' }}
                 >
-                    <div className={`mb-12 ${aspectRatio === '16:9' ? 'flex items-center gap-10' : 'flex flex-col'} ${logoPlacement === 'center' ? 'justify-center text-center items-center' : logoPlacement === 'left' ? 'justify-start text-left items-start' : 'justify-end text-right items-end'}`}>
+                    <div className={`mb-8 ${aspectRatio === '16:9' ? 'flex items-center gap-8' : 'flex flex-col'} ${logoPlacement === 'center' ? 'justify-center text-center items-center' : logoPlacement === 'left' ? 'justify-start text-left items-start' : 'justify-end text-right items-end'}`}>
                         {tenant?.logo_url ? (
-                            <div className="bg-white p-3 rounded-2xl shadow-2xl border border-white/10">
+                            <div className="bg-white p-3 rounded-2xl shadow-xl border border-white/10 shrink-0">
                                 <img
                                     src={tenant.logo_url}
                                     alt={tenant.name}
-                                    className={`${aspectRatio === '16:9' ? 'h-16' : 'h-24'} w-auto object-contain`}
+                                    className={`${aspectRatio === '16:9' ? 'h-16' : 'h-20'} w-auto object-contain`}
                                 />
                             </div>
                         ) : (
-                            <div className="w-16 h-16 bg-brand-500/20 rounded-2xl flex items-center justify-center border border-brand-500/30">
-                                <ImageIcon size={32} className="text-brand-500" />
+                            <div className={`w-16 h-16 ${style.bg} brightness-125 rounded-2xl flex items-center justify-center border border-white/10`}>
+                                <ImageIcon size={32} className={style.accent} />
                             </div>
                         )}
 
                         <div className={`flex flex-col ${aspectRatio === '16:9' ? 'text-left' : ''} ${logoPlacement === 'center' && aspectRatio !== '16:9' ? 'items-center' : logoPlacement === 'right' && aspectRatio !== '16:9' ? 'items-end' : 'items-start'}`}>
-                            <h2 className={`font-display ${aspectRatio === '16:9' ? 'text-4xl' : 'text-5xl'} font-black tracking-[0.2em] uppercase mb-2`} style={{ color: tenant?.primary_color || '#f97316' }}>
+                            <h2 className={`font-display ${aspectRatio === '16:9' ? 'text-4xl' : 'text-5xl'} font-black tracking-[0.2em] uppercase mb-1 leading-tight`} style={{ color: tenant?.primary_color || (style === themeStyles.dark ? '#f97316' : '#ef4444') }}>
                                 {tenant?.name || 'OmniPush'}
                             </h2>
-                            <div className={`h-1 w-24 mb-4 ${logoPlacement === 'center' && aspectRatio !== '16:9' ? 'mx-auto' : logoPlacement === 'left' || aspectRatio === '16:9' ? 'mr-auto' : 'ml-auto'}`} style={{ background: tenant?.primary_color || '#ea580c' }} />
-                            <p className="text-sm text-surface-400 uppercase tracking-[0.4em] font-bold">
+                            <div className={`h-1 w-24 mb-3 ${logoPlacement === 'center' && aspectRatio !== '16:9' ? 'mx-auto' : logoPlacement === 'left' || aspectRatio === '16:9' ? 'mr-auto' : 'ml-auto'}`} style={{ background: tenant?.primary_color || (style === themeStyles.dark ? '#ea580c' : '#ef4444') }} />
+                            <p className="text-lg text-slate-500 uppercase tracking-[0.3em] font-bold opacity-70">
                                 {menu.name}
                             </p>
                         </div>
                     </div>
 
                     <div
-                        className="grid gap-x-16 gap-y-12 flex-1 content-start overflow-hidden"
+                        className="grid gap-x-12 gap-y-8 flex-1 content-start overflow-hidden pt-2"
                         style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}
                     >
                         {categories.map(cat => (
-                            <div key={cat.id} className="space-y-6">
+                            <div key={cat.id} className="space-y-4">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-2 h-2 bg-brand-500 rounded-full" />
-                                    <h4 className="text-xl font-bold uppercase tracking-[0.2em] text-brand-200">{cat.name}</h4>
+                                    <div className={`w-2 h-2 ${style.dot} rounded-full`} />
+                                    <h4 className={`text-xl font-bold uppercase tracking-[0.2em] ${style.categoryText}`}>{cat.name}</h4>
                                     <div className="flex-1 h-px bg-white/10" />
                                 </div>
-                                <div className="space-y-6">
+                                <div className="space-y-4">
                                     {cat.items.map((item: any) => (
                                         <div key={item.id} className="flex justify-between items-baseline group">
-                                            <div className="max-w-[80%]">
-                                                <div className="text-2xl font-semibold text-[#f3e5db]">{item.name}</div>
-                                                {item.description && <div className="text-sm text-surface-500 mt-1">{item.description}</div>}
+                                            <div className="max-w-[70%]">
+                                                <div className="text-xl font-bold leading-tight">{item.name}</div>
+                                                {item.description && <div className="text-sm text-surface-500 mt-1 leading-snug opacity-80">{item.description}</div>}
                                             </div>
-                                            <div className="flex-1 mx-4 border-b border-white/10 border-dotted translate-y-[-8px]" />
-                                            <div className="text-2xl font-bold text-brand-500">₹{item.price}</div>
+                                            <div className="flex-1 mx-4 border-b border-white/5 border-dotted translate-y-[-6px]" />
+                                            <div className={`text-2xl font-black ${style.accent}`}>
+                                                <span className="text-base mr-1">{config.currency?.symbol || '₹'}</span>{item.price}
+                                            </div>
                                         </div>
                                     ))}
                                 </div>

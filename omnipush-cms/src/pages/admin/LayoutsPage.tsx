@@ -59,8 +59,20 @@ export default function LayoutsPage() {
             } else {
                 const { data, error } = await supabase.from('layouts').insert({ name: form.name, template_id: form.template_id || null, tenant_id: currentTenantId }).select('id').single()
                 if (error) throw error
-                // Create default full region assignment
-                if (form.template_id) {
+
+                // Create assignments for all regions defined in the template
+                const selectedTemplate = templates.find(t => t.id === form.template_id)
+                if (selectedTemplate && Array.isArray(selectedTemplate.regions)) {
+                    const assignments = selectedTemplate.regions.map((r: any) => ({
+                        layout_id: data.id,
+                        region_id: r.id,
+                        playlist_id: null
+                    }))
+                    if (assignments.length > 0) {
+                        await supabase.from('layout_region_playlists').insert(assignments)
+                    }
+                } else {
+                    // Fallback to 'full' for legacy templates without explicit regions
                     await supabase.from('layout_region_playlists').insert({ layout_id: data.id, region_id: 'full', playlist_id: null })
                 }
                 toast.success('Layout created')
@@ -77,21 +89,51 @@ export default function LayoutsPage() {
         setShowDetail(l)
         const { data } = await supabase.from('layout_region_playlists').select('*, playlist:playlists(id,name)').eq('layout_id', l.id)
         setDetailPlaylists(data || [])
-        const fullRegion = (data || []).find((r: any) => r.region_id === 'full')
-        setDetailPlaylistId(fullRegion?.playlist_id || '')
     }
 
-    const saveRegionPlaylist = async () => {
+    const saveRegionPlaylist = async (regionId: string, playlistId: string) => {
         if (!showDetail) return
-        // Upsert the full region assignment
-        const existing = detailPlaylists.find(r => r.region_id === 'full')
+        const existing = detailPlaylists.find(r => r.region_id === regionId)
         if (existing) {
-            await supabase.from('layout_region_playlists').update({ playlist_id: detailPlaylistId || null }).eq('id', existing.id)
+            await supabase.from('layout_region_playlists').update({ playlist_id: playlistId || null }).eq('id', existing.id)
         } else {
-            await supabase.from('layout_region_playlists').insert({ layout_id: showDetail.id, region_id: 'full', playlist_id: detailPlaylistId || null })
+            await supabase.from('layout_region_playlists').insert({ layout_id: showDetail.id, region_id: regionId, playlist_id: playlistId || null })
         }
-        toast.success('Region playlist saved')
+        toast.success(`Region ${regionId} updated`)
         openDetail(showDetail)
+    }
+
+    const syncRegions = async () => {
+        if (!showDetail || !currentTenantId) return
+        const t = templates.find(temp => temp.id === showDetail.template_id)
+        if (!t || !Array.isArray(t.regions)) {
+            toast.error('Template has no regions to sync')
+            return
+        }
+
+        const confirmSync = confirm("This will reset all playlist assignments for this layout to match the template's regions. Continue?")
+        if (!confirmSync) return
+
+        setSaving(true)
+        try {
+            // Drop current mappings
+            await supabase.from('layout_region_playlists').delete().eq('layout_id', showDetail.id)
+
+            // Re-backfill from template
+            const assignments = t.regions.map((r: any) => ({
+                layout_id: showDetail.id,
+                region_id: r.id,
+                playlist_id: null
+            }))
+            await supabase.from('layout_region_playlists').insert(assignments)
+
+            toast.success('Regions synced successfully')
+            openDetail(showDetail)
+        } catch (err: any) {
+            toast.error(err.message)
+        } finally {
+            setSaving(false)
+        }
     }
 
     const paginated = layouts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
@@ -185,34 +227,41 @@ export default function LayoutsPage() {
             {/* Region detail */}
             {showDetail && (
                 <Modal title={`Layout: ${showDetail.name}`} onClose={() => setShowDetail(null)}>
-                    <div style={{ marginBottom: '1rem' }}>
-                        <div style={{ fontSize: '0.8125rem', color: '#64748b', marginBottom: '1rem' }}>
-                            Template: <strong style={{ color: '#94a3b8' }}>{(showDetail as any).template?.name || '—'}</strong>
-                        </div>
-                        <div style={{ background: '#0f172a', borderRadius: 8, padding: '1rem', marginBottom: '1.25rem', border: '1px solid #1e293b' }}>
-                            <div style={{ fontWeight: 600, color: '#94a3b8', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem' }}>Regions</div>
-                            {detailPlaylists.length === 0 ? (
-                                <div style={{ color: '#475569', fontSize: '0.875rem' }}>No regions assigned yet.</div>
-                            ) : (
-                                detailPlaylists.map(r => (
-                                    <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid #1e293b' }}>
-                                        <span style={{ fontFamily: 'monospace', fontSize: '0.875rem', color: '#7a8aff' }}>{r.region_id}</span>
-                                        <span style={{ fontSize: '0.8125rem', color: '#94a3b8' }}>{r.playlist?.name || '— No playlist —'}</span>
-                                    </div>
-                                ))
-                            )}
-                        </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        {detailPlaylists.map(r => (
+                            <div key={r.id} className="form-group" style={{ marginBottom: 0 }}>
+                                <label className="label" style={{ fontSize: '0.75rem' }}>Region: <span style={{ color: '#7a8aff', fontFamily: 'monospace' }}>{r.region_id}</span></label>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <select
+                                        className="input-field"
+                                        value={r.playlist_id || ''}
+                                        onChange={e => saveRegionPlaylist(r.region_id, e.target.value)}
+                                        style={{ background: '#0f172a' }}
+                                    >
+                                        <option value="">— No Playlist —</option>
+                                        {playlists.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                        ))}
+
+                        {/* If no regions currently assigned, but template has them, show empty state or initialize */}
+                        {detailPlaylists.length === 0 && (
+                            <div className="empty-state" style={{ padding: '1rem' }}>
+                                <p style={{ fontSize: '0.8rem', color: '#64748b' }}>No region mappings found. Re-save the layout to initialize regions from template.</p>
+                            </div>
+                        )}
                     </div>
-                    <div className="form-group">
-                        <label className="label">Assign Playlist to "Full Screen" Region</label>
-                        <select className="input-field" value={detailPlaylistId} onChange={e => setDetailPlaylistId(e.target.value)}>
-                            <option value="">— No Playlist —</option>
-                            {playlists.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                        </select>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.5rem' }}>
+                        <button
+                            className="btn-secondary"
+                            onClick={syncRegions}
+                            style={{ border: 'none', background: 'none', color: '#64748b', fontSize: '0.75rem', textDecoration: 'underline', padding: 0 }}
+                        >
+                            Sync Regions from Template
+                        </button>
                         <button className="btn-secondary" onClick={() => setShowDetail(null)}>Close</button>
-                        <button className="btn-primary" onClick={saveRegionPlaylist}>Save Assignment</button>
                     </div>
                 </Modal>
             )}

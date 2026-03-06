@@ -39,38 +39,49 @@ serve(async (req: Request) => {
         let resolutionError = "";
         let pub: any = null;
         let resolvedScope = "";
+        let allPubs: any[] = [];
 
-        const { data: allPubs, error: fetchErr } = await supabase
-            .from("layout_publications")
-            .select("*")
-            .eq("tenant_id", tid)
-            .eq("role_id", device.role_id)
-            .eq("is_active", true)
-            .order('published_at', { ascending: false });
+        if (device.role_id) {
+            const { data: pubs, error: fetchErr } = await supabase
+                .from("layout_publications")
+                .select("*")
+                .eq("tenant_id", tid)
+                .eq("role_id", device.role_id)
+                .eq("is_active", true)
+                .order('published_at', { ascending: false });
 
-        if (fetchErr) {
-            console.error("[Manifest] Fetch error:", fetchErr);
-            resolutionError = fetchErr.message;
-        }
+            if (fetchErr) {
+                console.error("[Manifest] Fetch error:", fetchErr);
+                resolutionError = fetchErr.message;
+            } else if (pubs) {
+                allPubs = pubs;
+            }
 
-        if (allPubs && allPubs.length > 0) {
-            const devMatch = allPubs.find((p: any) => p.device_id === device.id);
-            const storeMatch = allPubs.find((p: any) => p.store_id === device.store_id);
-            const globalMatch = allPubs.find((p: any) => p.scope === 'GLOBAL');
+            if (allPubs && allPubs.length > 0) {
+                const devMatch = allPubs.find((p: any) => p.device_id === device.id);
+                const storeMatch = allPubs.find((p: any) => p.store_id === device.store_id);
+                const globalMatch = allPubs.find((p: any) => p.scope === 'GLOBAL');
 
-            if (devMatch) { pub = devMatch; resolvedScope = "DEVICE"; }
-            else if (storeMatch) { pub = storeMatch; resolvedScope = "STORE"; }
-            else if (globalMatch) { pub = globalMatch; resolvedScope = "GLOBAL"; }
+                if (devMatch) { pub = devMatch; resolvedScope = "DEVICE"; }
+                else if (storeMatch) { pub = storeMatch; resolvedScope = "STORE"; }
+                else if (globalMatch) { pub = globalMatch; resolvedScope = "GLOBAL"; }
 
-            console.log(`[Manifest] Resolved: ${resolvedScope}`);
+                console.log(`[Manifest] Resolved: ${resolvedScope}`);
+            }
+        } else {
+            resolutionError = "Device has no role assigned. Please assign a role in CMS.";
         }
 
         if (!pub) {
-            const { data: inactiveCheck } = await supabase
-                .from("layout_publications")
-                .select("id, is_active, scope, role_id, tenant_id")
-                .eq("role_id", device.role_id)
-                .limit(1);
+            let inactiveCheck: any[] = [];
+            if (device.role_id) {
+                const { data } = await supabase
+                    .from("layout_publications")
+                    .select("id, is_active, scope, role_id, tenant_id")
+                    .eq("role_id", device.role_id)
+                    .limit(1);
+                if (data) inactiveCheck = data;
+            }
 
             return Response.json({
                 error: "No active publication found for this device",
@@ -130,7 +141,8 @@ serve(async (req: Request) => {
             .in("playlist_id", playlistIds)
             .order("sort_order");
 
-        const mediaIds = [...new Set((rawItems || []).map((i: any) => i.media_id))];
+        // Filter out nulls (web_urls have no media_id)
+        const mediaIds = [...new Set((rawItems || []).map((i: any) => i.media_id).filter(Boolean))];
         const { data: allMedia } = await supabase
             .from("media_assets")
             .select("*")
@@ -161,9 +173,9 @@ serve(async (req: Request) => {
         const mediaAssets: any[] = [];
         const seenMedia = new Set<string>();
 
-        for (const item of items || []) {
-            const media = item.media;
-            if (!media || seenMedia.has(media.id)) continue;
+        // We iterate over allMedia directly to ensure we catch everything we found
+        for (const media of allMedia || []) {
+            if (seenMedia.has(media.id)) continue;
             seenMedia.add(media.id);
 
             const url = signedUrlsMap[media.storage_path] || media.url || media.web_url || null;
@@ -206,6 +218,7 @@ serve(async (req: Request) => {
             resolved: {
                 scope: resolvedScope,
                 role: device.role?.name || null,
+                pub_id: pub.id || null,
                 bundle_id: bundle?.id || null,
                 version: bundle?.version || null,
             },

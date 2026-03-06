@@ -148,6 +148,59 @@ CREATE POLICY "Public menu_items access" ON public.menu_items FOR ALL USING (tru
         sql: `ALTER TABLE public.bundles
 ADD COLUMN IF NOT EXISTS total_items integer DEFAULT 0;`,
     },
+    {
+        id: 'G',
+        label: 'SQL BLOCK G — Bundle Files Permissions',
+        description: 'Enables RLS and adds public access policy for bundle_files table to allow the CMS to save snapshot content.',
+        color: '#10b981',
+        sql: `-- Enable RLS on bundle_files
+ALTER TABLE public.bundle_files ENABLE ROW LEVEL SECURITY;
+
+-- Add permissive policy for CMS access
+DO $$ BEGIN
+    DROP POLICY IF EXISTS "Public bundle_files access" ON public.bundle_files;
+    CREATE POLICY "Public bundle_files access" ON public.bundle_files FOR ALL USING (true) WITH CHECK (true);
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;`,
+    },
+    {
+        id: 'H',
+        label: 'SQL BLOCK H — Device Telemetry & Remote Troubleshooting',
+        description: 'Adds a meta JSONB column to device_heartbeats to store detailed hardware telemetry (Storage, RAM, IP).',
+        color: '#fbbf24',
+        sql: `-- Add JSONB column for flexible device parameters
+ALTER TABLE public.device_heartbeats
+ADD COLUMN IF NOT EXISTS meta jsonb DEFAULT '{}'::jsonb;
+
+-- Optimized index for searching within the telemetry data
+CREATE INDEX IF NOT EXISTS hb_meta_idx ON public.device_heartbeats USING gin (meta);`,
+    },
+    {
+        id: 'I',
+        label: 'SQL BLOCK I — Remote Commands System',
+        description: 'Creates a device_commands table for queuing remote actions like REBOOT, CLEAR_CACHE, and SCREENSHOT.',
+        color: '#8b5cf6',
+        sql: `-- Create commands table
+CREATE TABLE IF NOT EXISTS public.device_commands (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    device_id uuid REFERENCES public.devices(id) ON DELETE CASCADE,
+    command text NOT NULL, -- e.g. 'REBOOT', 'SCREENSHOT', 'CLEAR_CACHE'
+    payload jsonb DEFAULT '{}'::jsonb,
+    status text DEFAULT 'PENDING', -- 'PENDING', 'EXECUTED', 'FAILED'
+    created_at timestamptz DEFAULT now(),
+    executed_at timestamptz
+);
+
+-- Enable RLS
+ALTER TABLE public.device_commands ENABLE ROW LEVEL SECURITY;
+
+-- Simple public policy for MVP
+DO $$ BEGIN
+    DROP POLICY IF EXISTS "Public device_commands access" ON public.device_commands;
+    CREATE POLICY "Public device_commands access" ON public.device_commands FOR ALL USING (true) WITH CHECK (true);
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;`,
+    },
 ]
 
 export default function DbMigrationPage() {
@@ -179,7 +232,7 @@ export default function DbMigrationPage() {
                 <AlertTriangle size={18} color="#f59e0b" style={{ flexShrink: 0, marginTop: 1 }} />
                 <div>
                     <div style={{ fontWeight: 600, color: '#fbbf24', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
-                        Run blocks in order: A → B → C → D → E → F
+                        Run blocks in order: A → B → C → D → E → F → G
                     </div>
                     <div style={{ color: '#94a3b8', fontSize: '0.8125rem', lineHeight: 1.5 }}>
                         Go to <strong style={{ color: '#e2e8f0' }}>Supabase Dashboard → SQL Editor</strong>, paste each block and click <strong style={{ color: '#e2e8f0' }}>Run</strong>.

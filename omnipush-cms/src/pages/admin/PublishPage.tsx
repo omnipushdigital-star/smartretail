@@ -141,13 +141,17 @@ export default function PublishPage() {
                 mediaIds = [...new Set((items || []).map((i: any) => i.media_id).filter(Boolean))]
             }
 
-            // Step 3: Insert bundle_files
-            if (mediaIds.length > 0) {
-                await supabase.from('bundle_files').delete().eq('bundle_id', form.bundle_id)
-                const { error: filesErr } = await supabase.from('bundle_files').insert(
-                    mediaIds.map(mid => ({ bundle_id: form.bundle_id, media_id: mid }))
-                )
-                if (filesErr) throw filesErr
+            // Step 3: Insert bundle_files (Snapshot media list)
+            try {
+                if (mediaIds.length > 0) {
+                    await supabase.from('bundle_files').delete().eq('bundle_id', form.bundle_id)
+                    const { error: filesErr } = await supabase.from('bundle_files').insert(
+                        mediaIds.map(mid => ({ bundle_id: form.bundle_id, media_id: mid }))
+                    )
+                    if (filesErr) console.warn("[Snapshot] Could not save bundle media list:", filesErr.message)
+                }
+            } catch (snapErr) {
+                console.warn("[Snapshot] Silent error during media list capture:", snapErr)
             }
 
             // Step 4: Insert new publication

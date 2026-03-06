@@ -3,19 +3,52 @@ import { LayoutTemplate as LTIcon, Eye, Info } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { LayoutTemplate } from '../../types'
 import Modal from '../../components/ui/Modal'
+import { useTenant } from '../../contexts/TenantContext'
 import toast from 'react-hot-toast'
 
 export default function LayoutTemplatesPage() {
+    const { currentTenantId } = useTenant()
     const [templates, setTemplates] = useState<LayoutTemplate[]>([])
     const [loading, setLoading] = useState(true)
     const [preview, setPreview] = useState<LayoutTemplate | null>(null)
 
-    useEffect(() => {
+    const fetchTemplates = () => {
+        setLoading(true)
         supabase.from('layout_templates').select('*').order('name').then(({ data }) => {
             setTemplates(data || [])
             setLoading(false)
         })
+    }
+
+    useEffect(() => {
+        fetchTemplates()
     }, [])
+
+    const seedSplitTemplate = async () => {
+        if (!currentTenantId) {
+            toast.error('No tenant selected')
+            return
+        }
+
+        const splitTemplate = {
+            tenant_id: currentTenantId,
+            name: 'Split (70/30) - Pro',
+            description: 'Custom split layout with 70% content and 30% side panel.',
+            regions: [
+                { id: 'main', x: 0, y: 0, width: 70, height: 100, label: 'Main Content' },
+                { id: 'side', x: 70, y: 0, width: 30, height: 100, label: 'Side Panel' }
+            ],
+            is_default: false
+        }
+
+        const { error } = await supabase.from('layout_templates').insert([splitTemplate])
+        if (error) {
+            toast.error(`Fail: ${error.message}`)
+        } else {
+            toast.success('Split template created!')
+            fetchTemplates()
+        }
+    }
 
     return (
         <div>
@@ -24,6 +57,9 @@ export default function LayoutTemplatesPage() {
                     <h1 className="page-title">Layout Templates</h1>
                     <p className="page-subtitle">Pre-built region layouts for your displays</p>
                 </div>
+                <button className="btn-primary" onClick={seedSplitTemplate}>
+                    Add Split Template (Test)
+                </button>
             </div>
 
             {/* Info banner */}

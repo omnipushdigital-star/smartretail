@@ -264,8 +264,7 @@ function CreateBundleModal({
                 .insert({
                     tenant_id: currentTenantId,
                     version: form.version.trim(),
-                    notes: form.notes.trim() || null,
-                    total_items: 0 // Will update if snapshotting
+                    notes: form.notes.trim() || null
                 })
                 .select('id, version')
                 .single()
@@ -297,11 +296,15 @@ function CreateBundleModal({
                             if (filesErr) throw filesErr
                         }
 
-                        // Update TRUE total items in bundle record (including web URLs)
-                        await supabase.from('bundles').update({ total_items: items.length }).eq('id', bundle.id)
+                        // Update total items count (resiliently - don't crash if column cache is stale)
+                        try {
+                            await supabase.from('bundles').update({ total_items: items.length }).eq('id', bundle.id)
+                        } catch (e) {
+                            console.warn("Failed to update total_items (likely stale schema cache):", e)
+                        }
 
                         // Also record total count for UI feedback
-                        toast.success(`Bundle ${bundle.version} created — ${items.length} item${items.length !== 1 ? 's' : ''} snapshotted (includes ${items.length - mediaItems.length} web/external links)`)
+                        toast.success(`Bundle ${bundle.version} created — ${items.length} item${items.length !== 1 ? 's' : ''} snapshotted (${mediaItems.length} files)`)
                     } else {
                         toast.success(`Bundle ${bundle.version} created (no content found in layout)`)
                     }
@@ -493,9 +496,12 @@ export default function BundlesPage() {
                 await supabase.from('bundle_files').insert(mediaItems.map(i => ({ bundle_id: bundleId, media_id: i.media_id })))
             }
 
-            // Update count
-            const { error: updErr } = await supabase.from('bundles').update({ total_items: items.length }).eq('id', bundleId)
-            if (updErr) throw updErr
+            // Update count (resiliently)
+            try {
+                await supabase.from('bundles').update({ total_items: items.length } as any).eq('id', bundleId)
+            } catch (e) {
+                console.warn("Failed to update total_items count:", e)
+            }
 
             toast.success(`Bundle updated with ${items.length} items`)
             loadAll()

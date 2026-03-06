@@ -185,6 +185,7 @@ export interface DeviceHeartbeat {
     current_version?: string
     ip_address?: string
     status: string
+    meta?: any
     created_at: string
 }
 
@@ -201,6 +202,11 @@ export interface Menu {
         promo_position: 'left' | 'right'
         theme: 'dark' | 'glass' | 'elegant'
         aspect_ratio: '16:9' | '9:16'
+        currency: {
+            code: string
+            symbol: string
+            name: string
+        }
     }
     created_at: string
     updated_at: string
