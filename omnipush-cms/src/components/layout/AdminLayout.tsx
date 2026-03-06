@@ -1,11 +1,10 @@
 import React from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
-import { Moon, Sun, Bell, Check, Plus } from 'lucide-react'
+import { Moon, Sun, Bell, Check, Plus, ChevronDown, MapPin, Building2, LogOut } from 'lucide-react'
 import Sidebar from './Sidebar'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTenant } from '../../contexts/TenantContext'
-import { ChevronDown, MapPin, Building2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 
 interface TenantSettings {
@@ -14,14 +13,16 @@ interface TenantSettings {
     primary_color: string;
     secondary_color: string;
 }
+
 export default function AdminLayout() {
     const navigate = useNavigate()
     const { theme, toggleTheme } = useTheme()
-    const { user } = useAuth()
+    const { user, signOut } = useAuth()
     const { currentTenant, tenants, switchTenant, loading: tenantLoading } = useTenant()
     const currentTenantId = currentTenant?.id
     const [tenant, setTenant] = React.useState<TenantSettings | null>(null)
     const [showSwitcher, setShowSwitcher] = React.useState(false)
+    const [showUserMenu, setShowUserMenu] = React.useState(false)
 
     React.useEffect(() => {
         console.log('[AdminLayout] Current Tenant:', currentTenant, 'Loading:', tenantLoading)
@@ -150,7 +151,7 @@ export default function AdminLayout() {
                                 <div style={{ textAlign: 'left' }}>
                                     <div style={{ fontSize: '0.7rem', color: theme === 'dark' ? '#94a3b8' : '#64748b', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Active Instance</div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.125rem' }}>
-                                        <span style={{ fontSize: '1rem', fontWeight: 800, color: theme === 'dark' ? '#f1f5f9' : '#1e1e2d', whiteSpace: 'nowrap' }}>
+                                        <span style={{ fontSize: '1rem', fontWeight: 800, color: theme === 'dark' ? '#f1f5f9' : '#1e1e2d', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                             {tenant?.name || 'Loading...'}
                                         </span>
                                         <ChevronDown size={14} color={tenant?.primary_color || "#ef4444"} />
@@ -228,14 +229,60 @@ export default function AdminLayout() {
                             <span style={{ position: 'absolute', top: 3, right: 3, width: 6, height: 6, borderRadius: '50%', background: tenant?.primary_color || '#ef4444' }} />
                         </button>
 
-                        <div style={{
-                            width: 32, height: 32, borderRadius: '50%',
-                            background: `linear-gradient(135deg, ${tenant?.primary_color || '#ef4444'}, ${tenant?.secondary_color || '#dc2626'})`,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '0.75rem', fontWeight: 600, color: 'white',
-                            boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
-                        }}>
-                            {user?.email?.charAt(0).toUpperCase() || 'A'}
+                        <div style={{ position: 'relative' }}>
+                            <button
+                                onClick={() => setShowUserMenu(!showUserMenu)}
+                                style={{
+                                    width: 36, height: 36, borderRadius: '50%',
+                                    background: `linear-gradient(135deg, ${tenant?.primary_color || '#ef4444'}, ${tenant?.secondary_color || '#dc2626'})`,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontSize: '0.85rem', fontWeight: 700, color: 'white',
+                                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                    border: 'none', cursor: 'pointer', outline: 'none',
+                                    transition: 'transform 0.2s', padding: 0
+                                }}
+                                onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.05)')}
+                                onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                            >
+                                {user?.email?.charAt(0).toUpperCase() || 'A'}
+                            </button>
+
+                            {showUserMenu && (
+                                <>
+                                    <div
+                                        onClick={() => setShowUserMenu(false)}
+                                        style={{ position: 'fixed', inset: 0, zIndex: 40 }}
+                                    />
+                                    <div style={{
+                                        position: 'absolute', top: '120%', right: 0, width: 220,
+                                        background: theme === 'dark' ? '#0f172a' : '#ffffff',
+                                        border: `1px solid ${theme === 'dark' ? '#1e293b' : '#e2e8f0'}`,
+                                        borderRadius: 12, boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
+                                        zIndex: 50, overflow: 'hidden', padding: '0.5rem'
+                                    }}>
+                                        <div style={{ padding: '0.75rem', borderBottom: `1px solid ${theme === 'dark' ? '#1e293b' : '#f1f5f9'}`, marginBottom: '0.5rem' }}>
+                                            <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Signed in as</div>
+                                            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: theme === 'dark' ? '#f1f5f9' : '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {user?.email}
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => signOut()}
+                                            style={{
+                                                width: '100%', display: 'flex', alignItems: 'center', gap: '0.75rem',
+                                                padding: '0.75rem', background: 'transparent',
+                                                border: 'none', borderRadius: 8, cursor: 'pointer', transition: 'all 0.2s',
+                                                color: '#ef4444', textAlign: 'left', fontWeight: 600, fontSize: '0.875rem'
+                                            }}
+                                            onMouseEnter={(e) => (e.currentTarget.style.background = theme === 'dark' ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.05)')}
+                                            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                                        >
+                                            <LogOut size={16} />
+                                            Log Out
+                                        </button>
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </div>
                 </header>
