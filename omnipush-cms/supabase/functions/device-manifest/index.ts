@@ -11,7 +11,8 @@ serve(async (req: Request) => {
     if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
     try {
-        const { device_code, device_secret, current_version } = await req.json();
+        const { device_code, device_secret, current_version, origin } = await req.json();
+
         if (!device_code || !device_secret)
             return Response.json({ error: "device_code and device_secret required" }, { status: 400, headers: corsHeaders });
 
@@ -141,17 +142,32 @@ serve(async (req: Request) => {
             .in("playlist_id", playlistIds)
             .order("sort_order");
 
+        // VALIDATION: Filter out items that are incomplete
+        const validRawItems = (rawItems || []).filter(item => {
+            if (item.type === 'web_url') return !!item.web_url;
+            return !!item.media_id;
+        });
+
         // Filter out nulls (web_urls have no media_id)
-        const mediaIds = [...new Set((rawItems || []).map((i: any) => i.media_id).filter(Boolean))];
+        const mediaIds = [...new Set(validRawItems.map((i: any) => i.media_id).filter(Boolean))];
         const { data: allMedia } = await supabase
             .from("media_assets")
             .select("*")
             .in("id", mediaIds);
 
-        const items = (rawItems || []).map((item: any) => ({
-            ...item,
-            media: allMedia?.find((m: any) => m.id === item.media_id)
-        }));
+        // MAP ITEMS WITH ORIGIN SUPPORT
+        const items = validRawItems.map((item: any) => {
+            let finalWebUrl = item.web_url;
+            // Prepend origin if it's a relative URL
+            if (finalWebUrl && finalWebUrl.startsWith('/') && origin) {
+                finalWebUrl = `${origin}${finalWebUrl}`;
+            }
+            return {
+                ...item,
+                web_url: finalWebUrl,
+                media: allMedia?.find((m: any) => m.id === item.media_id)
+            };
+        });
 
         // 7. Generate signed URLs in bulk
         const storageItems = (items || []).filter((i: any) =>
@@ -178,7 +194,7 @@ serve(async (req: Request) => {
             if (seenMedia.has(media.id)) continue;
             seenMedia.add(media.id);
 
-            const url = signedUrlsMap[media.storage_path] || media.url || media.web_url || null;
+            const url = signedUrlsMap[media.storage_path] || media.url || null;
 
             mediaAssets.push({
                 media_id: media.id,
@@ -192,13 +208,13 @@ serve(async (req: Request) => {
         // 8. Build region_playlists map
         const regionPlaylists: Record<string, any[]> = {};
         for (const rm of regionMaps || []) {
-            const regionItems = (items || [])
+            const regionItems = items
                 .filter((i: any) => i.playlist_id === rm.playlist_id)
                 .map((i: any) => ({
                     playlist_item_id: i.id,
                     media_id: i.media_id,
                     type: i.type,
-                    web_url: i.web_url,
+                    web_url: i.web_url, // Now absolute
                     duration_seconds: i.duration_seconds,
                     sort_order: i.sort_order,
                 }));
@@ -232,10 +248,11 @@ serve(async (req: Request) => {
             poll_seconds: 30,
         };
 
-        console.log(`[Manifest] Success: ${resolvedScope} publication found. Version: ${bundle?.version || 'N/A'}`);
+        console.log(`[Manifest] Success: ${resolvedScope} publication found. Version: ${bundle?.version || 'N/A'}. Assets: ${mediaAssets.length}. Regions: ${Object.keys(regionPlaylists).length}`);
 
         return Response.json(manifest, { headers: corsHeaders });
     } catch (err: any) {
+        console.error("[Manifest Fatal]", err);
         return Response.json({ error: err.message }, { status: 500, headers: corsHeaders });
     }
 });

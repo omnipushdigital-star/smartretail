@@ -721,6 +721,7 @@ export default function PlayerPage() {
                 device_code: dc,
                 device_secret: sec,
                 current_version: version,
+                origin: window.location.origin
             })
 
             // ─── CLIENT-SIDE REPAIR ───
