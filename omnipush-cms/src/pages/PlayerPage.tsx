@@ -957,18 +957,7 @@ export default function PlayerPage() {
 
     // ── Retry ──
     const handleRetry = () => {
-        // Clear stored secret on auth errors
-        if (errorMsg.toLowerCase().includes('invalid')) {
-            localStorage.removeItem(secretKey(dc))
-            setSecret('')
-            setPhase('secret')
-        } else {
-            setPhase('loading')
-            fetchManifest(secretRef.current).then(ok => {
-                if (ok) setPhase('playing')
-                else setPhase('error')
-            })
-        }
+        window.location.reload()
     }
 
     // ── Resolve playlist items for playback ──
