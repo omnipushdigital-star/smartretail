@@ -44,11 +44,21 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+import LandingPage from './pages/LandingPage'
+import StatusPage from './pages/StatusPage'
+import GuidePage from './pages/GuidePage'
+
+const isProduction = import.meta.env.VITE_APP_ENV === 'production'
+
 function AppRoutes() {
   return (
     <Routes>
       {/* Public */}
+      <Route path="/" element={isProduction ? <LandingPage /> : <Navigate to="/admin/dashboard" replace />} />
+      <Route path="/landing" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/status" element={<StatusPage />} />
+      <Route path="/guide" element={<GuidePage />} />
       <Route path="/player/:device_code" element={<PlayerPage />} />
       <Route path="/display/menu/:menuId" element={<DisplayMenu />} />
 
@@ -80,9 +90,8 @@ function AppRoutes() {
         <Route path="global" element={<SuperAdminPage />} />
       </Route>
 
-      {/* Redirect root */}
-      <Route path="/" element={<Navigate to="/admin/dashboard" replace />} />
-      <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
+      {/* Redirect/Catch-all */}
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
 }

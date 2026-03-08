@@ -116,6 +116,22 @@ export default function AdminLayout() {
                         }}>
                             SMART RETAIL DISPLAY
                         </span>
+                        {import.meta.env.VITE_APP_ENV !== 'production' && (
+                            <span style={{
+                                marginLeft: '1rem',
+                                background: 'rgba(239, 68, 68, 0.1)',
+                                border: '1px solid #ef4444',
+                                color: '#ef4444',
+                                fontSize: '0.625rem',
+                                padding: '2px 8px',
+                                borderRadius: '100px',
+                                fontWeight: 900,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.1em'
+                            }}>
+                                Staging
+                            </span>
+                        )}
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
