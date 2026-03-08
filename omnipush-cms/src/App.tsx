@@ -48,7 +48,8 @@ import LandingPage from './pages/LandingPage'
 import StatusPage from './pages/StatusPage'
 import GuidePage from './pages/GuidePage'
 
-const isProduction = import.meta.env.VITE_APP_ENV === 'production'
+const isProduction = import.meta.env.VITE_APP_ENV === 'production' &&
+  !window.location.hostname.includes('smartretail-plum');
 
 function AppRoutes() {
   return (

@@ -116,7 +116,7 @@ export default function AdminLayout() {
                         }}>
                             SMART RETAIL DISPLAY
                         </span>
-                        {import.meta.env.VITE_APP_ENV !== 'production' && (
+                        {(import.meta.env.VITE_APP_ENV !== 'production' || window.location.hostname.includes('smartretail-plum')) && (
                             <span style={{
                                 marginLeft: '1rem',
                                 background: 'rgba(239, 68, 68, 0.1)',
