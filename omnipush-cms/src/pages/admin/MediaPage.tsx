@@ -66,12 +66,17 @@ export default function MediaPage() {
             if (upErr) { toast.error(`Upload failed: ${upErr.message}`); continue }
             const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path)
             const type = file.type.startsWith('video') ? 'video' : 'image'
+
+            // If R2 base exists, prefer it for public access
+            const r2Base = import.meta.env.VITE_R2_PUBLIC_BASE_URL
+            const publicUrl = r2Base ? `${r2Base.replace(/\/$/, '')}/${path}` : urlData.publicUrl
+
             const { error: dbErr } = await supabase.from('media_assets').insert({
                 tenant_id: currentTenantId,
                 name: file.name.replace(/\.[^/.]+$/, ''),
                 type,
                 storage_path: path,
-                url: urlData.publicUrl,
+                url: publicUrl,
                 bytes: file.size,
                 tags: [],
             })

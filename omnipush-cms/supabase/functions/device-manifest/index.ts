@@ -177,12 +177,20 @@ serve(async (req: Request) => {
 
         let signedUrlsMap: Record<string, string> = {};
         if (uniquePaths.length > 0) {
-            const { data: signedResults, error: signedErr } = await supabase.storage
-                .from("signage_media")
-                .createSignedUrls(uniquePaths as string[], 3600);
+            // Filter out paths that already have public URLs (e.g., Cloudflare R2)
+            const pathsToSign = uniquePaths.filter(path => {
+                const asset = allMedia?.find(m => m.storage_path === path);
+                return !(asset?.url && (asset.url.includes('r2.dev') || asset.url.includes('omnipushdigital.com')));
+            });
 
-            if (!signedErr && signedResults) {
-                signedUrlsMap = Object.fromEntries(signedResults.map((s: any) => [s.path, s.signedUrl]));
+            if (pathsToSign.length > 0) {
+                const { data: signedResults, error: signedErr } = await supabase.storage
+                    .from("signage_media")
+                    .createSignedUrls(pathsToSign as string[], 3600);
+
+                if (!signedErr && signedResults) {
+                    signedUrlsMap = Object.fromEntries(signedResults.map((s: any) => [s.path, s.signedUrl]));
+                }
             }
         }
 
