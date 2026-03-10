@@ -126,42 +126,14 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
         return asset?.url || item.web_url || ''
     }, [memoizedAssets])
 
-    // Switch sources when state changes
+    // Initialize with first URL to avoid blank start
     useEffect(() => {
-        if (sorted.length === 0) return
-        const currentUrl = getUrl(sorted[0])
-
-        // Always ensure the first slot has the current URL if we only have one item
-        if (sorted.length === 1) {
-            setSlotUrls([currentUrl, ''])
-            setSlotOpacity([1, 0])
-
-            const v = videoRefs[0].current
-            if (v && v.src !== currentUrl) {
-                v.src = currentUrl
-                v.load()
-            }
-            if (v && v.paused) {
-                v.play().catch(e => console.warn("[Video] Single-loop play failed:", e))
-            }
-            return
+        if (sorted.length > 0 && slotUrls[0] === '') {
+            const firstUrl = getUrl(sorted[0])
+            setSlotUrls([firstUrl, ''])
+            console.log("[Video] Initializing buffer with:", firstUrl)
         }
-
-        // Multiple items logic...
-        if (slotUrls[activeSlot] !== currentUrl) {
-            setSlotUrls(prev => {
-                const updated = [...prev] as [string, string]
-                updated[activeSlot] = currentUrl
-                return updated
-            })
-
-            const v = videoRefs[activeSlot].current
-            if (v) {
-                v.load()
-                v.play().catch(() => { })
-            }
-        }
-    }, [sorted, getUrl, activeSlot])
+    }, [sorted, getUrl])
 
     const advanceBuffer = useCallback(() => {
         if (sorted.length === 0) return
@@ -171,7 +143,7 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
             const v = videoRefs[activeSlot].current
             if (v) {
                 v.currentTime = 0
-                v.play().catch(() => { })
+                v.play().catch(e => console.warn("[Video] Single-loop playback error:", e))
             }
             onAdvance()
             return
@@ -184,27 +156,36 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
         const currentSlot: 0 | 1 = activeSlot
         const nextUrl = getUrl(sorted[nextIdx])
 
+        console.log(`[Video] Advancing to item ${nextIdx} in slot ${nextSlot}:`, nextUrl)
+
         const nextVideo = videoRefs[nextSlot].current
         const currentVideo = videoRefs[currentSlot].current
 
         if (nextVideo) {
             nextVideo.src = nextUrl
             nextVideo.load()
-            nextVideo.currentTime = 0.1
 
+            // Wait for it to be ready before swapping
             const onReady = () => {
-                setSlotOpacity(activeSlot === 0 ? [0, 1] : [1, 0])
+                console.log(`[Video] Slot ${nextSlot} is ready and playing. Swapping...`)
+                setSlotOpacity(nextSlot === 0 ? [1, 0] : [0, 1])
                 setActiveSlot(nextSlot)
+
+                // Keep playing current for a brief moment to ensure gapless
                 setTimeout(() => {
                     if (currentVideo && activeSlot !== nextSlot) {
                         currentVideo.pause()
                     }
-                }, 500)
+                }, 300)
                 nextVideo.removeEventListener('playing', onReady)
             }
 
             nextVideo.addEventListener('playing', onReady)
-            nextVideo.play().catch(() => { })
+            nextVideo.play().catch(e => {
+                console.error("[Video] Next video play failed:", e)
+                // If it fails, try to skip
+                setTimeout(advanceBuffer, 2000)
+            })
         }
 
         setSlotUrls(prev => {
@@ -258,29 +239,36 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
     }
 
     return (
-        <>
+        <div style={{ position: 'absolute', inset: 0, background: '#000' }}>
             <style>{globalStyle}</style>
             {[0, 1].map(i => (
                 <video
                     key={i}
                     ref={videoRefs[i]}
                     src={slotUrls[i]}
-                    style={{ ...videoStyle, opacity: slotOpacity[i], zIndex: slotOpacity[i] > 0 ? 10 : 1 }}
+                    style={{
+                        ...videoStyle,
+                        opacity: slotOpacity[i],
+                        zIndex: slotOpacity[i] > 0 ? 10 : 1,
+                        visibility: slotUrls[i] ? 'visible' : 'hidden'
+                    }}
                     muted
                     autoPlay
                     playsInline
                     loop={sorted.length === 1}
-                    crossOrigin="anonymous"
                     webkit-playsinline="true"
                     preload="auto"
                     onEnded={advanceBuffer}
                     onError={(e) => {
-                        console.error("[Video] Error in slot", i, e);
-                        setTimeout(advanceBuffer, 2000);
+                        console.error("[Video] Error in slot", i, "URL:", slotUrls[i], e);
+                        // If current slot errors, try to skip
+                        if (i === activeSlot) {
+                            setTimeout(advanceBuffer, 2000);
+                        }
                     }}
                 />
             ))}
-        </>
+        </div>
     )
 }
 
@@ -689,6 +677,20 @@ export default function PlayerPage() {
                 if (cmd.command === 'REBOOT') {
                     console.warn('[Player] Remote Reboot triggered via CMS. Reloading page...')
                     window.location.reload()
+                } else if (cmd.command === 'CLEAR_CACHE') {
+                    console.warn('[Player] Remote Clear Cache triggered. Purging local storage...')
+                    localStorage.removeItem(manifestKey(dc))
+                    // We keep the secretKey so the device stays paired
+                    window.location.reload()
+                } else if (cmd.command === 'SCREENSHOT') {
+                    console.log('[Player] Remote Screenshot requested...')
+                    const win = window as any
+                    if (win.AndroidHealth && win.AndroidHealth.takeScreenshot) {
+                        // The Android app will handle the upload to Supabase Storage
+                        win.AndroidHealth.takeScreenshot(cmd.id)
+                    } else {
+                        console.error('[Player] Native screenshot bridge NOT available.')
+                    }
                 }
             }
         } catch (err: any) {

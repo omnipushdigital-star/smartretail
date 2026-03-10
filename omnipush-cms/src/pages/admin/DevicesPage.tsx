@@ -1,5 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { Plus, Search, Edit2, Trash2, Monitor, Copy, Check, Loader2, RefreshCw, Info, Eye, EyeOff, QrCode, Download, Tv2, RotateCcw } from 'lucide-react'
+import {
+    Tv2, Layout, Activity, Shield, ArrowRight, PlayCircle, Layers, Settings,
+    Plus, Monitor, Search, MoreVertical, Edit2, Trash2, RefreshCw, Smartphone,
+    Copy, Check, Info, AlertCircle, Loader2, Link, ArrowLeftRight, Wifi,
+    RotateCcw, History, Trash, Database, Eraser, Camera, QrCode, Eye, EyeOff
+} from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { supabase, callEdgeFn } from '../../lib/supabase'
 import { useTenant } from '../../contexts/TenantContext'
@@ -26,7 +31,7 @@ function generateDeviceCode(storeName?: string, roleName?: string) {
         // Add a small 3-char random suffix to ensure uniqueness while keeping it identifyable
         const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
         const suffix = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-        return `${p1}_${p2}_${suffix}`;
+        return `${p1}_${p2}_${suffix} `;
     }
 
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -48,6 +53,7 @@ const emptyForm = {
 interface PairingInfo { device_code: string; device_secret: string }
 
 export default function DevicesPage() {
+    const { currentTenantId } = useTenant()
     const [devices, setDevices] = useState<Device[]>([])
     const [stores, setStores] = useState<Store[]>([])
     const [roles, setRoles] = useState<Role[]>([])
@@ -69,14 +75,35 @@ export default function DevicesPage() {
     const [copiedId, setCopiedId] = useState<string | null>(null)
     const [pairingInfo, setPairingInfo] = useState<PairingInfo | null>(null)
     const [revealedId, setRevealedId] = useState<string | null>(null)
-    const { currentTenantId } = useTenant()
+    const [viewMode, setViewMode] = useState<'active' | 'bin'>('active')
+    const [autoSyncCode, setAutoSyncCode] = useState(true)
+    const [screenshotModal, setScreenshotModal] = useState<{
+        deviceCode: string
+        commandId: string
+        imageUrl: string | null
+        polling: boolean
+    } | null>(null)
+
+    const slugify = (s: string) => s.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '').substring(0, 20);
+
+    const handleNameChange = (name: string) => {
+        setForm(f => {
+            const newForm = { ...f, display_name: name };
+            if (autoSyncCode) {
+                newForm.device_code = slugify(name);
+            }
+            return newForm;
+        });
+    }
 
     const loadData = useCallback(async () => {
         if (!currentTenantId) return
         setLoading(true)
         const [devicesRes, storesRes, rolesRes] = await Promise.all([
             supabase.from('devices').select('*, store:stores(id,code,name), role:roles(id,name,key)')
-                .eq('tenant_id', currentTenantId).order('display_name'),
+                .eq('tenant_id', currentTenantId)
+                .is('deleted_at', viewMode === 'bin' ? 'not.null' : null)
+                .order('display_name'),
             supabase.from('stores').select('*').eq('tenant_id', currentTenantId).eq('active', true).order('name'),
             supabase.from('roles').select('*').eq('tenant_id', currentTenantId).order('name'),
         ])
@@ -91,7 +118,7 @@ export default function DevicesPage() {
         // Fetch ANY heartbeat for these devices or codes (Manual join fallback)
         const { data: hbData } = await supabase.from('device_heartbeats')
             .select('*')
-            .or(`device_id.in.(${deviceIds.map(id => `"${id}"`).join(',')}),device_code.in.(${deviceCodes.map(c => `"${c}"`).join(',')})`)
+            .or(`device_id.in.(${deviceIds.map(id => `"${id}"`).join(',')}), device_code.in.(${deviceCodes.map(c => `"${c}"`).join(',')})`)
             .order('last_seen_at', { ascending: false })
 
         const hbMap: Record<string, DeviceHeartbeat> = {}
@@ -174,7 +201,7 @@ export default function DevicesPage() {
     })
     const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
-    const openCreate = () => { setEditing(null); setForm(emptyForm); setShowModal(true) }
+    const openCreate = () => { setEditing(null); setForm(emptyForm); setAutoSyncCode(true); setShowModal(true) }
     const openEdit = (d: Device) => {
         setEditing(d)
         setForm({
@@ -183,6 +210,7 @@ export default function DevicesPage() {
             store_id: d.store_id || '', role_id: d.role_id || '',
             orientation: d.orientation, resolution: d.resolution, active: d.active
         })
+        setAutoSyncCode(false) // Don't auto-sync by default when editing existing
         setShowModal(true)
     }
 
@@ -232,14 +260,46 @@ export default function DevicesPage() {
         setSaving(false)
     }
 
-    const handleDelete = async (id: string) => {
-        if (!confirm('Delete this device?')) return
-        setDeleting(id)
-        const { error } = await supabase.from('devices').delete().eq('id', id)
-        if (error) toast.error(error.message)
-        else { toast.success('Device deleted'); loadData() }
+    const handleDelete = async (id: string, code: string) => {
+        if (viewMode === 'active') {
+            if (!confirm(`Move "${code}" to the Trash Bin? It will go offline immediately.`)) return
+            setDeleting(id)
+            try {
+                const { error } = await supabase.from('devices').update({ deleted_at: new Date().toISOString() }).eq('id', id)
+                if (error) throw error
+                toast.success('Device moved to Bin')
+                loadData()
+            } catch (err: any) {
+                toast.error(err.message)
+            }
+        } else {
+            if (!confirm(`PERMANENTLY DELETE "${code}"? This cannot be undone.`)) return
+            setDeleting(id)
+            try {
+                const { error } = await supabase.from('devices').delete().eq('id', id)
+                if (error) throw error
+                toast.success('Device deleted permanently')
+                loadData()
+            } catch (err: any) {
+                toast.error(err.message)
+            }
+        }
         setDeleting(null)
     }
+
+    const handleRestore = async (id: string, code: string) => {
+        setDeleting(id) // use deleting state for loader
+        try {
+            const { error } = await supabase.from('devices').update({ deleted_at: null }).eq('id', id)
+            if (error) throw error
+            toast.success(`Device "${code}" restored!`)
+            loadData()
+        } catch (err: any) {
+            toast.error(err.message)
+        }
+        setDeleting(null)
+    }
+
 
     const copyText = (text: string, label: string, id?: string) => {
         navigator.clipboard.writeText(text)
@@ -259,7 +319,66 @@ export default function DevicesPage() {
             if (error) throw error
             toast.success(`Reboot command queued for ${deviceCode}`)
         } catch (err: any) {
-            toast.error(`Failed to queue reboot: ${err.message}`)
+            toast.error(`Failed to queue reboot: ${err.message} `)
+        }
+    }
+
+    const handleClearCache = async (deviceId: string, deviceCode: string) => {
+        if (!confirm(`Force ${deviceCode} to clear its local storage and cache? This will cause a full re-download of all media.`)) return
+        try {
+            const { error } = await supabase.from('device_commands').insert({
+                device_id: deviceId,
+                command: 'CLEAR_CACHE',
+                status: 'PENDING'
+            })
+            if (error) throw error
+            toast.success(`Clear cache command sent to ${deviceCode}`)
+        } catch (err: any) {
+            toast.error(`Failed to send command: ${err.message}`)
+        }
+    }
+
+    const handleScreenshot = async (deviceId: string, deviceCode: string) => {
+        try {
+            const { data, error } = await supabase.from('device_commands').insert({
+                device_id: deviceId,
+                command: 'SCREENSHOT',
+                status: 'PENDING'
+            }).select('id').single()
+            if (error) throw error
+            const commandId = data.id
+            setScreenshotModal({ deviceCode, commandId, imageUrl: null, polling: true })
+            toast.success(`Screenshot requested from ${deviceCode}. Waiting for device...`)
+
+            // Poll Supabase Storage for the uploaded image
+            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+            const pollInterval = setInterval(async () => {
+                const { data: files } = await supabase.storage
+                    .from('device-screenshots')
+                    .list('screenshots', { search: deviceCode })
+
+                if (files && files.length > 0) {
+                    // Sort by date desc — take the newest file for this device
+                    const sorted = files
+                        .filter(f => f.name.startsWith(deviceCode))
+                        .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())
+
+                    if (sorted.length > 0) {
+                        const publicUrl = `${supabaseUrl}/storage/v1/object/public/device-screenshots/screenshots/${sorted[0].name}`
+                        clearInterval(pollInterval)
+                        setScreenshotModal(prev => prev ? { ...prev, imageUrl: publicUrl, polling: false } : null)
+                    }
+                }
+            }, 5000)
+
+            // Stop polling after 2 minutes regardless
+            setTimeout(() => {
+                clearInterval(pollInterval)
+                setScreenshotModal(prev => prev ? { ...prev, polling: false } : null)
+            }, 120_000)
+
+        } catch (err: any) {
+            toast.error(`Failed to request screenshot: ${err.message}`)
         }
     }
 
@@ -290,19 +409,51 @@ export default function DevicesPage() {
 
             <div className="card" style={{ marginBottom: '1rem', padding: '1rem' }}>
                 <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+
+                    {/* View Mode Toggle */}
+                    <div className="btn-group" style={{ background: '#0f172a', padding: 4, borderRadius: 8, display: 'inline-flex', gap: 2 }}>
+                        <button
+                            className={`btn-tab ${viewMode === 'active' ? 'active' : ''}`}
+                            onClick={() => setViewMode('active')}
+                            style={{
+                                padding: '0.4rem 1rem', fontSize: '0.8rem', borderRadius: 6,
+                                background: viewMode === 'active' ? '#1e293b' : 'transparent',
+                                color: viewMode === 'active' ? '#f8fafc' : '#64748b', border: 'none', cursor: 'pointer'
+                            }}
+                        >
+                            Active
+                        </button>
+                        <button
+                            className={`btn-tab ${viewMode === 'bin' ? 'active' : ''}`}
+                            onClick={() => setViewMode('bin')}
+                            style={{
+                                padding: '0.4rem 1rem', fontSize: '0.8rem', borderRadius: 6,
+                                background: viewMode === 'bin' ? '#ef444422' : 'transparent',
+                                color: viewMode === 'bin' ? '#ef4444' : '#64748b', border: 'none', cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: 6
+                            }}
+                        >
+                            <Trash2 size={12} /> Bin
+                        </button>
+                    </div>
+
                     <div style={{ position: 'relative', flex: '1 1 200px' }}>
                         <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
-                        <input type="text" className="input-field" placeholder="Search devices..." value={search}
+                        <input type="text" className="input-field" placeholder={`Search ${viewMode === 'bin' ? 'bin' : 'devices'}...`} value={search}
                             onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ paddingLeft: '2rem' }} />
                     </div>
-                    <select className="input-field" style={{ width: 'auto' }} value={filterStore} onChange={e => { setFilterStore(e.target.value); setPage(1) }}>
-                        <option value="">All stores</option>
-                        {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                    <select className="input-field" style={{ width: 'auto' }} value={filterRole} onChange={e => { setFilterRole(e.target.value); setPage(1) }}>
-                        <option value="">All roles</option>
-                        {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                    </select>
+                    {viewMode === 'active' && (
+                        <>
+                            <select className="input-field" style={{ width: 'auto' }} value={filterStore} onChange={e => { setFilterStore(e.target.value); setPage(1) }}>
+                                <option value="">All stores</option>
+                                {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                            </select>
+                            <select className="input-field" style={{ width: 'auto' }} value={filterRole} onChange={e => { setFilterRole(e.target.value); setPage(1) }}>
+                                <option value="">All roles</option>
+                                {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                            </select>
+                        </>
+                    )}
                 </div>
             </div>
 
@@ -377,7 +528,7 @@ export default function DevicesPage() {
                                                     </div>
                                                 </td>
                                                 <td>
-                                                    <span className={`badge ${online ? 'badge-green' : hb ? 'badge-red' : 'badge-gray'}`}>
+                                                    <span className={`badge ${online ? 'badge-green' : hb ? 'badge-red' : 'badge-gray'} `}>
                                                         {online ? '● Online' : hb ? '● Offline' : '○ Never'}
                                                     </span>
                                                 </td>
@@ -392,26 +543,61 @@ export default function DevicesPage() {
                                                 </td>
                                                 <td>
                                                     <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                                        <button onClick={() => openEdit(d)} className="btn-secondary" style={{ padding: '0.375rem 0.625rem' }} title="Edit device">
-                                                            <Edit2 size={13} />
-                                                        </button>
+                                                        {viewMode === 'active' ? (
+                                                            <>
+                                                                <button onClick={() => openEdit(d)} className="btn-secondary" style={{ padding: '0.375rem 0.625rem' }} title="Edit device">
+                                                                    <Edit2 size={13} />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleReboot(d.id, d.device_code)}
+                                                                    className="btn-secondary"
+                                                                    style={{ padding: '0.375rem 0.625rem' }}
+                                                                    title="Remote Reboot"
+                                                                >
+                                                                    <RotateCcw size={13} />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleClearCache(d.id, d.device_code)}
+                                                                    className="btn-secondary"
+                                                                    style={{ padding: '0.375rem 0.625rem' }}
+                                                                    title="Clear Device Cache"
+                                                                >
+                                                                    <Eraser size={13} />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleScreenshot(d.id, d.device_code)}
+                                                                    className="btn-secondary"
+                                                                    style={{ padding: '0.375rem 0.625rem' }}
+                                                                    title="Request Screenshot"
+                                                                >
+                                                                    <Camera size={13} />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => { setPairingInfo({ device_code: d.device_code, device_secret: d.device_secret }); setShowPairingModal(true) }}
+                                                                    className="btn-secondary"
+                                                                    style={{ padding: '0.375rem 0.625rem' }}
+                                                                    title="Show pairing info"
+                                                                >
+                                                                    <QrCode size={13} />
+                                                                </button>
+                                                            </>
+                                                        ) : (
+                                                            <button
+                                                                onClick={() => handleRestore(d.id, d.device_code)}
+                                                                className="btn-secondary"
+                                                                style={{ padding: '0.375rem 0.625rem', color: '#10b981' }}
+                                                                title="Restore Device"
+                                                            >
+                                                                <RotateCcw size={13} />
+                                                            </button>
+                                                        )}
                                                         <button
-                                                            onClick={() => handleReboot(d.id, d.device_code)}
-                                                            className="btn-secondary"
+                                                            onClick={() => handleDelete(d.id, d.device_code)}
+                                                            className="btn-danger"
                                                             style={{ padding: '0.375rem 0.625rem' }}
-                                                            title="Remote Reboot"
+                                                            disabled={deleting === d.id}
+                                                            title={viewMode === 'bin' ? "Delete permanently" : "Move to Bin"}
                                                         >
-                                                            <RotateCcw size={13} />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => { setPairingInfo({ device_code: d.device_code, device_secret: d.device_secret }); setShowPairingModal(true) }}
-                                                            className="btn-secondary"
-                                                            style={{ padding: '0.375rem 0.625rem' }}
-                                                            title="Show pairing info"
-                                                        >
-                                                            <QrCode size={13} />
-                                                        </button>
-                                                        <button onClick={() => handleDelete(d.id)} className="btn-danger" style={{ padding: '0.375rem 0.625rem' }} disabled={deleting === d.id}>
                                                             {deleting === d.id ? <Loader2 size={13} /> : <Trash2 size={13} />}
                                                         </button>
                                                     </div>
@@ -442,18 +628,18 @@ export default function DevicesPage() {
                     <form onSubmit={handleSave}>
                         <div className="form-group">
                             <label className="label">Device Code *</label>
-                            {editing ? (
-                                <input className="input-field"
-                                    value={form.device_code}
-                                    onChange={e => setForm(f => ({ ...f, device_code: e.target.value.toUpperCase().replace(/\s+/g, '') }))}
-                                    placeholder="e.g. SHOP01_SCREEN01"
-                                    required
-                                />
-                            ) : (
-                                <div style={{ color: '#64748b', fontSize: '0.8125rem', fontStyle: 'italic', padding: '0.5rem 0' }}>
-                                    Will be auto-generated based on Store/Role
-                                </div>
-                            )}
+                            <input className="input-field"
+                                value={form.device_code}
+                                onChange={e => {
+                                    setForm(f => ({ ...f, device_code: e.target.value.toUpperCase().replace(/\s+/g, '_') }));
+                                    setAutoSyncCode(false); // Stop auto-sync if manually edited
+                                }}
+                                placeholder="e.g. SHOP01_SCREEN01"
+                                required
+                            />
+                            <p style={{ margin: '0.25rem 0 0', fontSize: '0.7rem', color: '#64748b' }}>
+                                This forms the Device URL: <code>/player/{form.device_code || '...'}</code>
+                            </p>
                         </div>
                         <div className="form-row">
                             <div className="form-group">
@@ -472,8 +658,19 @@ export default function DevicesPage() {
                             </div>
                         </div>
                         <div className="form-group">
-                            <label className="label">Display Name</label>
-                            <input className="input-field" value={form.display_name} onChange={e => setForm(f => ({ ...f, display_name: e.target.value }))} placeholder="e.g. Front Counter Screen" />
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.375rem' }}>
+                                <label className="label" style={{ marginBottom: 0 }}>Display Name</label>
+                                <label style={{ fontSize: '0.7rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={autoSyncCode} onChange={e => setAutoSyncCode(e.target.checked)} style={{ width: 12, height: 12 }} />
+                                    Auto-sync URL
+                                </label>
+                            </div>
+                            <input
+                                className="input-field"
+                                value={form.display_name}
+                                onChange={e => handleNameChange(e.target.value)}
+                                placeholder="e.g. Front Counter Screen"
+                            />
                         </div>
                         <div className="form-row">
                             <div className="form-group">
@@ -520,7 +717,7 @@ export default function DevicesPage() {
                         <div style={{ background: 'white', padding: '1rem', borderRadius: 8, marginBottom: '1rem' }}>
                             <QRCodeSVG
                                 id="pairing-qr"
-                                value={pairingInfo.device_code.includes('code=') ? pairingInfo.device_code : `${window.location.origin}/player/${pairingInfo.device_code}?secret=${pairingInfo.device_secret}`}
+                                value={pairingInfo.device_code.includes('code=') ? pairingInfo.device_code : `${window.location.origin} /player/${pairingInfo.device_code}?secret = ${pairingInfo.device_secret} `}
                                 size={180}
                                 level="H"
                                 includeMargin={false}
@@ -534,20 +731,20 @@ export default function DevicesPage() {
                     {[
                         { label: 'Device Code', value: pairingInfo.device_code, mono: true, highlight: true },
                         { label: 'Device Secret', value: pairingInfo.device_secret, mono: true },
-                        { label: 'Auto-Pair URL', value: `${window.location.origin}/player/${pairingInfo.device_code}?secret=${pairingInfo.device_secret}`, mono: true },
+                        { label: 'Auto-Pair URL', value: `${window.location.origin} /player/${pairingInfo.device_code}?secret = ${pairingInfo.device_secret} `, mono: true },
                     ].map(row => (
                         <div key={row.label} style={{ marginBottom: '1rem' }}>
                             <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.375rem' }}>
                                 {row.label}
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.625rem 0.875rem', background: '#0f172a', borderRadius: 8, border: `1px solid ${row.highlight ? 'rgba(90,100,246,0.4)' : '#1e293b'}` }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.625rem 0.875rem', background: '#0f172a', borderRadius: 8, border: `1px solid ${row.highlight ? 'rgba(90,100,246,0.4)' : '#1e293b'} ` }}>
                                 <span style={{ flex: 1, fontFamily: row.mono ? 'monospace' : undefined, fontSize: row.highlight ? '1.125rem' : '0.8125rem', color: row.highlight ? '#c7d2fe' : '#cbd5e1', letterSpacing: row.highlight ? '0.15em' : undefined, fontWeight: row.highlight ? 700 : undefined, wordBreak: 'break-all' }}>
                                     {row.value}
                                 </span>
                                 <button
                                     onClick={() => copyText(row.value, row.label)}
                                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '0.25rem', display: 'flex', flexShrink: 0 }}
-                                    title={`Copy ${row.label}`}
+                                    title={`Copy ${row.label} `}
                                 >
                                     <Copy size={14} />
                                 </button>
@@ -605,6 +802,59 @@ export default function DevicesPage() {
                     </div>
                 </Modal>
             )}
+            {/* Screenshot Viewer Modal */}
+            {screenshotModal && (
+                <Modal title={`📸 Screenshot — ${screenshotModal.deviceCode}`} onClose={() => setScreenshotModal(null)}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.25rem', minHeight: 200 }}>
+                        {screenshotModal.polling && !screenshotModal.imageUrl && (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', paddingTop: '2rem' }}>
+                                <Loader2 size={40} style={{ animation: 'spin 1s linear infinite', color: '#6366f1' }} />
+                                <p style={{ color: '#94a3b8', fontSize: '0.875rem', textAlign: 'center' }}>
+                                    Waiting for the device to capture and upload the screenshot…<br />
+                                    <span style={{ color: '#64748b', fontSize: '0.75rem' }}>This may take up to 30 seconds.</span>
+                                </p>
+                            </div>
+                        )}
+                        {!screenshotModal.polling && !screenshotModal.imageUrl && (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem', paddingTop: '2rem', color: '#f87171' }}>
+                                <AlertCircle size={36} />
+                                <p style={{ fontSize: '0.875rem', textAlign: 'center', color: '#94a3b8' }}>
+                                    No screenshot received. The device may be offline<br />or does not support native screenshots.
+                                </p>
+                            </div>
+                        )}
+                        {screenshotModal.imageUrl && (
+                            <>
+                                <img
+                                    src={screenshotModal.imageUrl}
+                                    alt={`Screenshot of ${screenshotModal.deviceCode}`}
+                                    style={{ width: '100%', borderRadius: 8, border: '1px solid #1e293b', objectFit: 'contain', maxHeight: 500 }}
+                                />
+                                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                                    <a
+                                        href={screenshotModal.imageUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="btn-secondary"
+                                        style={{ fontSize: '0.8125rem', textDecoration: 'none' }}
+                                    >
+                                        Open Full Size ↗
+                                    </a>
+                                    <a
+                                        href={screenshotModal.imageUrl}
+                                        download={`${screenshotModal.deviceCode}_screenshot.jpg`}
+                                        className="btn-primary"
+                                        style={{ fontSize: '0.8125rem', textDecoration: 'none' }}
+                                    >
+                                        Download
+                                    </a>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </Modal>
+            )}
         </div>
     )
 }
+

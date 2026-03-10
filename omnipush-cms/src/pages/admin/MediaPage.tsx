@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Plus, Search, Upload, Trash2, Image as ImageIcon, Film, Globe, Filter, Loader2, X, Download } from 'lucide-react'
+import { Plus, Search, Upload, Trash2, Image as ImageIcon, Film, Globe, Filter, Loader2, X, Link, CloudUpload } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { MediaAsset } from '../../types'
 import { useTenant } from '../../contexts/TenantContext'
@@ -9,6 +9,9 @@ import toast from 'react-hot-toast'
 
 const PAGE_SIZE = 12
 const BUCKET = 'signage_media'
+
+// Cloudflare R2 public base URL (set in .env)
+const R2_BASE = (import.meta.env.VITE_R2_PUBLIC_BASE_URL as string || '').replace(/\/$/, '')
 
 function formatBytes(bytes?: number) {
     if (!bytes) return '—'
@@ -31,7 +34,9 @@ export default function MediaPage() {
     const [page, setPage] = useState(1)
     const [uploading, setUploading] = useState(false)
     const [showUrlModal, setShowUrlModal] = useState(false)
+    const [showR2Modal, setShowR2Modal] = useState(false)
     const [urlForm, setUrlForm] = useState({ name: '', url: '', tags: '' })
+    const [r2Form, setR2Form] = useState({ name: '', r2Path: '', type: 'video', tags: '' })
     const [deleting, setDeleting] = useState<string | null>(null)
     const [preview, setPreview] = useState<MediaAsset | null>(null)
     const fileInput = useRef<HTMLInputElement>(null)
@@ -40,7 +45,11 @@ export default function MediaPage() {
     const loadAssets = async () => {
         if (!currentTenantId) return
         setLoading(true)
-        const { data } = await supabase.from('media_assets').select('*').eq('tenant_id', currentTenantId).order('created_at', { ascending: false })
+        const { data } = await supabase
+            .from('media_assets')
+            .select('*')
+            .eq('tenant_id', currentTenantId)
+            .order('created_at', { ascending: false })
         setAssets(data || [])
         setLoading(false)
     }
@@ -55,22 +64,23 @@ export default function MediaPage() {
 
     const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
+    // ── File upload → goes to Supabase Storage, URL swapped to R2 public URL ──
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files
         if (!files || files.length === 0) return
         setUploading(true)
         for (const file of Array.from(files)) {
-            const ext = file.name.split('.').pop()
-            const path = `${currentTenantId}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
+            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+            const path = `${currentTenantId}/${Date.now()}_${safeName}`
             const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file)
             if (upErr) { toast.error(`Upload failed: ${upErr.message}`); continue }
-            const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path)
+
+            // Always build the R2 public URL if configured
+            const publicUrl = R2_BASE
+                ? `${R2_BASE}/${path}`
+                : supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl
+
             const type = file.type.startsWith('video') ? 'video' : 'image'
-
-            // If R2 base exists, prefer it for public access
-            const r2Base = import.meta.env.VITE_R2_PUBLIC_BASE_URL
-            const publicUrl = r2Base ? `${r2Base.replace(/\/$/, '')}/${path}` : urlData.publicUrl
-
             const { error: dbErr } = await supabase.from('media_assets').insert({
                 tenant_id: currentTenantId,
                 name: file.name.replace(/\.[^/.]+$/, ''),
@@ -88,6 +98,7 @@ export default function MediaPage() {
         if (fileInput.current) fileInput.current.value = ''
     }
 
+    // ── Add external Web URL ──────────────────────────────────────────────────
     const handleAddUrl = async (e: React.FormEvent) => {
         e.preventDefault()
         if (!urlForm.name || !urlForm.url) { toast.error('Name and URL required'); return }
@@ -102,10 +113,38 @@ export default function MediaPage() {
         else { toast.success('URL added'); setShowUrlModal(false); setUrlForm({ name: '', url: '', tags: '' }); loadAssets() }
     }
 
+    // ── Register a file already uploaded directly to Cloudflare R2 ───────────
+    const handleRegisterR2 = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!r2Form.name || !r2Form.r2Path) { toast.error('Name and R2 path required'); return }
+
+        const cleanPath = r2Form.r2Path.replace(/^\//, '') // strip leading slash
+        const publicUrl = `${R2_BASE}/${cleanPath}`
+
+        const { error } = await supabase.from('media_assets').insert({
+            tenant_id: currentTenantId,
+            name: r2Form.name,
+            type: r2Form.type,
+            url: publicUrl,
+            storage_path: cleanPath,
+            tags: r2Form.tags ? r2Form.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
+        })
+        if (error) toast.error(error.message)
+        else {
+            toast.success(`Registered: ${r2Form.name}`)
+            setShowR2Modal(false)
+            setR2Form({ name: '', r2Path: '', type: 'video', tags: '' })
+            loadAssets()
+        }
+    }
+
+    // ── Delete ────────────────────────────────────────────────────────────────
     const handleDelete = async (asset: MediaAsset) => {
         if (!confirm('Delete this media asset? It may be used in playlists.')) return
         setDeleting(asset.id)
-        if (asset.storage_path) {
+        // Only attempt Supabase Storage deletion for files that were uploaded there
+        // R2-only files (directly uploaded to Cloudflare) don't exist in Supabase Storage
+        if (asset.storage_path && !asset.url?.includes('r2.dev') && !asset.url?.includes('pub-')) {
             await supabase.storage.from(BUCKET).remove([asset.storage_path])
         }
         const { error } = await supabase.from('media_assets').delete().eq('id', asset.id)
@@ -114,16 +153,24 @@ export default function MediaPage() {
         setDeleting(null)
     }
 
+    const isR2Url = (url?: string) => url?.includes('r2.dev') || url?.includes(R2_BASE)
+
     return (
         <div>
             <div className="page-header">
                 <div>
                     <h1 className="page-title">Media Library</h1>
-                    <p className="page-subtitle">Upload and manage images, videos, and web URLs for your displays</p>
+                    <p className="page-subtitle">
+                        Manage images, videos, and web content for your displays
+                        {R2_BASE && <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: '#6366f1', background: 'rgba(99,102,241,0.1)', padding: '0.15rem 0.5rem', borderRadius: 4 }}>☁ Cloudflare R2</span>}
+                    </p>
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <button className="btn-secondary" onClick={() => setShowUrlModal(true)}>
                         <Globe size={14} /> Add URL
+                    </button>
+                    <button className="btn-secondary" onClick={() => setShowR2Modal(true)} title="Register file already uploaded to Cloudflare R2">
+                        <CloudUpload size={14} /> Import from R2
                     </button>
                     <button className="btn-primary" onClick={() => fileInput.current?.click()} disabled={uploading}>
                         {uploading ? <Loader2 size={14} /> : <Upload size={14} />}
@@ -168,7 +215,7 @@ export default function MediaPage() {
                                     {a.type === 'image' && a.url ? (
                                         <img src={a.url} alt={a.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                     ) : a.type === 'video' && a.url ? (
-                                        <video src={a.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                        <video src={a.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted />
                                     ) : (
                                         <Globe size={36} color="#34d399" />
                                     )}
@@ -178,6 +225,12 @@ export default function MediaPage() {
                                             {a.type}
                                         </span>
                                     </div>
+                                    {/* R2 badge */}
+                                    {isR2Url(a.url) && (
+                                        <div style={{ position: 'absolute', bottom: 6, left: 6, background: 'rgba(99,102,241,0.85)', borderRadius: 4, padding: '0.1rem 0.4rem', fontSize: '0.625rem', color: '#fff', fontWeight: 600 }}>
+                                            ☁ R2
+                                        </div>
+                                    )}
                                 </div>
                                 <div style={{ padding: '0.75rem' }}>
                                     <div style={{ fontWeight: 500, fontSize: '0.875rem', color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.name}</div>
@@ -201,7 +254,7 @@ export default function MediaPage() {
                 </>
             )}
 
-            {/* URL modal */}
+            {/* Add Web URL modal */}
             {showUrlModal && (
                 <Modal title="Add Web URL" onClose={() => setShowUrlModal(false)}>
                     <form onSubmit={handleAddUrl}>
@@ -220,6 +273,56 @@ export default function MediaPage() {
                         <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
                             <button type="button" className="btn-secondary" onClick={() => setShowUrlModal(false)}>Cancel</button>
                             <button type="submit" className="btn-primary">Add URL</button>
+                        </div>
+                    </form>
+                </Modal>
+            )}
+
+            {/* Import from R2 modal */}
+            {showR2Modal && (
+                <Modal title="☁ Import from Cloudflare R2" onClose={() => setShowR2Modal(false)}>
+                    <div style={{ fontSize: '0.8125rem', color: '#94a3b8', marginBottom: '1.25rem', padding: '0.75rem', background: 'rgba(99,102,241,0.07)', borderRadius: 8, border: '1px solid rgba(99,102,241,0.2)' }}>
+                        Use this when you upload files <strong>directly in the Cloudflare R2 dashboard</strong>. Enter the file path (relative to your R2 bucket root) and it will appear in the Media Library.
+                        <div style={{ marginTop: '0.5rem', fontFamily: 'monospace', fontSize: '0.75rem', color: '#6366f1' }}>
+                            Base URL: {R2_BASE || '(not configured)'}
+                        </div>
+                    </div>
+                    <form onSubmit={handleRegisterR2}>
+                        <div className="form-group">
+                            <label className="label">Display Name *</label>
+                            <input className="input-field" value={r2Form.name} onChange={e => setR2Form(f => ({ ...f, name: e.target.value }))} placeholder="My Pizza Video" />
+                        </div>
+                        <div className="form-group">
+                            <label className="label">R2 File Path *</label>
+                            <input
+                                className="input-field"
+                                value={r2Form.r2Path}
+                                onChange={e => setR2Form(f => ({ ...f, r2Path: e.target.value }))}
+                                placeholder="videos/my-video.mp4"
+                                style={{ fontFamily: 'monospace', fontSize: '0.8125rem' }}
+                            />
+                            {r2Form.r2Path && R2_BASE && (
+                                <div style={{ marginTop: '0.375rem', fontSize: '0.75rem', color: '#64748b', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                                    → {R2_BASE}/{r2Form.r2Path.replace(/^\//, '')}
+                                </div>
+                            )}
+                        </div>
+                        <div className="form-group">
+                            <label className="label">Type</label>
+                            <select className="input-field" value={r2Form.type} onChange={e => setR2Form(f => ({ ...f, type: e.target.value }))}>
+                                <option value="video">Video</option>
+                                <option value="image">Image</option>
+                            </select>
+                        </div>
+                        <div className="form-group">
+                            <label className="label">Tags (comma-separated)</label>
+                            <input className="input-field" value={r2Form.tags} onChange={e => setR2Form(f => ({ ...f, tags: e.target.value }))} placeholder="pizza, promo" />
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
+                            <button type="button" className="btn-secondary" onClick={() => setShowR2Modal(false)}>Cancel</button>
+                            <button type="submit" className="btn-primary" disabled={!r2Form.name || !r2Form.r2Path || !R2_BASE}>
+                                Register in Library
+                            </button>
                         </div>
                     </form>
                 </Modal>
@@ -249,6 +352,12 @@ export default function MediaPage() {
                                 <div className="label" style={{ marginBottom: '0.25rem' }}>Size</div>
                                 <div style={{ color: 'var(--color-text-primary)' }}>{formatBytes(preview.bytes)}</div>
                             </div>
+                            <div style={{ textAlign: 'left' }}>
+                                <div className="label" style={{ marginBottom: '0.25rem' }}>Storage</div>
+                                <div style={{ color: isR2Url(preview.url) ? '#6366f1' : '#94a3b8' }}>
+                                    {isR2Url(preview.url) ? '☁ Cloudflare R2' : '📦 Supabase'}
+                                </div>
+                            </div>
                             {preview.checksum_sha256 && (
                                 <div style={{ textAlign: 'left' }}>
                                     <div className="label" style={{ marginBottom: '0.25rem' }}>SHA-256</div>
@@ -256,6 +365,13 @@ export default function MediaPage() {
                                 </div>
                             )}
                         </div>
+                        {preview.url && (
+                            <div style={{ marginTop: '0.75rem' }}>
+                                <a href={preview.url} target="_blank" rel="noreferrer" style={{ fontSize: '0.75rem', color: '#64748b', wordBreak: 'break-all', textDecoration: 'none' }}>
+                                    {preview.url}
+                                </a>
+                            </div>
+                        )}
                         {preview.tags?.length > 0 && (
                             <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.375rem', justifyContent: 'center', flexWrap: 'wrap' }}>
                                 {preview.tags.map(tag => <span className="tag" key={tag}>{tag}</span>)}

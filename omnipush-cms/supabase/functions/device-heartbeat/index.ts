@@ -29,6 +29,7 @@ serve(async (req: Request) => {
             .from("devices")
             .select("id, device_code, device_secret, active")
             .eq("device_code", device_code)
+            .is("deleted_at", null)
             .single();
 
         if (devErr || !device || device.device_secret !== device_secret || !device.active)

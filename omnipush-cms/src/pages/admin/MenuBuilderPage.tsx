@@ -192,7 +192,10 @@ export default function MenuBuilderPage() {
             }
 
             // 3. Register as Media Asset for Playlist usage
-            const displayUrl = `${window.location.origin}/display/menu/${mId}`
+            // Use VITE_APP_URL (production domain) — NOT window.location.origin
+            // which would be localhost when running the CMS in dev mode
+            const appBase = (import.meta.env.VITE_APP_URL as string || window.location.origin).replace(/\/$/, '')
+            const displayUrl = `${appBase}/display/menu/${mId}`
             const { data: existingAsset } = await supabase
                 .from('media_assets')
                 .select('id')

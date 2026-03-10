@@ -27,7 +27,21 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
-        fetchTenants()
+        const initializeTenant = async () => {
+            // Priority 1: Check Supabase session first
+            const { data: { session } } = await supabase.auth.getSession()
+            const metaTenantId = session?.user?.user_metadata?.tenant_id || session?.user?.app_metadata?.tenant_id
+
+            if (metaTenantId) {
+                console.log('[TenantContext] Found tenant_id in user metadata:', metaTenantId)
+                setCurrentTenantId(metaTenantId)
+                localStorage.setItem('omnipush_tenant_id', metaTenantId)
+            }
+
+            await fetchTenants(metaTenantId)
+        }
+
+        initializeTenant()
     }, [])
 
     useEffect(() => {
@@ -35,43 +49,51 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         if (tenant) {
             setCurrentTenant(tenant)
         }
-        localStorage.setItem('omnipush_tenant_id', currentTenantId)
+        if (currentTenantId !== DEFAULT_TENANT_ID) {
+            localStorage.setItem('omnipush_tenant_id', currentTenantId)
+        }
     }, [currentTenantId, tenants])
 
-    async function fetchTenants() {
+    async function fetchTenants(priorityId?: string) {
         try {
-            console.log('[TenantContext] Fetching tenants...')
+            setLoading(true)
+            console.log('[TenantContext] Fetching active tenants...')
             const { data, error } = await supabase
                 .from('tenants')
                 .select('id, name, settings')
                 .eq('active', true)
 
-            if (error) {
-                console.error('[TenantContext] Supabase Error:', error)
-                throw error
-            }
+            if (error) throw error
 
             if (data && data.length > 0) {
                 setTenants(data)
-                // Use stored ID if it still exists in the fetched list, otherwise default to first active
-                const targetId = localStorage.getItem('omnipush_tenant_id') || currentTenantId
+
+                // Priority Order: 
+                // 1. the priorityId passed (from user session)
+                // 2. localStorage
+                // 3. Current state
+                // 4. Fallback to first in list
+                const storedId = localStorage.getItem('omnipush_tenant_id')
+                const targetId = priorityId || storedId || currentTenantId
+
                 const active = data.find(t => t.id === targetId) || data[0]
                 if (active) {
+                    console.log('[TenantContext] Activating tenant:', active.name, '(', active.id, ')')
                     setCurrentTenantId(active.id)
                     setCurrentTenant(active)
+                    localStorage.setItem('omnipush_tenant_id', active.id)
                 }
             } else {
-                console.warn('[TenantContext] No active tenants found in DB. Creating dummy fallback.')
-                // Fallback virtual tenant if none in DB
+                console.warn('[TenantContext] No active tenants found. Using default.')
                 const fallback = { id: DEFAULT_TENANT_ID, name: 'Root Instance', settings: {} }
                 setTenants([fallback])
                 setCurrentTenant(fallback)
                 setCurrentTenantId(DEFAULT_TENANT_ID)
             }
         } catch (err: any) {
-            console.error('[TenantContext] Error fetching tenants:', err)
-            // Critical recovery fallback
+            console.error('[TenantContext] Load failed:', err)
             const fallback = { id: DEFAULT_TENANT_ID, name: 'Recovery Mode', settings: {} }
+            setTenants([fallback])
             setCurrentTenant(fallback)
             setCurrentTenantId(DEFAULT_TENANT_ID)
         } finally {

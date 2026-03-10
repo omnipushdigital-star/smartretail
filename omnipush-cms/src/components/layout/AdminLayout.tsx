@@ -6,6 +6,7 @@ import { useTheme } from '../../contexts/ThemeContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTenant } from '../../contexts/TenantContext'
 import { supabase } from '../../lib/supabase'
+import WorkflowBanner from './WorkflowBanner'
 
 interface TenantSettings {
     name: string;
@@ -302,8 +303,11 @@ export default function AdminLayout() {
                         </div>
                     </div>
                 </header>
-                <main className="page-content fade-in">
-                    <Outlet />
+                <main className="page-content fade-in relative">
+                    <WorkflowBanner />
+                    <div className="p-6">
+                        <Outlet />
+                    </div>
                 </main>
             </div >
         </div >

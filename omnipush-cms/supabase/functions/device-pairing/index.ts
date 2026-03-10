@@ -27,37 +27,22 @@ serve(async (req: Request) => {
             const pin = Math.floor(100000 + Math.random() * 900000).toString();
             const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 mins
 
-            // Find existing device (Take newest if duplicates were somehow created)
-            const { data: device } = await supabase
+            // Use upsert to handle both first-time and re-initialization
+            // Note: We don't touch display_name if it already exists
+            const { error } = await supabase
                 .from("devices")
-                .select("id, device_secret, active")
-                .eq("device_code", device_code)
-                .order('created_at', { ascending: false })
-                .limit(1)
-                .maybeSingle();
+                .upsert({
+                    device_code,
+                    pairing_pin: pin,
+                    pairing_expires_at: expiresAt,
+                    active: false // Keep inactive until claimed
+                }, {
+                    onConflict: 'device_code'
+                });
 
-            if (device) {
-                // If it exists, we refresh the PIN for the pairing process.
-                const { error } = await supabase
-                    .from("devices")
-                    .update({
-                        pairing_pin: pin,
-                        pairing_expires_at: expiresAt
-                    })
-                    .eq("id", device.id);
-                if (error) throw error;
-            } else {
-                // Create a new record
-                const { error } = await supabase
-                    .from("devices")
-                    .insert({
-                        device_code,
-                        pairing_pin: pin,
-                        pairing_expires_at: expiresAt,
-                        display_name: `New Device (${device_code})`,
-                        active: false
-                    });
-                if (error) throw error;
+            if (error) {
+                console.error("INIT Error:", error);
+                return Response.json({ error: error.message }, { status: 400, headers: corsHeaders });
             }
 
             console.log(`[Pairing] INIT: ${device_code} -> ${pin}`);
@@ -68,26 +53,22 @@ serve(async (req: Request) => {
         if (action === 'CLAIM_POLL') {
             if (!device_code) throw new Error("device_code required");
 
-            // Look for the device. If it has a pin, it's not yet claimed.
             const { data: device, error } = await supabase
                 .from("devices")
-                .select("device_secret, pairing_pin")
+                .select("device_secret, pairing_pin, active")
                 .eq("device_code", device_code)
-                .order('created_at', { ascending: false })
-                .limit(1)
                 .maybeSingle();
 
             if (error || !device) {
                 return Response.json({ status: 'ERROR', message: 'Device not found' }, { headers: corsHeaders });
             }
 
-            // If there is still a pairing_pin, the user hasn't finished the CMS side yet.
-            if (device.pairing_pin) {
-                return Response.json({ status: 'PENDING' }, { headers: corsHeaders });
+            // If it's already active and has no pin, it's claimed
+            if (device.active && !device.pairing_pin) {
+                return Response.json({ status: 'CLAIMED', device_secret: device.device_secret }, { headers: corsHeaders });
             }
 
-            // Return the secret!
-            return Response.json({ device_secret: device.device_secret }, { headers: corsHeaders });
+            return Response.json({ status: 'PENDING' }, { headers: corsHeaders });
         }
 
         // ── ACTION: CLAIM (Called by CMS) ────────────────────────────────────────
@@ -106,8 +87,8 @@ serve(async (req: Request) => {
                 return Response.json({ error: "Invalid or expired pairing code" }, { status: 400, headers: corsHeaders });
             }
 
-            // Generate credentials
-            const secret = crypto.randomUUID();
+            // Ensure it has a secret (default might be there, but let's be sure)
+            const secret = device.device_secret || crypto.randomUUID();
 
             const { data: updated, error: updateErr } = await supabase
                 .from("devices")
@@ -115,7 +96,7 @@ serve(async (req: Request) => {
                     tenant_id: DEFAULT_TENANT_ID,
                     device_secret: secret,
                     active: true,
-                    pairing_pin: null, // CLEAR PIN -> This triggers CLAIM_POLL success
+                    pairing_pin: null, // Clear PIN triggers success in poll
                     pairing_expires_at: null
                 })
                 .eq("id", device.id)
