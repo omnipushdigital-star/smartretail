@@ -225,6 +225,7 @@ serve(async (req: Request) => {
                     type: i.type,
                     web_url: i.web_url, // Now absolute
                     duration_seconds: i.duration_seconds,
+                    playback_speed: i.playback_speed,
                     sort_order: i.sort_order,
                 }));
             regionPlaylists[rm.region_id] = regionItems;

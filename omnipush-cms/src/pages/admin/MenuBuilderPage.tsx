@@ -100,7 +100,12 @@ export default function MenuBuilderPage() {
 
     const addCategory = () => {
         const id = Math.random().toString(36).substr(2, 9)
-        setCategories([...categories, { id, name: 'New Category', items: [], isOpen: true }])
+        setCategories([...categories, {
+            id,
+            name: 'New Category',
+            items: [{ id: Math.random().toString(36).substr(2, 9), name: 'Sample Item', description: '', price: '0' }],
+            isOpen: true
+        }])
     }
 
     const updateCategoryName = (id: string, name: string) => {
@@ -112,7 +117,8 @@ export default function MenuBuilderPage() {
             if (cat.id === catId) {
                 return {
                     ...cat,
-                    items: [...cat.items, { id: Math.random().toString(36).substr(2, 9), name: 'New Item', price: '0' }]
+                    items: [...cat.items, { id: Math.random().toString(36).substr(2, 9), name: 'New Item', description: '', price: '0' }],
+                    isOpen: true
                 }
             }
             return cat
@@ -184,6 +190,7 @@ export default function MenuBuilderPage() {
                     const itemsToInsert = cat.items.map((item, idx) => ({
                         category_id: newCat.id,
                         name: item.name,
+                        description: item.description || '',
                         price: parseFloat(item.price.toString()) || 0,
                         sort_order: idx
                     }))
@@ -365,22 +372,43 @@ export default function MenuBuilderPage() {
                                         {cat.isOpen && (
                                             <div className="p-4 pt-0 space-y-3">
                                                 {cat.items.map((item) => (
-                                                    <div key={item.id} className="flex gap-2 items-center">
-                                                        <input
-                                                            className="input-field bg-surface-950/50 border-white/5 flex-1"
-                                                            value={item.name}
-                                                            onChange={e => updateItem(cat.id, item.id, 'name', e.target.value)}
-                                                        />
-                                                        <div className="relative w-24">
-                                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-500 text-xs">{layoutConfig.currency.symbol}</span>
+                                                    <div key={item.id} className="p-3 bg-surface-900 border border-white/5 rounded-xl space-y-3 relative group/item">
+                                                        <div className="flex gap-2">
+                                                            <div className="flex-1">
+                                                                <label className="text-[10px] text-surface-500 uppercase font-bold mb-1 block">Item Name</label>
+                                                                <input
+                                                                    className="input-field bg-surface-950/50 border-white/5 w-full"
+                                                                    value={item.name}
+                                                                    onChange={e => updateItem(cat.id, item.id, 'name', e.target.value)}
+                                                                    placeholder="e.g. Cappuccino"
+                                                                />
+                                                            </div>
+                                                            <div className="w-28">
+                                                                <label className="text-[10px] text-surface-500 uppercase font-bold mb-1 block">Price</label>
+                                                                <div className="relative">
+                                                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-500 text-xs">{layoutConfig.currency.symbol}</span>
+                                                                    <input
+                                                                        className="input-field bg-surface-950/50 border-white/5 pl-8 text-right"
+                                                                        value={item.price}
+                                                                        onChange={e => updateItem(cat.id, item.id, 'price', e.target.value)}
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[10px] text-surface-500 uppercase font-bold mb-1 block">Description (Optional)</label>
                                                             <input
-                                                                className="input-field bg-surface-950/50 border-white/5 pl-8 text-right"
-                                                                value={item.price}
-                                                                onChange={e => updateItem(cat.id, item.id, 'price', e.target.value)}
+                                                                className="input-field bg-surface-950/50 border-white/5 w-full text-xs"
+                                                                value={item.description || ''}
+                                                                onChange={e => updateItem(cat.id, item.id, 'description', e.target.value)}
+                                                                placeholder="e.g. Rich espresso with steamed milk foam"
                                                             />
                                                         </div>
-                                                        <button onClick={() => removeItem(cat.id, item.id)} className="p-2 text-surface-600 hover:text-red-400">
-                                                            <Trash2 size={16} />
+                                                        <button
+                                                            onClick={() => removeItem(cat.id, item.id)}
+                                                            className="absolute -top-2 -right-2 w-6 h-6 bg-red-500/10 border border-red-500/20 text-red-500 rounded-full flex items-center justify-center hover:bg-red-500 hover:text-white transition-all opacity-0 group-hover/item:opacity-100 shadow-lg"
+                                                        >
+                                                            <Trash2 size={12} />
                                                         </button>
                                                     </div>
                                                 ))}

@@ -22,11 +22,16 @@ export async function callEdgeFn(fn: string, body: object): Promise<any> {
     const timeoutId = setTimeout(() => controller.abort(), 30000)
 
     try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const authHeader = session?.access_token
+            ? `Bearer ${session.access_token}`
+            : `Bearer ${SUPABASE_ANON_KEY}`
+
         const res = await fetch(`${SUPABASE_URL}/functions/v1/${fn}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                'Authorization': authHeader,
             },
             body: JSON.stringify(body),
             signal: controller.signal,

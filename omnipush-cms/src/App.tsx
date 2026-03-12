@@ -26,6 +26,7 @@ import TenantOnboardingPage from './pages/admin/TenantOnboardingPage'
 import MenuBuilderPage from './pages/admin/MenuBuilderPage'
 import SchedulePage from './pages/admin/SchedulePage'
 import SuperAdminPage from './pages/admin/SuperAdminPage'
+import AppUpdatesPage from './pages/admin/AppUpdatesPage'
 import DisplayMenu from './pages/DisplayMenu'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -88,6 +89,7 @@ function AppRoutes() {
         <Route path="branding" element={<TenantOnboardingPage />} />
         <Route path="menu-builder" element={<MenuBuilderPage />} />
         <Route path="scheduling" element={<SchedulePage />} />
+        <Route path="app-updates" element={<AppUpdatesPage />} />
         <Route path="global" element={<SuperAdminPage />} />
       </Route>
 

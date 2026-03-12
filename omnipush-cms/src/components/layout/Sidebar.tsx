@@ -4,7 +4,7 @@ import {
     LayoutDashboard, Store, Users, Monitor, Image, ListVideo,
     LayoutTemplate, Layout, CalendarRange, Upload, Activity,
     LogOut, ChevronRight, Database, Zap, Shield, Package, Building2,
-    Settings, FileVideo, LayoutList, Layers, Calendar, Maximize, Palette, Globe
+    Settings, FileVideo, LayoutList, Layers, Calendar, Maximize, Palette, Globe, Download
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -40,6 +40,7 @@ const navItems = [
     { icon: <Building2 size={20} />, label: 'Tenant Branding', path: '/admin/branding' },
     { icon: <Globe size={20} />, label: 'Global Management', path: '/admin/global' },
     { icon: <Database size={20} />, label: 'DB Migration', path: '/admin/db-migration' },
+    { icon: <Download size={20} />, label: 'App Updates', path: '/admin/app-updates' },
     { icon: <Zap size={20} />, label: 'Edge Functions', path: '/admin/edge-functions' },
     { icon: <Shield size={20} />, label: 'RLS Setup', path: '/admin/rls-setup' },
 ]

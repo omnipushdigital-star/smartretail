@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Plus, Search, Upload, Trash2, Image as ImageIcon, Film, Globe, Filter, Loader2, X, Link, CloudUpload } from 'lucide-react'
+import { Plus, Search, Upload, Trash2, Image as ImageIcon, Film, Globe, Filter, Loader2, X, Link, CloudUpload, Presentation } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { getR2UploadUrl } from '../../lib/r2'
 import { MediaAsset } from '../../types'
 import { useTenant } from '../../contexts/TenantContext'
 import Modal from '../../components/ui/Modal'
@@ -23,6 +24,7 @@ function formatBytes(bytes?: number) {
 function TypeIcon({ type }: { type: string }) {
     if (type === 'video') return <Film size={14} color="#a78bfa" />
     if (type === 'web_url') return <Globe size={14} color="#34d399" />
+    if (type === 'ppt' || type === 'presentation') return <Presentation size={14} color="#f59e0b" />
     return <ImageIcon size={14} color="#60a5fa" />
 }
 
@@ -36,7 +38,7 @@ export default function MediaPage() {
     const [showUrlModal, setShowUrlModal] = useState(false)
     const [showR2Modal, setShowR2Modal] = useState(false)
     const [urlForm, setUrlForm] = useState({ name: '', url: '', tags: '' })
-    const [r2Form, setR2Form] = useState({ name: '', r2Path: '', type: 'video', tags: '' })
+    const [r2Form, setR2Form] = useState({ name: '', r2Path: '', type: 'ppt', tags: '' })
     const [deleting, setDeleting] = useState<string | null>(null)
     const [preview, setPreview] = useState<MediaAsset | null>(null)
     const fileInput = useRef<HTMLInputElement>(null)
@@ -54,7 +56,41 @@ export default function MediaPage() {
         setLoading(false)
     }
 
-    useEffect(() => { loadAssets() }, [currentTenantId])
+    const fixMediaTypes = async () => {
+        if (!currentTenantId) return
+        // Auto-fix any PPTs that were misclassified as images
+        const { data: misclassified } = await supabase
+            .from('media_assets')
+            .select('id, name')
+            .eq('tenant_id', currentTenantId)
+            .eq('type', 'image')
+
+        const toFix = misclassified?.filter(m => {
+            const name = m.name.toLowerCase()
+            const url = (assets.find(a => a.id === m.id)?.url || '').toLowerCase()
+            return name.includes('.ppt') || name.includes('.pptx') ||
+                url.includes('.ppt') || url.includes('.pptx') ||
+                name.endsWith('ppt') || name.endsWith('pptx')
+        })
+
+        if (toFix && toFix.length > 0) {
+            console.log(`Fixing ${toFix.length} misclassified PPT items...`)
+            let count = 0
+            for (const item of toFix) {
+                const { error } = await supabase.from('media_assets').update({ type: 'ppt' }).eq('id', item.id)
+                if (!error) count++
+            }
+            if (count > 0) {
+                toast.success(`Automatically updated ${count} PowerPoint files`)
+                loadAssets()
+            }
+        }
+    }
+
+    useEffect(() => {
+        loadAssets()
+        fixMediaTypes()
+    }, [currentTenantId])
 
     const filtered = assets.filter(a => {
         const matchSearch = a.name.toLowerCase().includes(search.toLowerCase())
@@ -68,34 +104,67 @@ export default function MediaPage() {
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files
         if (!files || files.length === 0) return
+
         setUploading(true)
-        for (const file of Array.from(files)) {
-            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-            const path = `${currentTenantId}/${Date.now()}_${safeName}`
-            const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file)
-            if (upErr) { toast.error(`Upload failed: ${upErr.message}`); continue }
+        try {
+            for (const file of Array.from(files)) {
 
-            // Always build the R2 public URL if configured
-            const publicUrl = R2_BASE
-                ? `${R2_BASE}/${path}`
-                : supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl
+                // 1. Get presigned URL (Plan B: Generated in Frontend)
+                const { uploadUrl, key } = await getR2UploadUrl(
+                    file.name,
+                    file.type || 'application/octet-stream',
+                    currentTenantId || 'default'
+                )
 
-            const type = file.type.startsWith('video') ? 'video' : 'image'
-            const { error: dbErr } = await supabase.from('media_assets').insert({
-                tenant_id: currentTenantId,
-                name: file.name.replace(/\.[^/.]+$/, ''),
-                type,
-                storage_path: path,
-                url: publicUrl,
-                bytes: file.size,
-                tags: [],
-            })
-            if (dbErr) toast.error(`DB save failed: ${dbErr.message}`)
-            else toast.success(`Uploaded: ${file.name}`)
+                // 2. Upload directly to Cloudflare R2
+                const upRes = await fetch(uploadUrl, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+                    body: file
+                })
+
+                if (!upRes.ok) {
+                    toast.error(`R2 Upload failed (HTTP ${upRes.status})`)
+                    continue
+                }
+
+                // 3. Register in database
+                const publicUrl = `${R2_BASE}/${key}`
+                const fileNameLower = file.name.toLowerCase()
+                const isPPT = fileNameLower.endsWith('.ppt') ||
+                    fileNameLower.endsWith('.pptx') ||
+                    fileNameLower.includes('.ppt') ||
+                    fileNameLower.includes('.pptx') ||
+                    file.type === 'application/vnd.ms-powerpoint' ||
+                    file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+                    file.type.includes('presentation')
+
+                const type = file.type.startsWith('video') ? 'video' : (isPPT ? 'ppt' : 'image')
+
+                const { error: dbErr } = await supabase.from('media_assets').insert({
+                    tenant_id: currentTenantId,
+                    name: file.name.replace(/\.[^/.]+$/, ''),
+                    type,
+                    storage_path: key,
+                    url: publicUrl,
+                    bytes: file.size,
+                    tags: [],
+                })
+
+                if (dbErr) {
+                    toast.error(`DB save failed: ${dbErr.message}`)
+                } else {
+                    toast.success(`Uploaded to R2: ${file.name}`)
+                }
+            }
+        } catch (err: any) {
+            console.error('Upload error:', err)
+            toast.error('An unexpected error occurred during upload')
+        } finally {
+            setUploading(false)
+            loadAssets()
+            if (fileInput.current) fileInput.current.value = ''
         }
-        setUploading(false)
-        loadAssets()
-        if (fileInput.current) fileInput.current.value = ''
     }
 
     // ── Add external Web URL ──────────────────────────────────────────────────
@@ -144,7 +213,7 @@ export default function MediaPage() {
         setDeleting(asset.id)
         // Only attempt Supabase Storage deletion for files that were uploaded there
         // R2-only files (directly uploaded to Cloudflare) don't exist in Supabase Storage
-        if (asset.storage_path && !asset.url?.includes('r2.dev') && !asset.url?.includes('pub-')) {
+        if (asset.storage_path && !isR2Url(asset.url)) {
             await supabase.storage.from(BUCKET).remove([asset.storage_path])
         }
         const { error } = await supabase.from('media_assets').delete().eq('id', asset.id)
@@ -153,7 +222,7 @@ export default function MediaPage() {
         setDeleting(null)
     }
 
-    const isR2Url = (url?: string) => url?.includes('r2.dev') || url?.includes(R2_BASE)
+    const isR2Url = (url?: string) => url?.includes('r2.dev') || (R2_BASE && url?.includes(R2_BASE))
 
     return (
         <div>
@@ -176,7 +245,7 @@ export default function MediaPage() {
                         {uploading ? <Loader2 size={14} /> : <Upload size={14} />}
                         {uploading ? 'Uploading…' : 'Upload Files'}
                     </button>
-                    <input ref={fileInput} type="file" multiple accept="image/*,video/*" style={{ display: 'none' }} onChange={handleFileUpload} />
+                    <input ref={fileInput} type="file" multiple accept="image/*,video/*,.ppt,.pptx" style={{ display: 'none' }} onChange={handleFileUpload} />
                 </div>
             </div>
 
@@ -192,6 +261,7 @@ export default function MediaPage() {
                         <option value="">All types</option>
                         <option value="image">Images</option>
                         <option value="video">Videos</option>
+                        <option value="ppt">PowerPoint</option>
                         <option value="web_url">Web URLs</option>
                     </select>
                 </div>
@@ -216,6 +286,11 @@ export default function MediaPage() {
                                         <img src={a.url} alt={a.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                     ) : a.type === 'video' && a.url ? (
                                         <video src={a.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted />
+                                    ) : a.type === 'ppt' ? (
+                                        <div style={{ textAlign: 'center', color: '#f59e0b' }}>
+                                            <Presentation size={48} />
+                                            <div style={{ fontSize: '0.65rem', marginTop: '0.5rem', fontWeight: 600 }}>POWERPOINT</div>
+                                        </div>
                                     ) : (
                                         <Globe size={36} color="#34d399" />
                                     )}
@@ -310,6 +385,7 @@ export default function MediaPage() {
                         <div className="form-group">
                             <label className="label">Type</label>
                             <select className="input-field" value={r2Form.type} onChange={e => setR2Form(f => ({ ...f, type: e.target.value }))}>
+                                <option value="ppt">PowerPoint</option>
                                 <option value="video">Video</option>
                                 <option value="image">Image</option>
                             </select>
@@ -342,6 +418,13 @@ export default function MediaPage() {
                             <a href={preview.url} target="_blank" rel="noreferrer" className="btn-primary" style={{ display: 'inline-flex' }}>
                                 Open URL
                             </a>
+                        )}
+                        {preview.type === 'ppt' && preview.url && (
+                            <iframe
+                                src={`https://docs.google.com/viewer?url=${encodeURIComponent(preview.url)}&embedded=true`}
+                                style={{ width: '100%', height: 400, border: 'none', borderRadius: 8, background: '#fff' }}
+                                title="ppt-preview"
+                            />
                         )}
                         <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
                             <div style={{ textAlign: 'left' }}>

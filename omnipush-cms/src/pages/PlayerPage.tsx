@@ -21,6 +21,7 @@ interface ManifestItem {
     type: string
     web_url: string | null
     duration_seconds: number | null
+    playback_speed?: number
 }
 
 interface Manifest {
@@ -81,8 +82,13 @@ function LiveClock() {
 const globalStyle = `
   video::-webkit-media-controls { display:none !important; }
   video::-webkit-media-controls-enclosure { display:none !important; }
+  video::-webkit-media-controls-panel { display:none !important; }
+  video::-webkit-media-controls-play-button { display:none !important; }
   video::-webkit-media-controls-start-playback-button { display: none !important; -webkit-appearance: none; }
-  video { pointer-events: none !important; outline: none !important; }
+  video::-webkit-media-controls-shim { display:none !important; }
+  video::--webkit-media-controls-play-button { display:none !important; }
+  video::-internal-media-controls-download-button { display:none !important; }
+  video { pointer-events: none !important; outline: none !important; background: black !important; }
   * { -webkit-tap-highlight-color: transparent !important; }
 `;
 
@@ -110,7 +116,9 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
     onAdvance: () => void
 }) {
     const [activeSlot, setActiveSlot] = useState<0 | 1>(0)
-    const videoRefs = [useRef<HTMLVideoElement>(null), useRef<HTMLVideoElement>(null)]
+    const v1 = useRef<HTMLVideoElement>(null)
+    const v2 = useRef<HTMLVideoElement>(null)
+    const videoRefs = [v1, v2]
     const [slotUrls, setSlotUrls] = useState<[string, string]>(['', ''])
     const [slotOpacity, setSlotOpacity] = useState<[number, number]>([1, 0])
     const idxRef = useRef(0)
@@ -126,12 +134,22 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
         return asset?.url || item.web_url || ''
     }, [memoizedAssets])
 
-    // Initialize with first URL to avoid blank start
+    // Initialize: Set first video to Slot 0 and second video to Slot 1 (Preload)
     useEffect(() => {
         if (sorted.length > 0 && slotUrls[0] === '') {
             const firstUrl = getUrl(sorted[0])
-            setSlotUrls([firstUrl, ''])
-            console.log("[Video] Initializing buffer with:", firstUrl)
+            const nextUrl = sorted.length > 1 ? getUrl(sorted[1]) : ''
+            setSlotUrls([firstUrl, nextUrl])
+
+            // Set initial playback rate
+            if (videoRefs[0].current) {
+                videoRefs[0].current.playbackRate = sorted[0].playback_speed || 1
+            }
+            if (videoRefs[1].current && sorted.length > 1) {
+                videoRefs[1].current.playbackRate = sorted[1].playback_speed || 1
+            }
+
+            console.log("[Video] Initializing buffer. Slot 0 (Speed", sorted[0].playback_speed || 1, "):", firstUrl)
         }
     }, [sorted, getUrl])
 
@@ -143,56 +161,51 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
             const v = videoRefs[activeSlot].current
             if (v) {
                 v.currentTime = 0
-                v.play().catch(e => console.warn("[Video] Single-loop playback error:", e))
+                v.play().catch(e => console.warn("[Video] Loop failed:", e))
             }
             onAdvance()
             return
         }
 
+        const currentSlot = activeSlot
+        const nextSlot: 0 | 1 = activeSlot === 0 ? 1 : 0
+
         const nextIdx = (idxRef.current + 1) % sorted.length
         idxRef.current = nextIdx
 
-        const nextSlot: 0 | 1 = activeSlot === 0 ? 1 : 0
-        const currentSlot: 0 | 1 = activeSlot
-        const nextUrl = getUrl(sorted[nextIdx])
+        const preloadIdx = (nextIdx + 1) % sorted.length
+        const preloadUrl = getUrl(sorted[preloadIdx])
 
-        console.log(`[Video] Advancing to item ${nextIdx} in slot ${nextSlot}:`, nextUrl)
+        console.log(`[Video] Swapping to Slot ${nextSlot} (Index ${nextIdx}). Preloading Index ${preloadIdx} into Slot ${currentSlot}`)
 
         const nextVideo = videoRefs[nextSlot].current
         const currentVideo = videoRefs[currentSlot].current
 
+        // 1. Swap visibility immediately (the next video should be ready)
+        setSlotOpacity(nextSlot === 0 ? [1, 0] : [0, 1])
+        setActiveSlot(nextSlot)
+
+        // 2. Ensure next video starts playing and has correct speed
         if (nextVideo) {
-            nextVideo.src = nextUrl
-            nextVideo.load()
-
-            // Wait for it to be ready before swapping
-            const onReady = () => {
-                console.log(`[Video] Slot ${nextSlot} is ready and playing. Swapping...`)
-                setSlotOpacity(nextSlot === 0 ? [1, 0] : [0, 1])
-                setActiveSlot(nextSlot)
-
-                // Keep playing current for a brief moment to ensure gapless
-                setTimeout(() => {
-                    if (currentVideo && activeSlot !== nextSlot) {
-                        currentVideo.pause()
-                    }
-                }, 300)
-                nextVideo.removeEventListener('playing', onReady)
-            }
-
-            nextVideo.addEventListener('playing', onReady)
-            nextVideo.play().catch(e => {
-                console.error("[Video] Next video play failed:", e)
-                // If it fails, try to skip
-                setTimeout(advanceBuffer, 2000)
-            })
+            nextVideo.playbackRate = sorted[nextIdx].playback_speed || 1
+            nextVideo.play().catch(e => console.error("[Video] Play error after swap:", e))
         }
 
-        setSlotUrls(prev => {
-            const updated: [string, string] = [...prev] as [string, string]
-            updated[nextSlot] = nextUrl
-            return updated
-        })
+        // 3. Prepare the next-next video in the now-hidden slot
+        setTimeout(() => {
+            if (currentVideo) {
+                currentVideo.pause()
+                currentVideo.src = preloadUrl
+                currentVideo.playbackRate = sorted[preloadIdx].playback_speed || 1
+                currentVideo.load() // Start preloading the next-next file
+
+                setSlotUrls(prev => {
+                    const updated: [string, string] = [...prev] as [string, string]
+                    updated[currentSlot] = preloadUrl
+                    return updated
+                })
+            }
+        }, 500)
 
         onAdvance()
     }, [activeSlot, sorted, getUrl, onAdvance])
@@ -258,10 +271,11 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                     loop={sorted.length === 1}
                     webkit-playsinline="true"
                     preload="auto"
+                    disableRemotePlayback
                     onEnded={advanceBuffer}
                     onError={(e) => {
                         console.error("[Video] Error in slot", i, "URL:", slotUrls[i], e);
-                        // If current slot errors, try to skip
+                        // If current slot errors index forward
                         if (i === activeSlot) {
                             setTimeout(advanceBuffer, 2000);
                         }
@@ -402,7 +416,11 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
                                 objectFit: 'cover', background: '#000', display: 'block',
                             }}
                             autoPlay muted playsInline
+                            disableRemotePlayback
+                            webkit-playsinline="true"
+                            preload="auto"
                             loop={sorted.length === 1}
+                            onPlay={(e) => e.currentTarget.playbackRate = item.playback_speed || 1}
                             onEnded={advance}
                             onError={() => setTimeout(advance, 5000)}
                         />
@@ -418,6 +436,19 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
                             }}
                             sandbox="allow-scripts allow-same-origin"
                             title="content"
+                        />
+                    )}
+                    {type === 'ppt' && url && (
+                        <iframe
+                            key={item.playlist_item_id}
+                            src={`https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`}
+                            style={{
+                                position: 'absolute', top: 0, left: 0,
+                                width: '100%', height: '100%',
+                                border: 'none', display: 'block',
+                                background: '#fff',
+                            }}
+                            title="ppt"
                         />
                     )}
                 </div>

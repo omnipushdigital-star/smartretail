@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Plus, Search, Edit2, Trash2, ListVideo, GripVertical, X, Image as ImageIcon, Film, Globe, Loader2 } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, ListVideo, GripVertical, X, Image as ImageIcon, Film, Globe, Loader2, Presentation } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { Playlist, PlaylistItem, MediaAsset } from '../../types'
 import { useTenant } from '../../contexts/TenantContext'
@@ -18,7 +18,7 @@ function SortableItem({ item, onRemove }: { item: PlaylistItem & { media?: Media
     return (
         <div ref={setNodeRef} style={{ ...style, display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.625rem 0.75rem', background: 'var(--color-surface-900)', borderRadius: 8, marginBottom: '0.5rem', border: '1px solid var(--color-surface-800)' }} className="sortable-item">
             <span {...attributes} {...listeners} className="drag-handle"><GripVertical size={14} /></span>
-            {item.type === 'image' ? <ImageIcon size={14} color="#60a5fa" /> : item.type === 'video' ? <Film size={14} color="#a78bfa" /> : <Globe size={14} color="#34d399" />}
+            {item.type === 'image' ? <ImageIcon size={14} color="#60a5fa" /> : item.type === 'video' ? <Film size={14} color="#a78bfa" /> : item.type === 'ppt' ? <Presentation size={14} color="#f59e0b" /> : <Globe size={14} color="#34d399" />}
             <span style={{ flex: 1, fontSize: '0.875rem', color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {item.media?.name || item.web_url || 'Unknown'}
             </span>
@@ -43,10 +43,11 @@ export default function PlaylistsPage() {
     const [saving, setSaving] = useState(false)
     const [editingPlaylist, setEditingPlaylist] = useState<Playlist | null>(null)
     const [playlistItems, setPlaylistItems] = useState<(PlaylistItem & { media?: MediaAsset })[]>([])
-    const [addType, setAddType] = useState<'image' | 'video' | 'web_url'>('video')
+    const [addType, setAddType] = useState<'image' | 'video' | 'web_url' | 'ppt'>('video')
     const [addMediaId, setAddMediaId] = useState('')
     const [addUrl, setAddUrl] = useState('')
     const [addDuration, setAddDuration] = useState('10')
+    const [addPlaybackSpeed, setAddPlaybackSpeed] = useState('1.0')
     const { currentTenantId } = useTenant()
 
     const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }))
@@ -144,7 +145,8 @@ export default function PlaylistsPage() {
 
         if (hasLibraryAsset) {
             payload.media_id = addMediaId
-            if (addType === 'image' || addType === 'web_url') payload.duration_seconds = parseInt(addDuration) || 15
+            if (addType === 'image' || addType === 'web_url' || addType === 'ppt') payload.duration_seconds = parseInt(addDuration) || 15
+            if (addType === 'video') payload.playback_speed = parseFloat(addPlaybackSpeed) || 1.0
         } else {
             payload.web_url = addUrl
             // For manual web URLs, we still need a default duration if they play in a sequence
@@ -154,7 +156,7 @@ export default function PlaylistsPage() {
         // Insert and then resolve the media manually to avoid ambiguity
         const { data: newItem, error } = await supabase.from('playlist_items')
             .insert(payload)
-            .select('id, playlist_id, type, sort_order, media_id, web_url, duration_seconds')
+            .select('id, playlist_id, type, sort_order, media_id, web_url, duration_seconds, playback_speed')
             .single()
         if (error) { toast.error(error.message); return }
 
@@ -291,6 +293,7 @@ export default function PlaylistsPage() {
                                 <select className="input-field" value={addType} onChange={e => { setAddType(e.target.value as any); setAddMediaId('') }}>
                                     <option value="image">Image</option>
                                     <option value="video">Video</option>
+                                    <option value="ppt">PowerPoint</option>
                                     <option value="web_url">Web URL</option>
                                 </select>
                             </div>
@@ -340,10 +343,24 @@ export default function PlaylistsPage() {
                                 </div>
                             )}
 
-                            {(addType === 'image' || addType === 'web_url') && (
+                            {(addType === 'image' || addType === 'web_url' || addType === 'ppt') && (
                                 <div className="form-group">
                                     <label className="label">Duration (seconds)</label>
                                     <input className="input-field" type="number" min="1" value={addDuration} onChange={e => setAddDuration(e.target.value)} />
+                                </div>
+                            )}
+
+                            {addType === 'video' && (
+                                <div className="form-group">
+                                    <label className="label">Playback Speed</label>
+                                    <select className="input-field" value={addPlaybackSpeed} onChange={e => setAddPlaybackSpeed(e.target.value)}>
+                                        <option value="0.5">0.5x (Slow)</option>
+                                        <option value="0.75">0.75x</option>
+                                        <option value="1.0">1.0x (Normal)</option>
+                                        <option value="1.25">1.25x</option>
+                                        <option value="1.5">1.5x (Fast)</option>
+                                        <option value="2.0">2.0x (Double Speed)</option>
+                                    </select>
                                 </div>
                             )}
                             <button className="btn-primary" onClick={addItem} style={{ width: '100%', justifyContent: 'center', marginTop: '1rem' }}>
