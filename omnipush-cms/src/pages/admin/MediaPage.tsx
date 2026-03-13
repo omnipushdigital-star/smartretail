@@ -187,15 +187,35 @@ export default function MediaPage() {
         e.preventDefault()
         if (!r2Form.name || !r2Form.r2Path) { toast.error('Name and R2 path required'); return }
 
-        const cleanPath = r2Form.r2Path.replace(/^\//, '') // strip leading slash
-        const publicUrl = `${R2_BASE}/${cleanPath}`
+        // Smart path cleaning: If user pasted a full URL, extract the relative path
+        let inputPath = r2Form.r2Path.trim()
+        let cleanPath = inputPath
+
+        if (cleanPath.includes(R2_BASE)) {
+            cleanPath = cleanPath.split(R2_BASE).pop()?.replace(/^\//, '') || cleanPath
+        } else if (cleanPath.startsWith('http')) {
+            try {
+                const urlObj = new URL(cleanPath)
+                cleanPath = urlObj.pathname.replace(/^\//, '')
+            } catch (e) {
+                cleanPath = cleanPath.replace(/^\//, '')
+            }
+        } else {
+            cleanPath = cleanPath.replace(/^\//, '')
+        }
+
+        // DECODE first to handle cases where users paste an already encoded string (to prevent %2520)
+        // then re-encode safely.
+        const decodedPath = decodeURIComponent(cleanPath)
+        const encodedPath = decodedPath.split('/').map(part => encodeURIComponent(part)).join('/')
+        const publicUrl = `${R2_BASE}/${encodedPath}`
 
         const { error } = await supabase.from('media_assets').insert({
             tenant_id: currentTenantId,
             name: r2Form.name,
             type: r2Form.type,
             url: publicUrl,
-            storage_path: cleanPath,
+            storage_path: decodedPath,
             tags: r2Form.tags ? r2Form.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
         })
         if (error) toast.error(error.message)

@@ -139,7 +139,7 @@ serve(async (req: Request) => {
       .eq("id", layout.template_id)
       .single();
 
-    // 5. Fetch regionâ†’playlist mappings
+    // 5. Fetch region→playlist mappings
     const { data: regionMaps } = await supabase
       .from("layout_region_playlists")
       .select("region_id, playlist_id")
@@ -389,17 +389,85 @@ serve(async (req: Request) => {
   }
 });`;
 
+const R2_UPLOAD_FN = `// supabase/functions/get-r2-upload-url/index.ts
+import { serve } from "https://deno.land/std@0.131.0/http/server.ts";
+import { S3Client, PutObjectCommand } from "https://esm.sh/@aws-sdk/client-s3@3.341.0?bundle";
+import { getSignedUrl } from "https://esm.sh/@aws-sdk/s3-request-presigner@3.341.0?bundle";
+
+const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+console.log("R2 Upload function started");
+
+serve(async (req) => {
+    if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+    try {
+        const { fileName, contentType, tenantId } = await req.json();
+
+        if (!fileName || !contentType || !tenantId) {
+            return new Response(JSON.stringify({ error: "fileName, contentType, and tenantId are required" }), {
+                status: 400,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+        }
+
+        const R2_ACCESS_KEY_ID = Deno.env.get("R2_ACCESS_KEY_ID");
+        const R2_SECRET_ACCESS_KEY = Deno.env.get("R2_SECRET_ACCESS_KEY");
+        const R2_BUCKET_NAME = Deno.env.get("R2_BUCKET_NAME");
+        const R2_ENDPOINT = Deno.env.get("R2_ENDPOINT");
+
+        console.log(\`[R2 Upload] Request for: \${fileName} (Tenant: \${tenantId})\`);
+
+        if (!R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET_NAME || !R2_ENDPOINT) {
+            console.error("[R2 Upload] Missing environment variables");
+            return new Response(JSON.stringify({ error: "R2 configuration missing on server. Check function secrets." }), {
+                status: 500,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+        }
+
+        const client = new S3Client({
+            region: "auto",
+            endpoint: R2_ENDPOINT,
+            credentials: { accessKeyId: R2_ACCESS_KEY_ID, secretAccessKey: R2_SECRET_ACCESS_KEY },
+        });
+
+        const key = \`\${tenantId}/\${Date.now()}_\${fileName.replace(/[^a-zA-Z0-9._-]/g, "_")}\`;
+
+        const command = new PutObjectCommand({
+            Bucket: R2_BUCKET_NAME,
+            Key: key,
+            ContentType: contentType,
+        });
+
+        const uploadUrl = await getSignedUrl(client, command, { expiresIn: 3600 });
+
+        return new Response(JSON.stringify({ uploadUrl, key }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+    } catch (error: any) {
+        console.error("[R2 Upload] Error:", error.message);
+        return new Response(JSON.stringify({ error: error.message }), {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+    }
+});`;
+
 const CURL_MANIFEST = `curl -X POST \\
   'https://[your-project-ref].supabase.co/functions/v1/device-manifest' \\
   -H 'Content-Type: application/json' \\
   -H 'Authorization: Bearer [your-anon-key]' \\
-  -d '{"device_code":"DUB01_MAIN_001","device_secret":"[device-secret]"}'`
+  -d '{"device_code":"DUB01_MAIN_001","device_secret":"[device-secret]"}'`;
 
 const CURL_HEARTBEAT = `curl -X POST \\
   'https://[your-project-ref].supabase.co/functions/v1/device-heartbeat' \\
   -H 'Content-Type: application/json' \\
   -H 'Authorization: Bearer [your-anon-key]' \\
-  -d '{"device_code":"DUB01_MAIN_001","device_secret":"[device-secret]","current_version":"v1.0.0"}'`
+  -d '{"device_code":"DUB01_MAIN_001","device_secret":"[device-secret]","current_version":"v1.0.0"}'`;
 
 const CURL_PAIRING_INIT = `curl -X POST https://[your-project-ref].supabase.co/functions/v1/device-pairing \\
   -H "Authorization: Bearer [your-anon-key]" \\
@@ -410,6 +478,11 @@ const CURL_PAIRING_CLAIM = `curl -X POST https://[your-project-ref].supabase.co/
   -H "Authorization: Bearer [your-anon-key]" \\
   -H "Content-Type: application/json" \\
   -d '{"action": "CLAIM", "pairing_pin": "123456"}'`;
+
+const CURL_R2_UPLOAD = `curl -X POST https://[your-project-ref].supabase.co/functions/v1/get-r2-upload-url \\
+  -H "Authorization: Bearer [your-anon-key]" \\
+  -H "Content-Type: application/json" \\
+  -d '{"fileName": "test.jpg", "contentType": "image/jpeg", "tenantId": "00000000-0000-0000-0000-000000000001"}'`;
 
 // --- Component --------------------------------------------------------------
 
@@ -527,7 +600,7 @@ export default function EdgeFunctionsPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Edge Functions Setup</h1>
-          <p className="page-subtitle">Deploy the Player API to Supabase â€” step-by-step instructions &amp; full source code</p>
+          <p className="page-subtitle">Deploy the Player API to Supabase — step-by-step instructions &amp; full source code</p>
         </div>
         <div style={{
           display: 'flex', alignItems: 'center', gap: '0.5rem',
@@ -541,16 +614,17 @@ export default function EdgeFunctionsPage() {
       </div>
 
       <InfoBox type="warn">
-        Edge Functions must be deployed via the <strong>Supabase Dashboard â†’ Edge Functions</strong> or the Supabase CLI.
+        Edge Functions must be deployed via the <strong>Supabase Dashboard → Edge Functions</strong> or the Supabase CLI.
         MCP / SQL cannot deploy them. Follow the steps below for each function.
       </InfoBox>
 
-      {/* â”€â”€ Overview â”€â”€ */}
-      <Section title="Overview â€” What These Functions Do" icon={<Code2 size={18} />}>
+      {/* ── Overview ── */}
+      <Section title="Overview — What These Functions Do" icon={<Code2 size={18} />}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
           {[
             { name: 'device-manifest', method: 'POST', desc: 'Authenticates device, resolves the active publication (DEVICE > STORE > GLOBAL), fetches layout + playlists + media with signed URLs. Called every 120s by the Player.' },
             { name: 'device-heartbeat', method: 'POST', desc: 'Authenticates device and inserts a heartbeat row. Called every 30s by the Player. Powers the Monitoring dashboard.' },
+            { name: 'get-r2-upload-url', method: 'POST', desc: 'Generates a secure, one-time upload link for Cloudflare R2. Used by the CMS to upload images/videos without exposing account details.' },
           ].map(f => (
             <div key={f.name} style={{ background: 'rgba(90,100,246,0.06)', border: '1px solid rgba(90,100,246,0.15)', borderRadius: 10, padding: '1rem' }}>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
@@ -578,48 +652,48 @@ export default function EdgeFunctionsPage() {
           In the inline editor, <strong>replace all existing content</strong> with the code block below. Then click <strong>"Save"</strong> and <strong>"Deploy"</strong>.
         </Step>
         <Step n={4} title='Enable "Invoke via browser" (CORS)'>
-          In the function settings, under <strong>"Authentication"</strong>, you can disable JWT verification if the Player sends the anon key â€” or keep it enabled and pass the <code>Authorization: Bearer &lt;anon-key&gt;</code> header (the PlayerPage already does this). CORS is handled inside the function via <code>corsHeaders</code>.
+          In the function settings, under <strong>"Authentication"</strong>, you can disable JWT verification if the Player sends the anon key — or keep it enabled and pass the <code>Authorization: Bearer &lt;anon-key&gt;</code> header (the PlayerPage already does this). CORS is handled inside the function via <code>corsHeaders</code>.
         </Step>
         <Step n={5} title='Repeat for device-heartbeat'>
           Create a second function named <code style={{ color: '#7a8aff', fontFamily: 'monospace' }}>device-heartbeat</code> with the heartbeat code block below.
         </Step>
         <InfoBox type="tip">
-          <strong>Environment variables</strong> â€” <code>SUPABASE_URL</code> and <code>SUPABASE_SERVICE_ROLE_KEY</code> are auto-injected into every Edge Function by Supabase. You do not need to add them manually.
+          <strong>Environment variables</strong> — <code>SUPABASE_URL</code> and <code>SUPABASE_SERVICE_ROLE_KEY</code> are auto-injected into every Edge Function by Supabase. You do not need to add them manually.
         </InfoBox>
       </Section>
 
-      {/* â”€â”€ Function A â”€â”€ */}
-      <Section title="Function A â€” device-manifest (full source)" icon={<Code2 size={18} />}>
+      {/* ── Function A ── */}
+      <Section title="Function A — device-manifest (full source)" icon={<Code2 size={18} />}>
         <InfoBox type="info">
-          File path in editor: <code>supabase/functions/device-manifest/index.ts</code> â€” paste the entire block below.
+          File path in editor: <code>supabase/functions/device-manifest/index.ts</code> — paste the entire block below.
         </InfoBox>
         <CopyBlock code={MANIFEST_FN} label="device-manifest/index.ts" />
 
         <div style={{ fontWeight: 600, color: '#f1f5f9', marginBottom: '0.625rem', fontSize: '0.875rem' }}>Test cURL</div>
-        <CopyBlock code={CURL_MANIFEST} label="Bash â€” test device-manifest" language="bash" />
+        <CopyBlock code={CURL_MANIFEST} label="Bash — test device-manifest" language="bash" />
 
         <div style={{ fontWeight: 600, color: '#f1f5f9', marginBottom: '0.625rem', fontSize: '0.875rem' }}>Expected response</div>
         <CopyBlock code={MANIFEST_EXPECTED_RESP} label="Expected JSON response" language="json" />
       </Section>
 
-      {/* â”€â”€ Function B â”€â”€ */}
-      <Section title="Function B â€” device-heartbeat (full source)" icon={<Code2 size={18} />}>
+      {/* ── Function B ── */}
+      <Section title="Function B — device-heartbeat (full source)" icon={<Code2 size={18} />}>
         <InfoBox type="info">
-          File path in editor: <code>supabase/functions/device-heartbeat/index.ts</code> â€” paste the entire block below.
+          File path in editor: <code>supabase/functions/device-heartbeat/index.ts</code> — paste the entire block below.
         </InfoBox>
         <CopyBlock code={HEARTBEAT_FN} label="device-heartbeat/index.ts" />
 
         <div style={{ fontWeight: 600, color: '#f1f5f9', marginBottom: '0.625rem', fontSize: '0.875rem' }}>Test cURL</div>
-        <CopyBlock code={CURL_HEARTBEAT} label="Bash â€” test device-heartbeat" language="bash" />
+        <CopyBlock code={CURL_HEARTBEAT} label="Bash — test device-heartbeat" language="bash" />
 
         <div style={{ fontWeight: 600, color: '#f1f5f9', marginBottom: '0.625rem', fontSize: '0.875rem' }}>Expected response</div>
         <div style={{ background: '#0f172a', padding: '0.75rem', borderRadius: 8, fontFamily: 'monospace', fontSize: '0.75rem', color: '#94a3b8' }}>{'{ "ok": true }'}</div>
       </Section>
 
-      {/* â”€â”€ Function C â”€â”€ */}
-      <Section title="Function C â€” device-pairing (full source)" icon={<Zap size={18} />}>
+      {/* ── Function C ── */}
+      <Section title="Function C — device-pairing (full source)" icon={<Zap size={18} />}>
         <InfoBox type="info">
-          File path in editor: <code>supabase/functions/device-pairing/index.ts</code> â€” paste the entire block below.
+          File path in editor: <code>supabase/functions/device-pairing/index.ts</code> — paste the entire block below.
         </InfoBox>
         <div style={{ marginBottom: '1rem', color: '#64748b', fontSize: '0.8125rem' }}>
           This function handles the simplified PIN-based pairing. A device shows a 6-digit code, and an admin enters it in the CMS to claim it.
@@ -627,13 +701,27 @@ export default function EdgeFunctionsPage() {
         <CopyBlock code={PAIRING_FN} label="device-pairing/index.ts" />
 
         <div style={{ fontWeight: 600, color: '#f1f5f9', marginBottom: '0.625rem', fontSize: '0.875rem' }}>Test cURL (Initialize PIN)</div>
-        <CopyBlock code={CURL_PAIRING_INIT} label="Bash â€” initialize pairing" language="bash" />
+        <CopyBlock code={CURL_PAIRING_INIT} label="Bash — initialize pairing" language="bash" />
 
         <div style={{ fontWeight: 600, color: '#f1f5f9', marginBottom: '0.625rem', fontSize: '0.875rem' }}>Test cURL (Claim PIN)</div>
-        <CopyBlock code={CURL_PAIRING_CLAIM} label="Bash â€” claim device" language="bash" />
+        <CopyBlock code={CURL_PAIRING_CLAIM} label="Bash — claim device" language="bash" />
       </Section>
 
-      {/* â”€â”€ Env vars reference â”€â”€ */}
+      {/* ── Function D ── */}
+      <Section title="Function D — get-r2-upload-url (full source)" icon={<Code2 size={18} />}>
+        <InfoBox type="info">
+          File path in editor: <code>supabase/functions/get-r2-upload-url/index.ts</code> — paste the entire block below.
+        </InfoBox>
+        <InfoBox type="warn">
+          <strong>Important:</strong> This function requires R2 Secrets (API Keys) to be set in the Supabase Dashboard.
+        </InfoBox>
+        <CopyBlock code={R2_UPLOAD_FN} label="get-r2-upload-url/index.ts" />
+
+        <div style={{ fontWeight: 600, color: '#f1f5f9', marginBottom: '0.625rem', fontSize: '0.875rem' }}>Test cURL</div>
+        <CopyBlock code={CURL_R2_UPLOAD} label="Bash — test R2 upload URL" language="bash" />
+      </Section>
+
+      {/* ── Env vars reference ── */}
       <Section title="Environment Variables Reference" icon={<Terminal size={18} />} defaultOpen={false}>
         <div className="table-wrapper">
           <table>
@@ -648,11 +736,15 @@ export default function EdgeFunctionsPage() {
               {[
                 ['SUPABASE_URL', 'Auto-injected', 'Automatically available in all Edge Functions'],
                 ['SUPABASE_SERVICE_ROLE_KEY', 'Auto-injected', 'Automatically available in all Edge Functions'],
-                ['SUPABASE_ANON_KEY', 'Project Settings â†’ API', 'Used by PlayerPage on the frontend (in .env)'],
+                ['SUPABASE_ANON_KEY', 'Project Settings → API', 'Used by PlayerPage on the frontend (in .env)'],
+                ['R2_ACCESS_KEY_ID', 'Cloudflare Dashboard', 'Required for Function D'],
+                ['R2_SECRET_ACCESS_KEY', 'Cloudflare Dashboard', 'Required for Function D'],
+                ['R2_BUCKET_NAME', 'Cloudflare Dashboard', 'Required for Function D'],
+                ['R2_ENDPOINT', 'Cloudflare Dashboard', 'Required for Function D'],
               ].map(([v, val, how]) => (
                 <tr key={v}>
                   <td><code style={{ fontFamily: 'monospace', color: '#7a8aff' }}>{v}</code></td>
-                  <td><span className={val === 'Auto-injected' ? 'badge badge-green' : 'badge badge-gray'}>{val}</span></td>
+                  <td><span className={val === 'Auto-injected' ? 'badge badge-green' : (val === 'Cloudflare Dashboard' ? 'badge badge-blue' : 'badge badge-gray')}>{val}</span></td>
                   <td style={{ color: '#94a3b8', fontSize: '0.8125rem' }}>{how}</td>
                 </tr>
               ))}
@@ -661,7 +753,7 @@ export default function EdgeFunctionsPage() {
         </div>
       </Section>
 
-      {/* â”€â”€ PlayerPage config â”€â”€ */}
+      {/* ── PlayerPage config ── */}
       <Section title="PlayerPage Frontend Config" icon={<Code2 size={18} />} defaultOpen={false}>
         <InfoBox type="info">
           The PlayerPage is already wired to call these Edge Functions. Make sure your <code>.env</code> has the correct Supabase project URL.
@@ -672,7 +764,7 @@ export default function EdgeFunctionsPage() {
           language="bash"
         />
         <p style={{ color: '#64748b', fontSize: '0.8125rem', lineHeight: 1.7 }}>
-          Player URL format: <code style={{ color: '#7a8aff' }}>/player/:device_code</code> â€” e.g. <code style={{ color: '#7a8aff' }}>/player/DUB01_MAIN_001</code>.
+          Player URL format: <code style={{ color: '#7a8aff' }}>/player/:device_code</code> — e.g. <code style={{ color: '#7a8aff' }}>/player/DUB01_MAIN_001</code>.
           The Player will prompt for the device secret on first launch and save it in localStorage.
         </p>
       </Section>
