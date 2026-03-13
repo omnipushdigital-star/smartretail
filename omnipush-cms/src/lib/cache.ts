@@ -106,3 +106,40 @@ export async function downloadAndCache(asset: { media_id: string; url: string; c
         throw err
     }
 }
+
+/**
+ * Returns a blob:// URL for a cached asset (read-only, no download).
+ * Returns null if the asset is not in IndexedDB cache.
+ */
+export async function getCachedBlobUrl(media_id: string): Promise<string | null> {
+    try {
+        const cached = await cacheDb.get(media_id)
+        if (!cached) return null
+        return URL.createObjectURL(cached.blob)
+    } catch {
+        return null
+    }
+}
+
+/**
+ * Batch-hydrate an asset list with blob URLs from IndexedDB.
+ * For any asset that is already cached locally, replaces the remote URL
+ * with a blob:// URL so playback works fully offline.
+ * Safe to call at any time — silently skips any cache misses.
+ */
+export async function hydrateAssetsFromCache(
+    assets: Array<{ media_id: string; url: string | null; type: string; checksum_sha256: string | null; bytes: number | null }>
+): Promise<Array<{ media_id: string; url: string | null; type: string; checksum_sha256: string | null; bytes: number | null }>> {
+    return Promise.all(
+        assets.map(async (asset) => {
+            if (!asset.media_id || !asset.url) return asset
+            const blobUrl = await getCachedBlobUrl(asset.media_id)
+            if (blobUrl) {
+                console.log(`[Cache] Offline hydrate ✅ ${asset.media_id}`)
+                return { ...asset, url: blobUrl }
+            }
+            return asset
+        })
+    )
+}
+

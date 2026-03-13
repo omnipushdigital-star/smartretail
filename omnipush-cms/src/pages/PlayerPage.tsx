@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { WifiOff, Tv2, Lock, RefreshCw, Clock, Image as ImageIcon } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { supabase, DEFAULT_TENANT_ID, callEdgeFn } from '../lib/supabase'
-import { downloadAndCache } from '../lib/cache'
+import { downloadAndCache, hydrateAssetsFromCache } from '../lib/cache'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -874,8 +874,25 @@ export default function PlayerPage() {
                 origin: window.location.origin
             })
 
+            // ── Auto version-change detection ──
+            // If we are already playing and the server returns a DIFFERENT version,
+            // it means new content was published. Smoothly swap the manifest state
+            // without a full page reload.
+            const newVersion = data.resolved?.version || null
+            const wasPlaying = phase === 'playing' || phase === 'standby'
+            if (wasPlaying && newVersion && versionRef.current && newVersion !== versionRef.current) {
+                console.log(`[Player] 🔄 New version detected: ${versionRef.current} → ${newVersion}`)
+                // Sync new assets in background, then swap
+                if (data.assets) syncAssets(data.assets)
+                setManifest(data)
+                setVersion(newVersion)
+                localStorage.setItem(manifestKey(dc), JSON.stringify(data))
+                setOffline(false)
+                return true
+            }
+
             setManifest(data)
-            setVersion(data.resolved?.version || null)
+            setVersion(newVersion)
             localStorage.setItem(manifestKey(dc), JSON.stringify(data))
             setOffline(false)
 
@@ -922,8 +939,20 @@ export default function PlayerPage() {
             const cached = localStorage.getItem(manifestKey(dc))
             if (cached) {
                 try {
-                    console.log('[Player] Server unreachable, using cached manifest.')
-                    setManifest(JSON.parse(cached))
+                    console.log('[Player] Server unreachable — loading from localStorage cache.')
+                    const cachedManifest = JSON.parse(cached) as Manifest
+
+                    // ── Hydrate cached asset URLs from IndexedDB ──
+                    // Replace remote R2 URLs with local blob:// URLs so playback
+                    // works even if R2 is also unreachable.
+                    if (cachedManifest.assets?.length) {
+                        hydrateAssetsFromCache(cachedManifest.assets).then(hydrated => {
+                            setManifest(prev => prev ? { ...prev, assets: hydrated } : { ...cachedManifest, assets: hydrated })
+                            console.log('[Player] IndexedDB blob hydration complete ✅')
+                        })
+                    }
+
+                    setManifest(cachedManifest)
                     setOffline(true)
                     return true
                 } catch { /* ignore */ }

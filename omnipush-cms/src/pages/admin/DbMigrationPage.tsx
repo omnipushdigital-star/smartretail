@@ -214,6 +214,14 @@ ADD COLUMN IF NOT EXISTS start_time time,
 ADD COLUMN IF NOT EXISTS end_time time,
 ADD COLUMN IF NOT EXISTS days_of_week integer[] DEFAULT '{}';`,
     },
+    {
+        id: 'K',
+        label: 'SQL BLOCK K — Smooth Transitions Support',
+        description: 'Adds transition_effect column to playlists table to control per-playlist transition style (fade, slide, zoom, scale).',
+        color: '#0ea5e9',
+        sql: `ALTER TABLE public.playlists
+ADD COLUMN IF NOT EXISTS transition_effect text DEFAULT 'fade';`,
+    },
 ]
 
 export default function DbMigrationPage() {
@@ -245,7 +253,7 @@ export default function DbMigrationPage() {
                 <AlertTriangle size={18} color="#f59e0b" style={{ flexShrink: 0, marginTop: 1 }} />
                 <div>
                     <div style={{ fontWeight: 600, color: '#fbbf24', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
-                        Run blocks in order: A → B → C → D → E → F → G → J
+                        Run blocks in order: A → B → C → D → E → F → G → H → I → J → K
                     </div>
                     <div style={{ color: '#94a3b8', fontSize: '0.8125rem', lineHeight: 1.5 }}>
                         Go to <strong style={{ color: '#e2e8f0' }}>Supabase Dashboard → SQL Editor</strong>, paste each block and click <strong style={{ color: '#e2e8f0' }}>Run</strong>.
