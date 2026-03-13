@@ -22,6 +22,7 @@ function SortableItem({ item, onRemove }: { item: PlaylistItem & { media?: Media
             <span style={{ flex: 1, fontSize: '0.875rem', color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {item.media?.name || item.web_url || 'Unknown'}
             </span>
+            {item.is_scheduled && <span className="badge-schedule">⏰ Sched</span>}
             {item.duration_seconds && <span style={{ fontSize: '0.75rem', color: 'var(--color-surface-500)', flexShrink: 0 }}>{item.duration_seconds}s</span>}
             <button onClick={() => onRemove(item.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '0.25rem', display: 'flex' }}>
                 <X size={14} />
@@ -48,6 +49,12 @@ export default function PlaylistsPage() {
     const [addUrl, setAddUrl] = useState('')
     const [addDuration, setAddDuration] = useState('10')
     const [addPlaybackSpeed, setAddPlaybackSpeed] = useState('1.0')
+    const [addIsScheduled, setAddIsScheduled] = useState(false)
+    const [addStartDate, setAddStartDate] = useState('')
+    const [addEndDate, setAddEndDate] = useState('')
+    const [addStartTime, setAddStartTime] = useState('')
+    const [addEndTime, setAddEndTime] = useState('')
+    const [addDaysOfWeek, setAddDaysOfWeek] = useState<number[]>([0, 1, 2, 3, 4, 5, 6])
     const { currentTenantId } = useTenant()
 
     const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }))
@@ -151,6 +158,15 @@ export default function PlaylistsPage() {
             payload.web_url = addUrl
             // For manual web URLs, we still need a default duration if they play in a sequence
             payload.duration_seconds = parseInt(addDuration) || 15
+        }
+
+        if (addIsScheduled) {
+            payload.is_scheduled = true
+            if (addStartDate) payload.start_date = addStartDate
+            if (addEndDate) payload.end_date = addEndDate
+            if (addStartTime) payload.start_time = addStartTime
+            if (addEndTime) payload.end_time = addEndTime
+            payload.days_of_week = addDaysOfWeek
         }
 
         // Insert and then resolve the media manually to avoid ambiguity
@@ -363,6 +379,66 @@ export default function PlaylistsPage() {
                                     </select>
                                 </div>
                             )}
+
+                            {/* Scheduling Section */}
+                            <div style={{ marginTop: '1.5rem', padding: '1rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 12 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                                    <h4 style={{ margin: 0, fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-text-secondary)' }}>Advance Scheduling</h4>
+                                    <label className="switch">
+                                        <input type="checkbox" checked={addIsScheduled} onChange={e => setAddIsScheduled(e.target.checked)} />
+                                        <span className="slider round"></span>
+                                    </label>
+                                </div>
+
+                                {addIsScheduled && (
+                                    <div className="space-y-4" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                                            <div className="form-group">
+                                                <label className="label">Start Date</label>
+                                                <input className="input-field" type="date" value={addStartDate} onChange={e => setAddStartDate(e.target.value)} />
+                                            </div>
+                                            <div className="form-group">
+                                                <label className="label">End Date</label>
+                                                <input className="input-field" type="date" value={addEndDate} onChange={e => setAddEndDate(e.target.value)} />
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                                            <div className="form-group">
+                                                <label className="label">Start Time</label>
+                                                <input className="input-field" type="time" value={addStartTime} onChange={e => setAddStartTime(e.target.value)} />
+                                            </div>
+                                            <div className="form-group">
+                                                <label className="label">End Time</label>
+                                                <input className="input-field" type="time" value={addEndTime} onChange={e => setAddEndTime(e.target.value)} />
+                                            </div>
+                                        </div>
+                                        <div className="form-group">
+                                            <label className="label">Days of Week</label>
+                                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                                {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+                                                    <button
+                                                        key={i}
+                                                        onClick={() => {
+                                                            setAddDaysOfWeek(prev =>
+                                                                prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i]
+                                                            )
+                                                        }}
+                                                        style={{
+                                                            width: 28, height: 28, borderRadius: 6, fontSize: '0.75rem', fontWeight: 600,
+                                                            background: addDaysOfWeek.includes(i) ? 'var(--color-brand-600)' : 'var(--color-surface-800)',
+                                                            color: addDaysOfWeek.includes(i) ? 'white' : 'var(--color-text-secondary)',
+                                                            border: 'none', cursor: 'pointer', transition: 'all 0.2s'
+                                                        }}
+                                                    >
+                                                        {d}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
                             <button className="btn-primary" onClick={addItem} style={{ width: '100%', justifyContent: 'center', marginTop: '1rem' }}>
                                 <Plus size={14} /> Add to Playlist
                             </button>

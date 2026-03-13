@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { WifiOff, Tv2, Lock, RefreshCw, Clock, Image as ImageIcon } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { supabase, DEFAULT_TENANT_ID, callEdgeFn } from '../lib/supabase'
+import { downloadAndCache } from '../lib/cache'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -22,6 +23,13 @@ interface ManifestItem {
     web_url: string | null
     duration_seconds: number | null
     playback_speed?: number
+    // Scheduling fields
+    is_scheduled?: boolean
+    start_date?: string | null
+    end_date?: string | null
+    start_time?: string | null
+    end_time?: string | null
+    days_of_week?: number[]
 }
 
 interface Manifest {
@@ -292,14 +300,65 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
     const [idx, setIdx] = useState(0)
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const [fade, setFade] = useState(true)
+    const [currentTime, setCurrentTime] = useState(new Date())
 
-    const sorted = [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    // Perodic re-evaluation for schedules
+    useEffect(() => {
+        const t = setInterval(() => setCurrentTime(new Date()), 10000)
+        return () => clearInterval(t)
+    }, [])
+
+    const activeItems = useMemo(() => {
+        return items
+            .filter(item => {
+                if (!item.is_scheduled) return true
+
+                // 1. Date Range Check
+                if (item.start_date) {
+                    const start = new Date(item.start_date)
+                    if (currentTime < start) return false
+                }
+                if (item.end_date) {
+                    const end = new Date(item.end_date)
+                    end.setHours(23, 59, 59, 999)
+                    if (currentTime > end) return false
+                }
+
+                // 2. Day of Week Check
+                if (item.days_of_week && item.days_of_week.length > 0) {
+                    if (!item.days_of_week.includes(currentTime.getDay())) return false
+                }
+
+                // 3. Time Check (Dayparting)
+                if (item.start_time || item.end_time) {
+                    const nowSecs = currentTime.getHours() * 3600 + currentTime.getMinutes() * 60 + currentTime.getSeconds()
+                    if (item.start_time) {
+                        const [h, m, s] = item.start_time.split(':').map(Number)
+                        if (nowSecs < (h * 3600 + (m || 0) * 60 + (s || 0))) return false
+                    }
+                    if (item.end_time) {
+                        const [h, m, s] = item.end_time.split(':').map(Number)
+                        if (nowSecs > (h * 3600 + (m || 0) * 60 + (s || 0))) return false
+                    }
+                }
+
+                return true
+            })
+            .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    }, [items, currentTime])
+
+    // Safety: Reset index if active list changes significantly
+    useEffect(() => {
+        if (idx >= activeItems.length && activeItems.length > 0) {
+            setIdx(0)
+        }
+    }, [activeItems.length, idx])
 
     const advance = useCallback(() => {
         // Critical: If only 1 item, NEVER advance/refresh (prevents reload flashes)
-        if (sorted.length <= 1) return
+        if (activeItems.length <= 1) return
 
-        const nextIdx = (idx + 1) % sorted.length
+        const nextIdx = (idx + 1) % activeItems.length
         // If we are about to switch to the SAME item, skip the fade cycle
         if (nextIdx === idx) return
 
@@ -308,21 +367,21 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
             setIdx(nextIdx)
             setFade(true)
         }, 300)
-    }, [idx, sorted.length])
+    }, [idx, activeItems.length])
 
     const memoizedAssets = React.useMemo(() => assets, [JSON.stringify(assets)])
 
     useEffect(() => {
-        if (sorted.length === 0) return
+        if (activeItems.length === 0) return
         if (timerRef.current) clearTimeout(timerRef.current)
 
-        const item = sorted[idx]
+        const item = activeItems[idx]
         const asset = memoizedAssets.find(a => a.media_id === item.media_id)
         const url = asset?.url || item.web_url
         const type = asset?.type || item.type || (item.media_id ? 'video' : 'image')
 
         if (!url) {
-            if (sorted.length > 1) advance()
+            if (activeItems.length > 1) advance()
             return
         }
 
@@ -330,27 +389,38 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
         if (type === 'video') return
 
         // If only 1 item, we don't set a timer to advance
-        if (sorted.length <= 1) return
+        if (activeItems.length <= 1) return
 
         const dur = (item.duration_seconds ?? (type === 'web_url' ? DEFAULT_WEB_DURATION : DEFAULT_IMAGE_DURATION)) * 1000
         timerRef.current = setTimeout(advance, dur)
         return () => { if (timerRef.current) clearTimeout(timerRef.current) }
-    }, [idx, sorted.length, advance, memoizedAssets, region.id])
+    }, [idx, activeItems.length, advance, memoizedAssets, region.id])
 
-    if (sorted.length === 0) return null
+    if (activeItems.length === 0) return (
+        <div style={{
+            position: 'absolute',
+            top: `${region.y}%`, left: `${region.x}%`,
+            width: `${region.width}%`, height: `${region.height}%`,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            background: '#0a0a0f', border: '1px solid #1e293b'
+        }}>
+            <div style={{ color: '#475569', fontSize: '0.65rem', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Region: {region.id}</div>
+            <div style={{ color: 'rgba(255,255,255,0.1)', fontSize: '0.8rem' }}>No Active Content (Scheduled)</div>
+        </div>
+    )
 
-    const item = sorted[idx]
+    const item = activeItems[idx]
     const asset = memoizedAssets.find(a => a.media_id === item.media_id)
     const url = asset?.url || item.web_url
     const type = asset?.type || item.type || (item.media_id ? 'video' : 'image')
 
     // Use double buffer for videos to ensure smooth looping and better recovery
     const allVideos = useMemo(() => {
-        return items.length >= 1 && items.every(i => i.type === 'video')
-    }, [items])
+        return activeItems.length >= 1 && activeItems.every(i => i.type === 'video')
+    }, [activeItems])
 
     // Preload next image
-    const nextItem = sorted[(idx + 1) % sorted.length]
+    const nextItem = activeItems[(idx + 1) % activeItems.length]
     const nextAsset = memoizedAssets.find(a => a.media_id === nextItem?.media_id)
     const nextUrl = nextAsset?.url || nextItem?.web_url
     const nextType = nextAsset?.type || nextItem?.type
@@ -382,7 +452,7 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
             {/* ✅ All-video playlist: use double buffer for flash-free looping */}
             {allVideos ? (
                 <DoubleBufferVideo
-                    items={sorted}
+                    items={activeItems}
                     assets={memoizedAssets}
                     onAdvance={() => { }} // buffer manages its own index
                 />
@@ -665,6 +735,7 @@ export default function PlayerPage() {
     const [offline, setOffline] = useState(false)
     const [errorMsg, setErrorMsg] = useState('')
     const [version, setVersion] = useState<string | null>(null)
+    const [syncProgress, setSyncProgress] = useState<{ current: number; total: number } | null>(null)
     const versionRef = useRef(version)
     useEffect(() => { versionRef.current = version }, [version])
 
@@ -735,6 +806,52 @@ export default function PlayerPage() {
         return () => clearInterval(timer)
     }, [manifest?.device?.id, checkCommands])
 
+    // ── Asset Sync (Offline Cache) ──
+    const syncAssets = useCallback(async (assetsToSync: ManifestAsset[]) => {
+        if (!assetsToSync || assetsToSync.length === 0) return
+
+        console.log(`[Cache] Syncing ${assetsToSync.length} assets...`)
+        setSyncProgress({ current: 0, total: assetsToSync.length })
+
+        const updatedAssets = [...assetsToSync]
+        let completed = 0
+
+        for (let i = 0; i < updatedAssets.length; i++) {
+            const asset = updatedAssets[i]
+            if (!asset.url) {
+                completed++
+                setSyncProgress({ current: completed, total: updatedAssets.length })
+                continue
+            }
+
+            try {
+                // Determine if it's already a blob URL (unlikely at start)
+                if (asset.url.startsWith('blob:')) {
+                    completed++
+                    setSyncProgress({ current: completed, total: updatedAssets.length })
+                    continue
+                }
+
+                const blobUrl = await downloadAndCache({
+                    media_id: asset.media_id,
+                    url: asset.url,
+                    type: asset.type,
+                    checksum_sha256: asset.checksum_sha256
+                })
+                updatedAssets[i] = { ...asset, url: blobUrl }
+            } catch (err) {
+                console.error(`[Cache] Failed to sync ${asset.media_id}`, err)
+            } finally {
+                completed++
+                setSyncProgress({ current: completed, total: updatedAssets.length })
+            }
+        }
+
+        // Update manifest with blob URLs
+        setManifest(prev => prev ? { ...prev, assets: updatedAssets } : null)
+        setTimeout(() => setSyncProgress(null), 2000)
+    }, [])
+
     const initPairing = useCallback(async () => {
         try {
             const data = await callEdgeFn('device-pairing', { action: 'INIT', device_code: dc })
@@ -757,11 +874,16 @@ export default function PlayerPage() {
                 origin: window.location.origin
             })
 
-            console.log(`[Player] Manifest received. Assets: ${data.assets?.length || 0}`)
             setManifest(data)
             setVersion(data.resolved?.version || null)
             localStorage.setItem(manifestKey(dc), JSON.stringify(data))
             setOffline(false)
+
+            // Proactively sync assets for offline use
+            if (data.assets) {
+                syncAssets(data.assets)
+            }
+
             return true
         } catch (err: any) {
             const msg: string = (err.message || '').toLowerCase()
@@ -1236,6 +1358,37 @@ export default function PlayerPage() {
 
             {/* Bottom bar on top of content - hidden by default unless diagnostics active */}
             {showDiagnostics && <BottomBar device_code={dc} version={version} offline={offline} />}
+
+            {/* Sync Overlay */}
+            {syncProgress && (
+                <div style={{
+                    position: 'absolute', bottom: '4rem', right: '1.25rem',
+                    background: 'rgba(15,23,42,0.9)', backdropFilter: 'blur(12px)',
+                    border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px',
+                    padding: '0.75rem 1rem', zIndex: 10001,
+                    display: 'flex', alignItems: 'center', gap: '0.75rem',
+                    boxShadow: '0 10px 25px -5px rgba(0,0,0,0.5)',
+                    animation: 'slideIn 0.3s ease-out'
+                }}>
+                    <div style={{ width: 24, height: 24, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--color-brand-500)', animation: 'spin 1s linear infinite' }} />
+                    <div>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'white' }}>
+                            {syncProgress.current === syncProgress.total ? 'Sync Complete' : 'Syncing content…'}
+                        </div>
+                        <div style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '1px' }}>
+                            {syncProgress.current} of {syncProgress.total} items
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Styles for animation */}
+            <style>{`
+                @keyframes slideIn {
+                    from { transform: translateY(20px); opacity: 0; }
+                    to { transform: translateY(0); opacity: 1; }
+                }
+            `}</style>
         </div>
     )
 }

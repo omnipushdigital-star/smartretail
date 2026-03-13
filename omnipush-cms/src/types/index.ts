@@ -80,6 +80,13 @@ export interface PlaylistItem {
     duration_seconds?: number
     playback_speed?: number
     sort_order: number
+    // Scheduling
+    is_scheduled: boolean
+    start_date?: string
+    end_date?: string
+    start_time?: string
+    end_time?: string
+    days_of_week?: number[] // 0-6
     created_at: string
     updated_at: string
     media?: MediaAsset

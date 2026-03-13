@@ -201,6 +201,19 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;`,
     },
+    {
+        id: 'J',
+        label: 'SQL BLOCK J — Advanced Scheduling Support',
+        description: 'Adds scheduling columns to playlist_items for precise content control (Dayparting & Date windows).',
+        color: '#d946ef',
+        sql: `ALTER TABLE public.playlist_items
+ADD COLUMN IF NOT EXISTS is_scheduled boolean DEFAULT false,
+ADD COLUMN IF NOT EXISTS start_date date,
+ADD COLUMN IF NOT EXISTS end_date date,
+ADD COLUMN IF NOT EXISTS start_time time,
+ADD COLUMN IF NOT EXISTS end_time time,
+ADD COLUMN IF NOT EXISTS days_of_week integer[] DEFAULT '{}';`,
+    },
 ]
 
 export default function DbMigrationPage() {
@@ -232,7 +245,7 @@ export default function DbMigrationPage() {
                 <AlertTriangle size={18} color="#f59e0b" style={{ flexShrink: 0, marginTop: 1 }} />
                 <div>
                     <div style={{ fontWeight: 600, color: '#fbbf24', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
-                        Run blocks in order: A → B → C → D → E → F → G
+                        Run blocks in order: A → B → C → D → E → F → G → J
                     </div>
                     <div style={{ color: '#94a3b8', fontSize: '0.8125rem', lineHeight: 1.5 }}>
                         Go to <strong style={{ color: '#e2e8f0' }}>Supabase Dashboard → SQL Editor</strong>, paste each block and click <strong style={{ color: '#e2e8f0' }}>Run</strong>.

@@ -505,7 +505,38 @@ using (
     where r.id = rule_schedules.rule_id
       and public.is_tenant_member(r.tenant_id)
   )
-);`
+);
+
+-- ── digital menu builder (menus, categories, items) ───────────────────────────
+alter table public.menus enable row level security;
+drop policy if exists "menus_all" on public.menus;
+create policy "menus_select" on public.menus for select to authenticated using (public.is_tenant_member(tenant_id));
+create policy "menus_insert" on public.menus for insert to authenticated with check (public.is_tenant_member(tenant_id));
+create policy "menus_update" on public.menus for update to authenticated using (public.is_tenant_member(tenant_id));
+create policy "menus_delete" on public.menus for delete to authenticated using (public.is_tenant_member(tenant_id));
+
+alter table public.menu_categories enable row level security;
+drop policy if exists "menu_categories_all" on public.menu_categories;
+create policy "categories_select" on public.menu_categories for select to authenticated using (exists (select 1 from public.menus m where m.id = menu_id and public.is_tenant_member(m.tenant_id)));
+create policy "categories_insert" on public.menu_categories for insert to authenticated with check (exists (select 1 from public.menus m where m.id = menu_id and public.is_tenant_member(m.tenant_id)));
+create policy "categories_update" on public.menu_categories for update to authenticated using (exists (select 1 from public.menus m where m.id = menu_id and public.is_tenant_member(m.tenant_id)));
+create policy "categories_delete" on public.menu_categories for delete to authenticated using (exists (select 1 from public.menus m where m.id = menu_id and public.is_tenant_member(m.tenant_id)));
+
+alter table public.menu_items enable row level security;
+drop policy if exists "menu_items_all" on public.menu_items;
+create policy "items_select" on public.menu_items for select to authenticated using (exists (select 1 from public.menu_categories c join public.menus m on m.id = c.menu_id where c.id = category_id and public.is_tenant_member(m.tenant_id)));
+create policy "items_insert" on public.menu_items for insert to authenticated with check (exists (select 1 from public.menu_categories c join public.menus m on m.id = c.menu_id where c.id = category_id and public.is_tenant_member(m.tenant_id)));
+create policy "items_update" on public.menu_items for update to authenticated using (exists (select 1 from public.menu_categories c join public.menus m on m.id = c.menu_id where c.id = category_id and public.is_tenant_member(m.tenant_id)));
+create policy "items_delete" on public.menu_items for delete to authenticated using (exists (select 1 from public.menu_categories c join public.menus m on m.id = c.menu_id where c.id = category_id and public.is_tenant_member(m.tenant_id)));
+
+-- ── device commands ───────────────────────────────────────────────────────────
+alter table public.device_commands enable row level security;
+drop policy if exists "Public device_commands access" on public.device_commands; -- Drop the MVP policy
+create policy "commands_select" on public.device_commands for select to authenticated using (exists (select 1 from public.devices d where d.id = device_id and public.is_tenant_member(d.tenant_id)));
+create policy "commands_insert" on public.device_commands for insert to authenticated with check (exists (select 1 from public.devices d where d.id = device_id and public.is_tenant_member(d.tenant_id)));
+create policy "commands_update" on public.device_commands for update to authenticated using (exists (select 1 from public.devices d where d.id = device_id and public.is_tenant_member(d.tenant_id)));
+create policy "commands_delete" on public.device_commands for delete to authenticated using (exists (select 1 from public.devices d where d.id = device_id and public.is_tenant_member(d.tenant_id)));
+`
 
 const SECTION_D_SQL = `-- ╔══════════════════════════════════════════════════════════════╗
 -- ║  SECTION D — RLS for device_heartbeats (read-only for admins)║
@@ -611,7 +642,7 @@ where nspname = 'public'
     'layout_templates', 'layouts', 'layout_region_playlists',
     'bundles', 'bundle_files',
     'layout_publications', 'rules', 'rule_schedules',
-    'device_heartbeats'
+    'device_heartbeats', 'menus', 'menu_categories', 'menu_items', 'device_commands'
   )
 order by table_name;
 
