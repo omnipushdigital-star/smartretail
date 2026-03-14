@@ -231,6 +231,14 @@ serve(async (req: Request) => {
             regionPlaylists[rm.region_id] = regionItems;
         }
 
+        // 9. Check for app updates
+        const { data: latestUpdate } = await supabase
+            .from('app_updates')
+            .select('*')
+            .order('version_code', { ascending: false })
+            .limit(1)
+            .single();
+
         const manifest = {
             device: {
                 id: device.id,
@@ -241,6 +249,13 @@ serve(async (req: Request) => {
                 orientation: device.orientation,
                 resolution: device.resolution,
             },
+            app_update: latestUpdate ? {
+                version_code: latestUpdate.version_code,
+                version_name: latestUpdate.version_name,
+                apk_url: latestUpdate.apk_url,
+                force: latestUpdate.force_update,
+                notes: latestUpdate.notes
+            } : null,
             resolved: {
                 scope: resolvedScope,
                 role: device.role?.name || null,
