@@ -489,7 +489,7 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
                             disableRemotePlayback
                             webkit-playsinline="true"
                             preload="auto"
-                            loop={sorted.length === 1}
+                            loop={activeItems.length === 1}
                             onPlay={(e) => e.currentTarget.playbackRate = item.playback_speed || 1}
                             onEnded={advance}
                             onError={() => setTimeout(advance, 5000)}
@@ -1458,7 +1458,7 @@ export default function PlayerPage() {
                         </div>
                     </div>
                 </div>
-                <DiagnosticOverlay visible={showDiagnostics} />
+
                 {showDiagnostics && <BottomBar device_code={dc} version={version} offline={offline} />}
             </div>
         )
@@ -1498,7 +1498,7 @@ export default function PlayerPage() {
                 )
             })}
 
-            <DiagnosticOverlay visible={showDiagnostics} />
+
 
             <AdminPanel />
 
