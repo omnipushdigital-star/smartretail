@@ -744,6 +744,39 @@ export default function PlayerPage() {
     const secretRef = useRef(secret)
     useEffect(() => { secretRef.current = secret }, [secret])
 
+    // ── Hidden Admin Panel (5-tap top-right corner) ──
+    const ADMIN_PIN = '2580'
+    const tapCountRef = useRef(0)
+    const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const [showPinPrompt, setShowPinPrompt] = useState(false)
+    const [showAdminPanel, setShowAdminPanel] = useState(false)
+    const [pinInput, setPinInput] = useState('')
+    const [pinError, setPinError] = useState(false)
+
+    const handleCornerTap = () => {
+        tapCountRef.current += 1
+        if (tapTimerRef.current) clearTimeout(tapTimerRef.current)
+        // Reset counter after 3s of inactivity
+        tapTimerRef.current = setTimeout(() => { tapCountRef.current = 0 }, 3000)
+        if (tapCountRef.current >= 5) {
+            tapCountRef.current = 0
+            setShowPinPrompt(true)
+            setPinInput('')
+            setPinError(false)
+        }
+    }
+
+    const handlePinSubmit = (pin: string) => {
+        if (pin === ADMIN_PIN) {
+            setShowPinPrompt(false)
+            setShowAdminPanel(true)
+            setPinError(false)
+        } else {
+            setPinError(true)
+            setPinInput('')
+        }
+    }
+
     // Keyboard shortcut for diagnostics
     useEffect(() => {
         const handleKeys = (e: KeyboardEvent) => {
@@ -947,7 +980,12 @@ export default function PlayerPage() {
                     // works even if R2 is also unreachable.
                     if (cachedManifest.assets?.length) {
                         hydrateAssetsFromCache(cachedManifest.assets).then(hydrated => {
-                            setManifest(prev => prev ? { ...prev, assets: hydrated } : { ...cachedManifest, assets: hydrated })
+                            setManifest(prev =>
+                                (prev
+                                    ? { ...prev, assets: hydrated }
+                                    : { ...cachedManifest, assets: hydrated }
+                                ) as Manifest
+                            )
                             console.log('[Player] IndexedDB blob hydration complete ✅')
                         })
                     }
@@ -1259,48 +1297,138 @@ export default function PlayerPage() {
         )
     }
 
-    // ── Diagnostic Dashboard for Blank Screens ──
-    const DiagnosticOverlay = ({ visible }: { visible: boolean }) => {
-        if (!visible) return null
-        return (
-            <div style={{
-                position: 'fixed', bottom: '4rem', left: '1rem', zIndex: 1000,
-                background: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(8px)',
-                padding: '1rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)',
-                color: '#fff', fontSize: '0.75rem', maxWidth: '300px', boxShadow: '0 10px 25px rgba(0,0,0,0.5)'
-            }}>
-                <div style={{ fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between' }}>
-                    <span>🔍 Diagnostics</span>
-                    <span style={{ color: offline ? '#ef4444' : '#22c55e' }}>● {offline ? 'Offline' : 'Online'}</span>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <div><strong>Device:</strong> {manifest?.device?.id?.slice(0, 8)}... ({dc})</div>
-                    <div><strong>Scope:</strong> {manifest?.resolved?.scope || 'Global'}</div>
-                    <div><strong>Pub ID:</strong> {manifest?.resolved?.pub_id?.slice(0, 8) || 'None'}</div>
-                    <div><strong>Layout:</strong> {manifest?.layout?.layout_id?.slice(0, 8)}...</div>
-                    <div><strong>Regions:</strong> {Object.keys(manifest?.region_playlists || {}).join(', ')}</div>
-                    <div><strong>Total Assets:</strong> {manifest?.assets?.length || 0}</div>
-                    <div style={{ marginTop: '0.8rem', display: 'flex', gap: '0.5rem' }}>
-                        <button
-                            onClick={() => window.location.reload()}
-                            style={{ flex: 1, padding: '4px', background: '#334155', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', fontSize: '10px' }}>
-                            Reload
-                        </button>
-                        <button
-                            onClick={() => {
-                                // Event based trigger for PlaybackEngines
-                                window.dispatchEvent(new CustomEvent('omnipush_force_advance'))
-                                window.dispatchEvent(new CustomEvent('omnipush_force_play'))
-                            }}
-                            style={{ flex: 1, padding: '4px', background: 'var(--color-brand-500)', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', fontSize: '10px' }}>
-                            Next / Play
+    // ── Admin panel button style helper ──
+    const btnStyle = (bg: string, color = '#f1f5f9'): React.CSSProperties => ({
+        padding: '0.875rem 1.25rem', borderRadius: 12, fontSize: '0.9rem',
+        fontWeight: 600, background: bg, border: '1px solid rgba(255,255,255,0.08)',
+        color, cursor: 'pointer', textAlign: 'center' as const,
+    })
+
+    // ── Hidden Admin Panel overlay ──
+    const AdminPanel = () => (
+        <>
+            {/* PIN Prompt */}
+            {showPinPrompt && (
+                <div style={{
+                    position: 'fixed', inset: 0, zIndex: 99999,
+                    background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                    <div style={{
+                        background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 20, padding: '2rem', width: 280, textAlign: 'center'
+                    }}>
+                        <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>🔐</div>
+                        <div style={{ fontWeight: 700, color: '#f1f5f9', marginBottom: '0.25rem' }}>Admin Access</div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '1.25rem' }}>Enter PIN to continue</div>
+                        {/* PIN dots display */}
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                            {[0, 1, 2, 3].map(i => (
+                                <div key={i} style={{
+                                    width: 14, height: 14, borderRadius: '50%',
+                                    background: pinInput.length > i ? '#ef4444' : '#1e293b',
+                                    border: '2px solid ' + (pinError ? '#ef4444' : '#334155'),
+                                    transition: 'all 0.2s'
+                                }} />
+                            ))}
+                        </div>
+                        {pinError && <div style={{ fontSize: '0.75rem', color: '#ef4444', marginBottom: '0.75rem' }}>Incorrect PIN</div>}
+                        {/* Numpad */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+                            {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].map((k, i) => (
+                                <button key={i} onClick={() => {
+                                    if (!k) return
+                                    if (k === '⌫') { setPinInput(p => p.slice(0, -1)); setPinError(false); return }
+                                    const next = pinInput + k
+                                    setPinInput(next)
+                                    if (next.length === 4) handlePinSubmit(next)
+                                }} style={{
+                                    padding: '0.85rem', borderRadius: 10, fontSize: '1.1rem', fontWeight: 600,
+                                    background: k ? '#1e293b' : 'transparent',
+                                    border: '1px solid ' + (k ? '#334155' : 'transparent'),
+                                    color: '#f1f5f9', cursor: k ? 'pointer' : 'default',
+                                    transition: 'background 0.15s'
+                                }}>{k}</button>
+                            ))}
+                        </div>
+                        <button onClick={() => { setShowPinPrompt(false); setPinInput('') }}
+                            style={{ marginTop: '1rem', width: '100%', padding: '0.5rem', background: 'transparent', border: '1px solid #334155', borderRadius: 8, color: '#64748b', cursor: 'pointer', fontSize: '0.875rem' }}>
+                            Cancel
                         </button>
                     </div>
-                    <div style={{ marginTop: '0.5rem', opacity: 0.6 }}>Press SHIFT+D to toggle</div>
                 </div>
-            </div>
-        )
-    }
+            )}
+
+            {/* Admin Panel */}
+            {showAdminPanel && (
+                <div style={{
+                    position: 'fixed', inset: 0, zIndex: 99999,
+                    background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(16px)',
+                    display: 'flex', flexDirection: 'column',
+                }}>
+                    {/* Header */}
+                    <div style={{ padding: '1.5rem 2rem', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div>
+                            <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#f1f5f9' }}>⚙️ Admin Panel</div>
+                            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.2rem' }}>Device: {dc} · v{version || 'unknown'}</div>
+                        </div>
+                        <button onClick={() => setShowAdminPanel(false)}
+                            style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#94a3b8', padding: '0.5rem 1rem', cursor: 'pointer', fontSize: '0.875rem' }}>
+                            ✕ Close
+                        </button>
+                    </div>
+
+                    {/* Info grid */}
+                    <div style={{ padding: '1.5rem 2rem', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+                        {[
+                            { label: 'Device Code', value: dc },
+                            { label: 'Connection', value: offline ? '🔴 Offline' : '🟢 Online' },
+                            { label: 'Content Version', value: version || '—' },
+                            { label: 'Assets Cached', value: String(manifest?.assets?.length || 0) },
+                            { label: 'Regions', value: Object.keys(manifest?.region_playlists || {}).join(', ') || '—' },
+                            { label: 'Pub Scope', value: manifest?.resolved?.scope || 'Global' },
+                        ].map(({ label, value }) => (
+                            <div key={label} style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: '0.875rem 1rem' }}>
+                                <div style={{ fontSize: '0.65rem', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>{label}</div>
+                                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#f1f5f9', wordBreak: 'break-all' }}>{value}</div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Actions */}
+                    <div style={{ padding: '0 2rem', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
+                        <button onClick={() => { setShowAdminPanel(false); window.location.reload() }} style={btnStyle('#1e293b')}>
+                            🔄 Force Reload
+                        </button>
+                        <button onClick={() => {
+                            localStorage.removeItem(manifestKey(dc))
+                            setShowAdminPanel(false)
+                            window.location.reload()
+                        }} style={btnStyle('#1e293b')}>
+                            🗑️ Clear Cache &amp; Reload
+                        </button>
+                        <button onClick={() => {
+                            localStorage.removeItem(secretKey(dc))
+                            localStorage.removeItem(manifestKey(dc))
+                            setShowAdminPanel(false)
+                            window.location.reload()
+                        }} style={btnStyle('#7f1d1d', '#fca5a5')}>
+                            ⚠️ Unpair Device
+                        </button>
+                        <button onClick={() => {
+                            window.dispatchEvent(new CustomEvent('omnipush_force_play'))
+                            setShowAdminPanel(false)
+                        }} style={btnStyle('#14532d', '#86efac')}>
+                            ▶ Force Play
+                        </button>
+                    </div>
+                    <div style={{ padding: '1.5rem 2rem', fontSize: '0.7rem', color: '#334155', textAlign: 'center' }}>
+                        OmniPush Admin · Tap anywhere outside or press Close to exit
+                    </div>
+                </div>
+            )}
+        </>
+    )
 
     // Multi-Region Rendering
     if (!manifest) return <LoadingState device_code={dc} />
@@ -1371,6 +1499,18 @@ export default function PlayerPage() {
             })}
 
             <DiagnosticOverlay visible={showDiagnostics} />
+
+            <AdminPanel />
+
+            {/* Invisible 60×60 tap zone — top-right corner triggers admin panel */}
+            <div
+                onClick={handleCornerTap}
+                style={{
+                    position: 'fixed', top: 0, right: 0,
+                    width: 60, height: 60, zIndex: 99998,
+                    cursor: 'default',
+                }}
+            />
 
             {/* Offline indicator overlay */}
             {offline && (
