@@ -37,6 +37,7 @@ interface Manifest {
         id: string
         tenant_id: string
         store_id: string
+        store_name: string | null
         role_id: string
         device_code: string
         orientation: string
@@ -921,6 +922,12 @@ export default function PlayerPage() {
                 setVersion(newVersion)
                 localStorage.setItem(manifestKey(dc), JSON.stringify(data))
                 setOffline(false)
+
+                const win = window as any
+                if (win.AndroidHealth?.setStoreInfo) {
+                    win.AndroidHealth.setStoreInfo(data.device?.store_id || null, data.device?.store_name || null)
+                }
+
                 return true
             }
 
@@ -932,6 +939,11 @@ export default function PlayerPage() {
             // Proactively sync assets for offline use
             if (data.assets) {
                 syncAssets(data.assets)
+            }
+
+            const win = window as any
+            if (win.AndroidHealth?.setStoreInfo) {
+                win.AndroidHealth.setStoreInfo(data.device?.store_id || null, data.device?.store_name || null)
             }
 
             return true

@@ -23,4 +23,8 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
   },
+  build: {
+    target: ['chrome69', 'es2019'], // Ensure modern bundle transpiles optional chaining away for older WebViews
+    chunkSizeWarningLimit: 1000,
+  },
 })

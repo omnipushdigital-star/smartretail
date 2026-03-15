@@ -24,7 +24,7 @@ serve(async (req: Request) => {
         // 1. Authenticate device
         const { data: device, error: devErr } = await supabase
             .from("devices")
-            .select("*, role:roles(name, key)")
+            .select("*, role:roles(name, key), store:stores(id, name)")
             .eq("device_code", device_code)
             .is("deleted_at", null)
             .single();
@@ -244,6 +244,7 @@ serve(async (req: Request) => {
                 id: device.id,
                 tenant_id: device.tenant_id,
                 store_id: device.store_id,
+                store_name: device.store?.name || null,
                 role_id: device.role_id,
                 device_code: device.device_code,
                 orientation: device.orientation,
