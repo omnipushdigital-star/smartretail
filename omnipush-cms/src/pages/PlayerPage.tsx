@@ -806,7 +806,14 @@ const originalError = console.error
 const originalWarn = console.warn
 
 console.log = (...args) => {
-    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')
+    const msg = args.map(a => {
+        try {
+            if (a instanceof HTMLElement) return `[${a.tagName} Element]`;
+            return typeof a === 'object' ? JSON.stringify(a) : String(a);
+        } catch (e) {
+            return String(a);
+        }
+    }).join(' ')
     const log = `[${new Date().toLocaleTimeString()}] ${msg}`
     consoleLogs.push(log)
     if (consoleLogs.length > MAX_LOGS) consoleLogs.shift()
@@ -818,7 +825,14 @@ console.log = (...args) => {
     }
 }
 console.error = (...args) => {
-    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')
+    const msg = args.map(a => {
+        try {
+            if (a instanceof HTMLElement) return `[${a.tagName} Element]`;
+            return typeof a === 'object' ? JSON.stringify(a) : String(a);
+        } catch (e) {
+            return String(a);
+        }
+    }).join(' ')
     const log = `[${new Date().toLocaleTimeString()}] ERROR: ${msg}`
     consoleLogs.push(log)
     if (consoleLogs.length > MAX_LOGS) consoleLogs.shift()
@@ -830,7 +844,14 @@ console.error = (...args) => {
     }
 }
 console.warn = (...args) => {
-    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')
+    const msg = args.map(a => {
+        try {
+            if (a instanceof HTMLElement) return `[${a.tagName} Element]`;
+            return typeof a === 'object' ? JSON.stringify(a) : String(a);
+        } catch (e) {
+            return String(a);
+        }
+    }).join(' ')
     const log = `[${new Date().toLocaleTimeString()}] WARN: ${msg}`
     consoleLogs.push(log)
     if (consoleLogs.length > MAX_LOGS) consoleLogs.shift()
