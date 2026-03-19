@@ -164,6 +164,8 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
     const [slotUrls, setSlotUrls] = useState<[string, string]>(['', ''])
     const [slotOpacity, setSlotOpacity] = useState<[number, number]>([1, 0])
     const idxRef = useRef(0)
+    const activeSlotRef = useRef(activeSlot)
+    useEffect(() => { activeSlotRef.current = activeSlot }, [activeSlot])
 
     const sorted = React.useMemo(
         () => [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
@@ -278,16 +280,13 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
             })
         }
 
-        // Android TV sometimes needs a repeated "poke" to start the first video
         // Faster interval (800ms) for the first 10 seconds to ensure a smooth start
         const interval = setInterval(() => {
-            videoRefs.forEach((ref, i) => {
-                const v = ref.current
-                if (v && v.paused && v.readyState >= 2) {
-                    console.log(`[Video] ⚡ Auto-play heartbeat poke for slot ${i}...`)
-                    v.play().catch(() => { })
-                }
-            })
+            const v = videoRefs[activeSlotRef.current].current
+            if (v && v.paused && v.readyState >= 2) {
+                console.log(`[Video] ⚡ Auto-play heartbeat poke for active slot ${activeSlotRef.current}...`)
+                v.play().catch(() => { })
+            }
         }, 800)
 
         window.addEventListener('omnipush_force_play', force)
@@ -342,7 +341,11 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                     disableRemotePlayback
                     onPlay={() => console.log(`[Video] Slot ${i} started playing`)}
                     onWaiting={() => console.warn(`[Video] Slot ${i} buffering...`)}
-                    onEnded={advanceBuffer}
+                    onEnded={() => {
+                        if (i === activeSlotRef.current) {
+                            advanceBuffer()
+                        }
+                    }}
                     onError={(e) => {
                         console.error("[Video] Error in slot", i, "URL:", slotUrls[i], e);
                         // If current slot errors index forward
