@@ -164,8 +164,6 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
     const [slotUrls, setSlotUrls] = useState<[string, string]>(['', ''])
     const [slotOpacity, setSlotOpacity] = useState<[number, number]>([1, 0])
     const idxRef = useRef(0)
-    const activeSlotRef = useRef(activeSlot)
-    useEffect(() => { activeSlotRef.current = activeSlot }, [activeSlot])
 
     const sorted = React.useMemo(
         () => [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
@@ -280,11 +278,11 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
             })
         }
 
-        // Faster interval (800ms) for the first 10 seconds to ensure a smooth start
+        // Android TV sometimes needs a repeated "poke" to start the first video
         const interval = setInterval(() => {
-            const v = videoRefs[activeSlotRef.current].current
+            const v = videoRefs[activeSlot].current
             if (v && v.paused && v.readyState >= 2) {
-                console.log(`[Video] ⚡ Auto-play heartbeat poke for active slot ${activeSlotRef.current}...`)
+                console.log(`[Video] ⚡ Auto-play heartbeat poke for active slot ${activeSlot}...`)
                 v.play().catch(() => { })
             }
         }, 800)
@@ -294,7 +292,7 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
             clearInterval(interval)
             window.removeEventListener('omnipush_force_play', force)
         }
-    }, [])
+    }, [activeSlot]) // Re-bind on slot change to keep closure fresh
 
     if (sorted.length === 0) return null
 
@@ -342,7 +340,7 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                     onPlay={() => console.log(`[Video] Slot ${i} started playing`)}
                     onWaiting={() => console.warn(`[Video] Slot ${i} buffering...`)}
                     onEnded={() => {
-                        if (i === activeSlotRef.current) {
+                        if (i === activeSlot) {
                             advanceBuffer()
                         }
                     }}
@@ -529,6 +527,7 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
             {/* ✅ All-video playlist: use double buffer for flash-free looping */}
             {allVideos ? (
                 <DoubleBufferVideo
+                    key={activeItems.map(i => i.playlist_item_id + i.media_id).join(',')}
                     items={activeItems}
                     assets={memoizedAssets}
                     onAdvance={() => { }} // buffer manages its own index
