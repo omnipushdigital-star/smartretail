@@ -166,6 +166,7 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
     const idxRef = useRef(0)
     const [debug, setDebug] = useState<string>('Init')
     const watchdogRef = useRef<any>(null)
+    const initialSyncDone = useRef(false)
 
     const sorted = React.useMemo(
         () => [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
@@ -186,12 +187,22 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
         if (v2.current && slotUrls[1]) v2.current.load()
     }, [slotUrls[1]])
 
+    // Browser priming: Mute and volume 0 explicitly via JS properties
+    useEffect(() => {
+        videoRefs.forEach(ref => {
+            if (ref.current) {
+                ref.current.muted = true
+                ref.current.volume = 0
+            }
+        })
+    }, [])
+
     // Initialize: Set first video to Slot 0 and second video to Slot 1 (Preload)
     useEffect(() => {
-        if (sorted.length > 0 && slotUrls[0] === '') {
-            const firstUrl = getUrl(sorted[0])
-            const nextUrl = sorted.length > 1 ? getUrl(sorted[1]) : ''
-            setSlotUrls([firstUrl, nextUrl])
+        if (sorted.length > 0 && !initialSyncDone.current) {
+            const firstId = getUrl(sorted[0])
+            const nextId = sorted.length > 1 ? getUrl(sorted[1]) : ''
+            setSlotUrls([firstId, nextId])
 
             // Set initial playback rate
             if (videoRefs[0].current) {
@@ -200,19 +211,20 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
             if (videoRefs[1].current && sorted.length > 1) {
                 videoRefs[1].current.playbackRate = sorted[1].playback_speed || 1
             }
-
-            console.log("[Video] Initializing buffer. Slot 0 (Speed", sorted[0].playback_speed || 1, "):", firstUrl)
+            initialSyncDone.current = true
+            console.log("[Video] Initializing double buffer slots. Slot 0:", firstId)
         }
     }, [sorted, getUrl])
 
-    const advanceBuffer = useCallback(() => {
+    const advanceBuffer = useCallback((forceNext = false) => {
         if (sorted.length === 0) return
 
+        // Single video loop optimization
         if (sorted.length === 1) {
             const v = videoRefs[activeSlot].current
             if (v) {
                 v.currentTime = 0
-                v.play().catch(e => setDebug(`Loop Error: ${e.message}`))
+                v.play().catch(e => setDebug(`Loop Err: ${e.message.slice(0, 10)}`))
             }
             onAdvance()
             return
@@ -227,56 +239,78 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
         const performSwitch = () => {
             if (!nextVideo) return
 
-            setDebug(`S${currentSlot}→S${nextSlot} | Play`)
+            setDebug(`${idxRef.current}→${nextIdx} | SWAP`)
             nextVideo.playbackRate = sorted[nextIdx].playback_speed || 1
 
-            // Step 3: Call play()
-            nextVideo.play().then(() => {
-                // Step 4: THEN switch opacity + active slot
-                setSlotOpacity(nextSlot === 0 ? [1, 0] : [0, 1])
-                setActiveSlot(nextSlot)
-                idxRef.current = nextIdx
+            // FIX: Swap active slot and visibility BEFORE calling play in browser.
+            // This makes the element 'active' in the browser's eyes and helps bypass autoplay restrictions.
+            setActiveSlot(nextSlot)
+            setSlotOpacity(nextSlot === 0 ? [1, 0] : [0, 1])
+            idxRef.current = nextIdx
+            onAdvance()
 
-                // Preload next-next URL into the old slot
-                const preloadIdx = (nextIdx + 1) % sorted.length
-                const preloadUrl = getUrl(sorted[preloadIdx])
+            // 1. Play the next video
+            const attemptPlay = () => {
+                nextVideo.play().then(() => {
+                    setDebug(`${nextIdx} Play OK`)
 
-                setTimeout(() => {
-                    setSlotUrls(prev => {
-                        const updated: [string, string] = [...prev] as [string, string]
-                        updated[currentSlot] = preloadUrl
-                        return updated
-                    })
-                }, 500)
+                    // 2. Preload next-next URL into the old slot
+                    const preloadIdx = (nextIdx + 1) % sorted.length
+                    const preloadUrl = getUrl(sorted[preloadIdx])
 
-                onAdvance()
-            }).catch(e => {
-                setDebug(`P.Err: ${e.message.slice(0, 15)}`)
-                // Fallback: if it fails, try to jump again in 2s
-                setTimeout(advanceBuffer, 2000)
-            })
+                    setTimeout(() => {
+                        setSlotUrls(prev => {
+                            const updated: [string, string] = [...prev] as [string, string]
+                            updated[currentSlot] = preloadUrl
+                            return updated
+                        })
+                    }, 500)
+                }).catch(e => {
+                    setDebug(`P.Err: ${e.message.slice(0, 15)}`)
+                    console.warn("[Video] Scripted play failed, will retry in heartbeat", e)
+                })
+            }
+
+            // Small delay to let React update DOM before calling play()
+            setTimeout(attemptPlay, 50)
         }
 
-        // Step 1 & 2: Ensure next video is ready (readyState >= 2: HAVE_CURRENT_DATA)
+        // Ready Check
         if (nextVideo && nextVideo.readyState >= 2) {
             performSwitch()
         } else if (nextVideo) {
-            setDebug(`Wait S${nextSlot}...`)
+            setDebug(`Wait S${nextSlot} R:${nextVideo.readyState}`)
             const onCanPlay = () => {
                 nextVideo.removeEventListener('canplay', onCanPlay)
                 performSwitch()
             }
             nextVideo.addEventListener('canplay', onCanPlay)
-            // Safety timeout for waiting
+            // Safety timeout for buffering
             setTimeout(() => {
                 nextVideo.removeEventListener('canplay', onCanPlay)
-                if (activeSlot === currentSlot) performSwitch()
-            }, 3000)
+                if (activeSlot === currentSlot) {
+                    setDebug(`Skip Wait R:${nextVideo.readyState}`)
+                    performSwitch()
+                }
+            }, 5000)
         }
     }, [activeSlot, sorted, getUrl, onAdvance])
 
-    // Global force-play listener and heartbeat for resilient autoplay
+    // Autoplay heartbeat (Ensures playback resumes if stalled/paused by browser)
     useEffect(() => {
+        const interval = setInterval(() => {
+            const v = videoRefs[activeSlot].current
+            if (v) {
+                if (v.paused && v.readyState >= 2 && !v.ended) {
+                    v.play().catch(() => { })
+                }
+                if (v.readyState < 2 && !v.paused) {
+                    setDebug(d => d.includes('Stall') ? d : `Stall R:${v.readyState}`)
+                }
+            }
+        }, 1500)
+
+        // Global wake-up trigger
         const force = () => {
             videoRefs.forEach(ref => {
                 if (ref.current && ref.current.paused) {
@@ -284,22 +318,8 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                 }
             })
         }
-
-        // Android TV sometimes needs a repeated "poke" to start the first video
-        const interval = setInterval(() => {
-            const v = videoRefs[activeSlot].current
-            if (v) {
-                if (v.paused && v.readyState >= 2) {
-                    v.play().catch(() => { })
-                }
-                // If it's been stalled for a long time (readyState 0 or 1 while active)
-                if (v.readyState < 2) {
-                    setDebug((d: string) => d.includes('Stall') ? d : `Stall (R:${v.readyState})`)
-                }
-            }
-        }, 1000)
-
         window.addEventListener('omnipush_force_play', force)
+
         return () => {
             clearInterval(interval)
             window.removeEventListener('omnipush_force_play', force)
@@ -315,11 +335,8 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
         objectFit: 'fill',
         background: '#000',
         display: 'block',
-        // Minimal transition or none for older hardware
-        // Smooth transition only for opacity
         transition: 'opacity 0.2s linear',
     }
-
 
     return (
         <div style={{ position: 'absolute', inset: 0, background: '#000', overflow: 'hidden' }}>
@@ -330,62 +347,51 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                     src={slotUrls[i]}
                     style={{
                         ...videoStyle,
-                        position: 'absolute',
-                        inset: 0,
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'fill',
                         opacity: slotOpacity[i],
                         zIndex: slotOpacity[i] > 0 ? 10 : 1,
                         pointerEvents: 'none',
-                        border: 'none',
-                        outline: 'none',
                     }}
                     muted
                     autoPlay
                     playsInline
                     crossOrigin="anonymous"
-                    loop={sorted.length === 1}
+                    loop={false} // Double buffer handles looping
                     webkit-playsinline="true"
                     preload="auto"
-                    disableRemotePlayback
-                    onPlay={() => console.log(`[Video] Slot ${i} started playing`)}
-                    onWaiting={() => console.warn(`[Video] Slot ${i} buffering...`)}
                     onTimeUpdate={() => {
-                        // Watchdog: Clear existing timer
                         if (watchdogRef.current) clearTimeout(watchdogRef.current)
-                        // If active video is not moving for 8 seconds, skip
                         if (i === activeSlot) {
                             watchdogRef.current = setTimeout(() => {
                                 if (i === activeSlot && sorted.length > 1) {
-                                    setDebug("Watchdog Skip");
-                                    advanceBuffer();
+                                    setDebug("Watchdog Skip")
+                                    advanceBuffer()
                                 }
-                            }, 8000)
+                            }, 10000)
                         }
                     }}
                     onEnded={() => {
                         if (i === activeSlot) advanceBuffer()
                     }}
-                    onError={(e) => {
-                        setDebug(`Err (S${i})`);
-                        if (i === activeSlot) setTimeout(advanceBuffer, 2000);
+                    onError={() => {
+                        setDebug(`Err (S${i})`)
+                        if (i === activeSlot) setTimeout(() => advanceBuffer(true), 1500)
                     }}
                 />
             ))}
 
-            {/* Hidden Debug Overlay */}
+            {/* Debug Overlay */}
             <div style={{
                 position: 'absolute', bottom: 5, right: 5, zIndex: 9999,
-                fontSize: '8px', color: 'rgba(255,255,255,0.4)', fontFamily: 'monospace',
-                background: 'rgba(0,0,0,0.5)', padding: '2px 4px', borderRadius: '3px',
-                pointerEvents: 'none'
+                fontSize: '9px', color: 'rgba(255,255,255,0.7)', fontFamily: 'monospace',
+                background: 'rgba(0,0,0,0.6)', padding: '4px 8px', borderRadius: '4px',
+                pointerEvents: 'none', border: '1px solid rgba(255,255,255,0.1)'
             }}>
-                {debug} | R0:{videoRefs[0].current?.readyState} R1:{videoRefs[1].current?.readyState}
+                ID:{idxRef.current}/{sorted.length} | {debug} | R0:{videoRefs[0].current?.readyState} R1:{videoRefs[1].current?.readyState}
             </div>
         </div>
     )
 }
+
 
 // ─── Playback Engine ──────────────────────────────────────────────────────────
 
@@ -560,7 +566,7 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
                     key={activeItems.map(i => i.playlist_item_id + i.media_id).join(',')}
                     items={activeItems}
                     assets={memoizedAssets}
-                    onAdvance={() => { }} // buffer manages its own index
+                    onAdvance={advance}
                 />
             ) : (
                 /* Mixed content: use fade-based switching */
