@@ -89,16 +89,49 @@ function LiveClock() {
 
 // CSS to hide the default video "play/icon" flash in Android WebView
 const globalStyle = `
+  /* 1. Force root level elements to cover exact viewport - Essential for signage */
+  html, body, #root {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+    position: fixed !important;
+    top: 0; left: 0; right: 0; bottom: 0;
+    -webkit-text-size-adjust: 100%;
+    -moz-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    background: #000 !important;
+  }
+
+  /* 2. Force all media to fill their region boxes without scaling artifacts */
+  video, img, iframe {
+    object-fit: fill !important;
+    border: none !important;
+    outline: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: block !important;
+    pointer-events: none;
+    background: transparent !important;
+    -webkit-transform: translate3d(0,0,0);
+    transform: translate3d(0,0,0);
+  }
+
+  /* 3. Kill all default browser controls/icons */
   video::-webkit-media-controls { display:none !important; }
   video::-webkit-media-controls-enclosure { display:none !important; }
   video::-webkit-media-controls-panel { display:none !important; }
-  video::-webkit-media-controls-play-button { display:none !important; }
-  video::-webkit-media-controls-start-playback-button { display: none !important; -webkit-appearance: none; }
-  video::-webkit-media-controls-shim { display:none !important; }
-  video::--webkit-media-controls-play-button { display:none !important; }
-  video::-internal-media-controls-download-button { display:none !important; }
-  video { pointer-events: none !important; outline: none !important; background: black !important; }
-  * { -webkit-tap-highlight-color: transparent !important; }
+  
+  /* 4. Kill scrollbars */
+  ::-webkit-scrollbar { display: none !important; }
+  * { 
+    scrollbar-width: none !important; 
+    box-sizing: border-box !important; 
+    -webkit-tap-highlight-color: transparent !important; 
+  }
 `;
 
 interface PlaybackProps {
@@ -190,14 +223,30 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
         const nextVideo = videoRefs[nextSlot].current
         const currentVideo = videoRefs[currentSlot].current
 
-        // 1. Swap visibility immediately (the next video should be ready)
+        // 1. Swap visibility immediately (no fade for better compatibility on older TV boxes)
         setSlotOpacity(nextSlot === 0 ? [1, 0] : [0, 1])
         setActiveSlot(nextSlot)
 
         // 2. Ensure next video starts playing and has correct speed
         if (nextVideo) {
             nextVideo.playbackRate = sorted[nextIdx].playback_speed || 1
-            nextVideo.play().catch(e => console.error("[Video] Play error after swap:", e))
+            const playPromise = nextVideo.play()
+            if (playPromise !== undefined) {
+                playPromise.catch(e => {
+                    console.error("[Video] Play error after swap:", e)
+                    // If play fails, try to fallback to direct URL if it's a blob
+                    if (nextVideo.src.startsWith('blob:') && sorted[nextIdx].media_id) {
+                        const asset = assets.find(a => a.media_id === sorted[nextIdx].media_id)
+                        const originalUrl = asset?.url || sorted[nextIdx].web_url
+                        if (originalUrl) {
+                            console.warn("[Video] Blob play failed. Attempting direct URL fallback:", originalUrl)
+                            nextVideo.src = originalUrl
+                            nextVideo.load()
+                            nextVideo.play().catch(e2 => console.error("[Video] Fallback play also failed:", e2))
+                        }
+                    }
+                })
+            }
         }
 
         // 3. Prepare the next-next video in the now-hidden slot
@@ -214,7 +263,7 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                     return updated
                 })
             }
-        }, 500)
+        }, 300)
 
         onAdvance()
     }, [activeSlot, sorted, getUrl, onAdvance])
@@ -254,15 +303,16 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
         position: 'absolute',
         top: 0, left: 0,
         width: '100%', height: '100%',
-        objectFit: 'cover',
+        objectFit: 'fill',
         background: '#000',
         display: 'block',
-        transition: 'opacity 0.6s ease-in-out',
+        // Minimal transition or none for older hardware
+        transition: 'visibility 0s, opacity 0.1s linear',
     }
 
+
     return (
-        <div style={{ position: 'absolute', inset: 0, background: '#000' }}>
-            <style>{globalStyle}</style>
+        <div style={{ position: 'absolute', inset: 0, background: '#000', overflow: 'hidden' }}>
             {[0, 1].map(i => (
                 <video
                     key={i}
@@ -270,17 +320,28 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                     src={slotUrls[i]}
                     style={{
                         ...videoStyle,
+                        position: 'absolute',
+                        inset: 0,
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'fill',
                         opacity: slotOpacity[i],
                         zIndex: slotOpacity[i] > 0 ? 10 : 1,
-                        visibility: slotUrls[i] ? 'visible' : 'hidden'
+                        visibility: slotUrls[i] && slotOpacity[i] > 0 ? 'visible' : 'hidden',
+                        pointerEvents: 'none',
+                        border: 'none',
+                        outline: 'none',
                     }}
                     muted
                     autoPlay
                     playsInline
+                    crossOrigin="anonymous"
                     loop={sorted.length === 1}
                     webkit-playsinline="true"
                     preload="auto"
                     disableRemotePlayback
+                    onPlay={() => console.log(`[Video] Slot ${i} started playing`)}
+                    onWaiting={() => console.warn(`[Video] Slot ${i} buffering...`)}
                     onEnded={advanceBuffer}
                     onError={(e) => {
                         console.error("[Video] Error in slot", i, "URL:", slotUrls[i], e);
@@ -354,6 +415,18 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
             setIdx(0)
         }
     }, [activeItems.length, idx])
+
+    // Update Android Status on content change
+    useEffect(() => {
+        if (activeItems.length > 0) {
+            const currentItem = activeItems[idx]
+            const label = currentItem.web_url || currentItem.media_id || 'unnamed'
+            const win = window as any
+            if (win.AndroidHealth?.setPlayerState) {
+                win.AndroidHealth.setPlayerState('playing', label)
+            }
+        }
+    }, [idx, activeItems])
 
     const advance = useCallback(() => {
         // Critical: If only 1 item, NEVER advance/refresh (prevents reload flashes)
@@ -473,7 +546,7 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
                             style={{
                                 position: 'absolute', top: 0, left: 0,
                                 width: '100%', height: '100%',
-                                objectFit: 'cover', display: 'block',
+                                objectFit: 'fill', display: 'block',
                             }}
                         />
                     )}
@@ -484,7 +557,7 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
                             style={{
                                 position: 'absolute', top: 0, left: 0,
                                 width: '100%', height: '100%',
-                                objectFit: 'cover', background: '#000', display: 'block',
+                                objectFit: 'fill', background: '#000', display: 'block',
                             }}
                             autoPlay muted playsInline
                             disableRemotePlayback
@@ -726,9 +799,73 @@ function BottomBar({ device_code, version, offline }: { device_code: string; ver
 
 type Phase = 'loading' | 'pairing' | 'secret' | 'playing' | 'standby' | 'error'
 
+const MAX_LOGS = 50
+const consoleLogs: string[] = []
+const originalLog = console.log
+const originalError = console.error
+const originalWarn = console.warn
+
+console.log = (...args) => {
+    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')
+    const log = `[${new Date().toLocaleTimeString()}] ${msg}`
+    consoleLogs.push(log)
+    if (consoleLogs.length > MAX_LOGS) consoleLogs.shift()
+    originalLog.apply(console, args)
+
+    const win = window as any
+    if (win.AndroidHealth?.logLine) {
+        win.AndroidHealth.logLine(msg)
+    }
+}
+console.error = (...args) => {
+    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')
+    const log = `[${new Date().toLocaleTimeString()}] ERROR: ${msg}`
+    consoleLogs.push(log)
+    if (consoleLogs.length > MAX_LOGS) consoleLogs.shift()
+    originalError.apply(console, args)
+
+    const win = window as any
+    if (win.AndroidHealth?.reportError) {
+        win.AndroidHealth.reportError(msg)
+    }
+}
+console.warn = (...args) => {
+    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')
+    const log = `[${new Date().toLocaleTimeString()}] WARN: ${msg}`
+    consoleLogs.push(log)
+    if (consoleLogs.length > MAX_LOGS) consoleLogs.shift()
+    originalWarn.apply(console, args)
+
+    const win = window as any
+    if (win.AndroidHealth?.logLine) {
+        win.AndroidHealth.logLine(`⚠️ WARN: ${msg}`)
+    }
+}
+
 export default function PlayerPage() {
     const { device_code } = useParams<{ device_code: string }>()
     const dc = device_code || ''
+
+    // Dynamic Viewport Sync for Browser and WebViews
+    useEffect(() => {
+        const syncViewport = () => {
+            let meta = document.querySelector('meta[name="viewport"]')
+            if (!meta) {
+                meta = document.createElement('meta')
+                meta.setAttribute('name', 'viewport')
+                document.head.appendChild(meta)
+            }
+            meta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no, viewport-fit=cover')
+
+            // Force browser to visible area only
+            document.documentElement.style.height = '100dvh';
+            document.body.style.height = '100dvh';
+        }
+
+        syncViewport()
+        window.addEventListener('resize', syncViewport)
+        return () => window.removeEventListener('resize', syncViewport)
+    }, [])
 
     const [phase, setPhase] = useState<Phase>('loading')
     const [secret, setSecret] = useState<string>('')
@@ -744,6 +881,18 @@ export default function PlayerPage() {
     const [showDiagnostics, setShowDiagnostics] = useState(false)
     const secretRef = useRef(secret)
     useEffect(() => { secretRef.current = secret }, [secret])
+
+    // Android Status Sync
+    const updateAndroidStatus = useCallback((p: string, content?: string | null) => {
+        const win = window as any
+        if (win.AndroidHealth?.setPlayerState) {
+            win.AndroidHealth.setPlayerState(p, content || null)
+        }
+    }, [])
+
+    useEffect(() => {
+        updateAndroidStatus(phase)
+    }, [phase, updateAndroidStatus])
 
     // ── Hidden Admin Panel (5-tap top-right corner) ──
     const ADMIN_PIN = '2580'
@@ -787,7 +936,43 @@ export default function PlayerPage() {
         return () => window.removeEventListener('keydown', handleKeys)
     }, [])
 
-    // ── Command Polling (Reboot, etc) ──
+    // ── Command Processing ──
+    const processIncomingCommands = useCallback(async (commands: any[]) => {
+        for (const cmd of commands) {
+            console.log(`[Player] Processing command: ${cmd.command} (${cmd.id})`)
+
+            try {
+                // 1. Mark as EXECUTED immediately in Supabase
+                await supabase.from('device_commands').update({
+                    status: 'EXECUTED',
+                    executed_at: new Date().toISOString()
+                }).eq('id', cmd.id)
+
+                // 2. Perform the actual logic
+                if (cmd.command === 'REBOOT' || cmd.command === 'RELOAD') {
+                    console.warn('[Player] Remote Reload/Reboot triggered. Reloading page...')
+                    window.location.reload()
+                } else if (cmd.command === 'CLEAR_CACHE') {
+                    console.warn('[Player] Remote Clear Cache triggered. Purging local storage...')
+                    localStorage.removeItem(manifestKey(dc))
+                    window.location.reload()
+                } else if (cmd.command === 'SCREENSHOT') {
+                    console.log('[Player] Remote Screenshot requested...')
+                    const win = window as any
+                    if (win.AndroidHealth && win.AndroidHealth.takeScreenshot) {
+                        win.AndroidHealth.takeScreenshot(cmd.id)
+                    } else {
+                        // Fallback: In browser, we can't easily screenshot, but we record the attempt
+                        console.error('[Player] Native screenshot bridge NOT available.')
+                    }
+                }
+            } catch (err: any) {
+                console.error(`[Player] Command ${cmd.id} execution failed:`, err.message)
+            }
+        }
+    }, [dc])
+
+    // Keep checkCommands for legacy/backup or direct REST usage
     const checkCommands = useCallback(async () => {
         if (!manifest?.device?.id) return
         try {
@@ -1074,14 +1259,22 @@ export default function PlayerPage() {
                 device_secret: sec,
                 current_version: versionRef.current,
                 status: phase,
+                logs: [...consoleLogs], // Send buffered logs
                 ...meta
             }
-            console.log('[Player] Sending heartbeat payload:', JSON.stringify(payload))
+            consoleLogs.length = 0 // Clear after sending
+
+            console.log('[Player] Sending heartbeat...')
             const res = await callEdgeFn('device-heartbeat', payload)
+
             if (res.error) {
                 console.error('[Player] Heartbeat Server Error:', res.error)
             } else {
-                console.log(`[Player] Heartbeat Recorded ✅ (${phase}) | Meta stored:`, res.meta_keys)
+                console.log(`[Player] Heartbeat Recorded ✅ (${phase})`)
+                // Handle commands returned in heartbeat
+                if (res.commands && res.commands.length > 0) {
+                    processIncomingCommands(res.commands)
+                }
             }
         } catch (err: any) {
             console.error('[Player] Heartbeat Network Error:', err.message)
@@ -1477,7 +1670,17 @@ export default function PlayerPage() {
     }
 
     return (
-        <div style={{ position: 'fixed', inset: 0, background: '#000' }}>
+        <div style={{
+            position: 'fixed',
+            inset: 0,
+            width: '100vw',
+            height: '100dvh',
+            background: '#000',
+            overflow: 'hidden',
+            margin: 0, padding: 0,
+            zIndex: 1,
+            display: 'block',
+        }}>
             {regions.map((reg) => {
                 const regionItems = manifest.region_playlists?.[reg.id] || []
 
@@ -1540,28 +1743,7 @@ export default function PlayerPage() {
             {/* Bottom bar on top of content - hidden by default unless diagnostics active */}
             {showDiagnostics && <BottomBar device_code={dc} version={version} offline={offline} />}
 
-            {/* Sync Overlay */}
-            {syncProgress && (
-                <div style={{
-                    position: 'absolute', bottom: '4rem', right: '1.25rem',
-                    background: 'rgba(15,23,42,0.9)', backdropFilter: 'blur(12px)',
-                    border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px',
-                    padding: '0.75rem 1rem', zIndex: 10001,
-                    display: 'flex', alignItems: 'center', gap: '0.75rem',
-                    boxShadow: '0 10px 25px -5px rgba(0,0,0,0.5)',
-                    animation: 'slideIn 0.3s ease-out'
-                }}>
-                    <div style={{ width: 24, height: 24, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--color-brand-500)', animation: 'spin 1s linear infinite' }} />
-                    <div>
-                        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'white' }}>
-                            {syncProgress.current === syncProgress.total ? 'Sync Complete' : 'Syncing content…'}
-                        </div>
-                        <div style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '1px' }}>
-                            {syncProgress.current} of {syncProgress.total} items
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Sync Overlay removed as per user request to avoid playback jitter/noise */}
 
             {/* Styles for animation */}
             <style>{`

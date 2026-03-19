@@ -55,7 +55,7 @@ serve(async (req: Request) => {
 
             const { data: device, error } = await supabase
                 .from("devices")
-                .select("device_secret, pairing_pin, active")
+                .select("tenant_id, device_secret, pairing_pin, active, display_name, store_id, store:stores(name), role_id, role:roles(name)")
                 .eq("device_code", device_code)
                 .maybeSingle();
 
@@ -65,7 +65,18 @@ serve(async (req: Request) => {
 
             // If it's already active and has no pin, it's claimed
             if (device.active && !device.pairing_pin) {
-                return Response.json({ status: 'CLAIMED', device_secret: device.device_secret }, { headers: corsHeaders });
+                return Response.json({
+                    status: 'CLAIMED',
+                    device_secret: device.device_secret,
+                    device_info: {
+                        display_name: device.display_name,
+                        store_id: device.store_id,
+                        store_name: (device as any).store?.name || null,
+                        tenant_id: device.tenant_id,
+                        role_id: device.role_id,
+                        role_name: (device as any).role?.name || null,
+                    }
+                }, { headers: corsHeaders });
             }
 
             return Response.json({ status: 'PENDING' }, { headers: corsHeaders });

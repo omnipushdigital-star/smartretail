@@ -3,7 +3,7 @@ import {
     Tv2, Layout, Activity, Shield, ArrowRight, PlayCircle, Layers, Settings,
     Plus, Monitor, Search, MoreVertical, Edit2, Trash2, RefreshCw, Smartphone,
     Copy, Check, Info, AlertCircle, Loader2, Link, ArrowLeftRight, Wifi,
-    RotateCcw, History, Trash, Database, Eraser, Camera, QrCode, Eye, EyeOff
+    RotateCcw, History, Trash, Database, Eraser, Camera, QrCode, Eye, EyeOff, Download
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { supabase, callEdgeFn } from '../../lib/supabase'
@@ -338,6 +338,20 @@ export default function DevicesPage() {
         }
     }
 
+    const handleCheckUpdate = async (deviceId: string, deviceCode: string) => {
+        try {
+            const { error } = await supabase.from('device_commands').insert({
+                device_id: deviceId,
+                command: 'CHECK_UPDATE',
+                status: 'PENDING'
+            })
+            if (error) throw error
+            toast.success(`Update check requested for ${deviceCode}`)
+        } catch (err: any) {
+            toast.error(`Failed to request update: ${err.message}`)
+        }
+    }
+
     const handleScreenshot = async (deviceId: string, deviceCode: string) => {
         try {
             const { data, error } = await supabase.from('device_commands').insert({
@@ -563,6 +577,14 @@ export default function DevicesPage() {
                                                                     title="Clear Device Cache"
                                                                 >
                                                                     <Eraser size={13} />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleCheckUpdate(d.id, d.device_code)}
+                                                                    className="btn-secondary"
+                                                                    style={{ padding: '0.375rem 0.625rem' }}
+                                                                    title="Check for App Update"
+                                                                >
+                                                                    <Download size={13} />
                                                                 </button>
                                                                 <button
                                                                     onClick={() => handleScreenshot(d.id, d.device_code)}

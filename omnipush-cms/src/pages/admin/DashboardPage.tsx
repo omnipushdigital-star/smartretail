@@ -51,14 +51,21 @@ export default function DashboardPage() {
         async function load() {
             try {
                 console.log(`[Dashboard] Loading stats for tenant: ${currentTenantId}`)
+                const onlineThreshold = new Date(Date.now() - ONLINE_THRESHOLD_MS).toISOString()
+
                 const [storesRes, devicesRes, pubsRes, rolesRes] = await Promise.all([
-                    supabase.from('stores').select('id', { count: 'exact' }).eq('tenant_id', currentTenantId),
-                    supabase.from('devices').select('id, device_code, tenant_id', { count: 'exact' }).eq('tenant_id', currentTenantId),
-                    supabase.from('layout_publications').select('id', { count: 'exact' }).eq('tenant_id', currentTenantId).eq('is_active', true).limit(0),
-                    supabase.from('roles').select('id', { count: 'exact' }).eq('tenant_id', currentTenantId),
+                    supabase.from('stores').select('id', { count: 'exact', head: true }).eq('tenant_id', currentTenantId),
+                    supabase.from('devices').select('id', { count: 'exact', head: true })
+                        .eq('tenant_id', currentTenantId)
+                        .is('deleted_at', null),
+                    supabase.from('layout_publications').select('id', { count: 'exact', head: true })
+                        .eq('tenant_id', currentTenantId)
+                        .eq('is_active', true)
+                        .limit(0),
+                    supabase.from('roles').select('id', { count: 'exact', head: true }).eq('tenant_id', currentTenantId),
                 ])
 
-                const { data: allDevices } = await supabase.from('devices').select('id, device_code, tenant_id').eq('tenant_id', currentTenantId)
+                const { data: allDevices } = await supabase.from('devices').select('id, device_code, tenant_id').eq('tenant_id', currentTenantId).is('deleted_at', null)
                 const devices = allDevices || []
 
                 // Final counts with fallbacks

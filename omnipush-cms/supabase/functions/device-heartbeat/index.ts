@@ -27,7 +27,7 @@ serve(async (req: Request) => {
         // Verify device credentials
         const { data: device, error: devErr } = await supabase
             .from("devices")
-            .select("id, device_code, device_secret, active")
+            .select("id, device_code, device_secret, active, display_name, store_id, store:stores(name), tenant_id, role_id, role:roles(name)")
             .eq("device_code", device_code)
             .is("deleted_at", null)
             .single();
@@ -87,12 +87,32 @@ serve(async (req: Request) => {
             meta: meta,
         });
 
-        if (hbErr) {
-            console.error('[Heartbeat] DB Insert Error:', hbErr)
-            throw hbErr
+        // 5. Fetch pending commands to return in the response
+        const { data: commands, error: cmdErr } = await supabase
+            .from("device_commands")
+            .select("id, command, payload")
+            .eq("device_id", device.id)
+            .eq("status", "PENDING")
+            .order("created_at", { ascending: true });
+
+        if (cmdErr) {
+            console.error('[Heartbeat] Fetch Commands Error:', cmdErr);
+            // Non-fatal, just return no commands
         }
 
-        return Response.json({ ok: true, meta_keys: Object.keys(meta) }, { headers: corsHeaders });
+        return Response.json({
+            ok: true,
+            device_info: {
+                display_name: device.display_name,
+                store_id: device.store_id,
+                store_name: (device as any).store?.name || null,
+                tenant_id: device.tenant_id,
+                role_id: device.role_id,
+                role_name: (device as any).role?.name || null,
+            },
+            meta_keys: Object.keys(meta),
+            commands: commands || []
+        }, { headers: corsHeaders });
     } catch (err: any) {
         console.error('[Heartbeat] Fatal error:', err.message)
         return Response.json({ error: err.message }, { status: 500, headers: corsHeaders });
