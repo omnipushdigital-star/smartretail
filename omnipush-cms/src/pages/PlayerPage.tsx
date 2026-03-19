@@ -164,6 +164,8 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
     const [slotUrls, setSlotUrls] = useState<[string, string]>(['', ''])
     const [slotOpacity, setSlotOpacity] = useState<[number, number]>([1, 0])
     const idxRef = useRef(0)
+    const [debug, setDebug] = useState<string>('Init')
+    const watchdogRef = useRef<any>(null)
 
     const sorted = React.useMemo(
         () => [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
@@ -198,12 +200,11 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
     const advanceBuffer = useCallback(() => {
         if (sorted.length === 0) return
 
-        // If only 1 item, just loop it natively
         if (sorted.length === 1) {
             const v = videoRefs[activeSlot].current
             if (v) {
                 v.currentTime = 0
-                v.play().catch(e => console.warn("[Video] Loop failed:", e))
+                v.play().catch(e => setDebug(`Loop Error: ${e.message}`))
             }
             onAdvance()
             return
@@ -218,52 +219,31 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
         const preloadIdx = (nextIdx + 1) % sorted.length
         const preloadUrl = getUrl(sorted[preloadIdx])
 
-        console.log(`[Video] Swapping to Slot ${nextSlot} (Index ${nextIdx}). Preloading Index ${preloadIdx} into Slot ${currentSlot}`)
+        setDebug(`S${currentSlot}→S${nextSlot} | Idx:${nextIdx}`)
 
-        const nextVideo = videoRefs[nextSlot].current
-        const currentVideo = videoRefs[currentSlot].current
-
-        // 1. Swap visibility immediately (no fade for better compatibility on older TV boxes)
+        // 1. Swap active slot state
         setSlotOpacity(nextSlot === 0 ? [1, 0] : [0, 1])
         setActiveSlot(nextSlot)
 
-        // 2. Ensure next video starts playing and has correct speed
+        // 2. The next video is already in its slot (preloaded), just play it
+        const nextVideo = videoRefs[nextSlot].current
         if (nextVideo) {
             nextVideo.playbackRate = sorted[nextIdx].playback_speed || 1
-            const playPromise = nextVideo.play()
-            if (playPromise !== undefined) {
-                playPromise.catch(e => {
-                    console.error("[Video] Play error after swap:", e)
-                    // If play fails, try to fallback to direct URL if it's a blob
-                    if (nextVideo.src.startsWith('blob:') && sorted[nextIdx].media_id) {
-                        const asset = assets.find(a => a.media_id === sorted[nextIdx].media_id)
-                        const originalUrl = asset?.url || sorted[nextIdx].web_url
-                        if (originalUrl) {
-                            console.warn("[Video] Blob play failed. Attempting direct URL fallback:", originalUrl)
-                            nextVideo.src = originalUrl
-                            nextVideo.load()
-                            nextVideo.play().catch(e2 => console.error("[Video] Fallback play also failed:", e2))
-                        }
-                    }
-                })
-            }
+            nextVideo.play().catch(e => {
+                setDebug(`P.Err: ${e.message.slice(0, 15)}`)
+                // Emergency: If it's a blob and failed, we'll let the onError handle it
+            })
         }
 
-        // 3. Prepare the next-next video in the now-hidden slot
+        // 3. Update the hidden slot's URL via React state for the next-next video
+        // We delay this briefly to let the swap finish
         setTimeout(() => {
-            if (currentVideo) {
-                currentVideo.pause()
-                currentVideo.src = preloadUrl
-                currentVideo.playbackRate = sorted[preloadIdx].playback_speed || 1
-                currentVideo.load() // Start preloading the next-next file
-
-                setSlotUrls(prev => {
-                    const updated: [string, string] = [...prev] as [string, string]
-                    updated[currentSlot] = preloadUrl
-                    return updated
-                })
-            }
-        }, 300)
+            setSlotUrls(prev => {
+                const updated: [string, string] = [...prev] as [string, string]
+                updated[currentSlot] = preloadUrl
+                return updated
+            })
+        }, 500)
 
         onAdvance()
     }, [activeSlot, sorted, getUrl, onAdvance])
@@ -281,18 +261,23 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
         // Android TV sometimes needs a repeated "poke" to start the first video
         const interval = setInterval(() => {
             const v = videoRefs[activeSlot].current
-            if (v && v.paused && v.readyState >= 2) {
-                console.log(`[Video] ⚡ Auto-play heartbeat poke for active slot ${activeSlot}...`)
-                v.play().catch(() => { })
+            if (v) {
+                if (v.paused && v.readyState >= 2) {
+                    v.play().catch(() => { })
+                }
+                // If it's been stalled for a long time (readyState 0 or 1 while active)
+                if (v.readyState < 2) {
+                    setDebug((d: string) => d.includes('Stall') ? d : `Stall (R:${v.readyState})`)
+                }
             }
-        }, 800)
+        }, 1000)
 
         window.addEventListener('omnipush_force_play', force)
         return () => {
             clearInterval(interval)
             window.removeEventListener('omnipush_force_play', force)
         }
-    }, [activeSlot]) // Re-bind on slot change to keep closure fresh
+    }, [activeSlot])
 
     if (sorted.length === 0) return null
 
@@ -339,20 +324,38 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                     disableRemotePlayback
                     onPlay={() => console.log(`[Video] Slot ${i} started playing`)}
                     onWaiting={() => console.warn(`[Video] Slot ${i} buffering...`)}
-                    onEnded={() => {
+                    onTimeUpdate={() => {
+                        // Watchdog: Clear existing timer
+                        if (watchdogRef.current) clearTimeout(watchdogRef.current)
+                        // If active video is not moving for 8 seconds, skip
                         if (i === activeSlot) {
-                            advanceBuffer()
+                            watchdogRef.current = setTimeout(() => {
+                                if (i === activeSlot && sorted.length > 1) {
+                                    setDebug("Watchdog Skip");
+                                    advanceBuffer();
+                                }
+                            }, 8000)
                         }
                     }}
+                    onEnded={() => {
+                        if (i === activeSlot) advanceBuffer()
+                    }}
                     onError={(e) => {
-                        console.error("[Video] Error in slot", i, "URL:", slotUrls[i], e);
-                        // If current slot errors index forward
-                        if (i === activeSlot) {
-                            setTimeout(advanceBuffer, 2000);
-                        }
+                        setDebug(`Err (S${i})`);
+                        if (i === activeSlot) setTimeout(advanceBuffer, 2000);
                     }}
                 />
             ))}
+
+            {/* Hidden Debug Overlay */}
+            <div style={{
+                position: 'absolute', bottom: 5, right: 5, zIndex: 9999,
+                fontSize: '8px', color: 'rgba(255,255,255,0.4)', fontFamily: 'monospace',
+                background: 'rgba(0,0,0,0.5)', padding: '2px 4px', borderRadius: '3px',
+                pointerEvents: 'none'
+            }}>
+                {debug} | R0:{videoRefs[0].current?.readyState} R1:{videoRefs[1].current?.readyState}
+            </div>
         </div>
     )
 }
@@ -644,7 +647,7 @@ function SecretPrompt({ device_code, onSubmit }: { device_code: string; onSubmit
                     <input
                         type="password"
                         value={val}
-                        onChange={e => setVal(e.target.value)}
+                        onChange={e => e.target.value.length <= 50 && setVal(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && val && onSubmit(val)}
                         placeholder="Paste device secret…"
                         style={{
@@ -687,7 +690,9 @@ function ErrorState({ device_code, msg, onRetry }: { device_code: string; msg: s
                 <div style={{ marginTop: '2.5rem', background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 16, padding: '1.5rem 2rem', maxWidth: 380 }}>
                     <WifiOff size={28} color="#ef4444" style={{ margin: '0 auto 0.75rem' }} />
                     <div style={{ fontWeight: 600, color: '#ef4444', marginBottom: '0.5rem' }}>Connection Failed</div>
-                    <div style={{ color: '#94a3b8', fontSize: '0.8125rem', marginBottom: '1.25rem', lineHeight: 1.6 }}>{msg}</div>
+                    <div style={{ color: '#94a3b8', fontSize: '0.8125rem', marginBottom: '1.25rem', lineHeight: 1.6 }}>
+                        {msg}
+                    </div>
                     <button
                         onClick={onRetry}
                         style={{
@@ -702,7 +707,7 @@ function ErrorState({ device_code, msg, onRetry }: { device_code: string; msg: s
                 </div>
             </div>
             <BottomBar device_code={device_code} />
-        </div>
+        </div >
     )
 }
 
