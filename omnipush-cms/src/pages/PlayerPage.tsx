@@ -168,16 +168,6 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
     const watchdogRef = useRef<any>(null)
     const initialSyncDone = useRef(false)
 
-    // Watchdog trigger function (Shortened to 10s for faster browser recovery)
-    const triggerWatchdog = useCallback((delay = 10000) => {
-        if (watchdogRef.current) clearTimeout(watchdogRef.current)
-        watchdogRef.current = setTimeout(() => {
-            if (sorted.length > 1) {
-                setDebug("WD Skip")
-                advanceBuffer(true)
-            }
-        }, delay)
-    }, [sorted.length, advanceBuffer])
 
     const sorted = React.useMemo(
         () => [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
@@ -319,6 +309,18 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
             }, 5000)
         }
     }, [activeSlot, sorted, getUrl, onAdvance])
+
+    // Watchdog trigger function (Shortened to 10s for faster browser recovery)
+    // Moved here after advanceBuffer to avoid TS hoist errors
+    const triggerWatchdog = useCallback((delay = 10000) => {
+        if (watchdogRef.current) clearTimeout(watchdogRef.current)
+        watchdogRef.current = setTimeout(() => {
+            if (sorted.length > 1) {
+                setDebug("WD Skip")
+                advanceBuffer(true)
+            }
+        }, delay)
+    }, [sorted.length, advanceBuffer])
 
     // Autoplay heartbeat (Ensures playback resumes if stalled/paused by browser)
     useEffect(() => {
