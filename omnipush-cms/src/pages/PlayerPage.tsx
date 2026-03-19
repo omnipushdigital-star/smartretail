@@ -236,10 +236,10 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
         const nextIdx = (idxRef.current + 1) % sorted.length
         const nextVideo = videoRefs[nextSlot].current
 
-        // PROACTIVE RECOVERY: If the next video is fundamentally broken (NETWORK_NO_SOURCE or error),
-        // don't even try to switch to it. Skip it immediately and try the one after.
-        if (nextVideo && (nextVideo.error || nextVideo.networkState === 3) && !forceNext) {
-            setDebug(`Skip Bad V${nextIdx}`)
+        // PROACTIVE RECOVERY: If the next video has an actual error (CORS, 404, etc.)
+        // skip it immediately and try the one after. ONLY skip on error, not on initial network state.
+        if (nextVideo && nextVideo.error && !forceNext) {
+            setDebug(`Err Skip V${nextIdx}`)
             idxRef.current = nextIdx
             onAdvance()
             setTimeout(() => advanceBuffer(), 500)
