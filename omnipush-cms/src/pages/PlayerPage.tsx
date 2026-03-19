@@ -178,6 +178,14 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
         return asset?.url || item.web_url || ''
     }, [memoizedAssets])
 
+    // Effect to call .load() whenever a slot URL changes (Required for some Android browsers)
+    useEffect(() => {
+        if (v1.current && slotUrls[0]) v1.current.load()
+    }, [slotUrls[0]])
+    useEffect(() => {
+        if (v2.current && slotUrls[1]) v2.current.load()
+    }, [slotUrls[1]])
+
     // Initialize: Set first video to Slot 0 and second video to Slot 1 (Preload)
     useEffect(() => {
         if (sorted.length > 0 && slotUrls[0] === '') {
@@ -212,40 +220,59 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
 
         const currentSlot = activeSlot
         const nextSlot: 0 | 1 = activeSlot === 0 ? 1 : 0
-
         const nextIdx = (idxRef.current + 1) % sorted.length
-        idxRef.current = nextIdx
 
-        const preloadIdx = (nextIdx + 1) % sorted.length
-        const preloadUrl = getUrl(sorted[preloadIdx])
-
-        setDebug(`S${currentSlot}→S${nextSlot} | Idx:${nextIdx}`)
-
-        // 1. Swap active slot state
-        setSlotOpacity(nextSlot === 0 ? [1, 0] : [0, 1])
-        setActiveSlot(nextSlot)
-
-        // 2. The next video is already in its slot (preloaded), just play it
         const nextVideo = videoRefs[nextSlot].current
-        if (nextVideo) {
+
+        const performSwitch = () => {
+            if (!nextVideo) return
+
+            setDebug(`S${currentSlot}→S${nextSlot} | Play`)
             nextVideo.playbackRate = sorted[nextIdx].playback_speed || 1
-            nextVideo.play().catch(e => {
+
+            // Step 3: Call play()
+            nextVideo.play().then(() => {
+                // Step 4: THEN switch opacity + active slot
+                setSlotOpacity(nextSlot === 0 ? [1, 0] : [0, 1])
+                setActiveSlot(nextSlot)
+                idxRef.current = nextIdx
+
+                // Preload next-next URL into the old slot
+                const preloadIdx = (nextIdx + 1) % sorted.length
+                const preloadUrl = getUrl(sorted[preloadIdx])
+
+                setTimeout(() => {
+                    setSlotUrls(prev => {
+                        const updated: [string, string] = [...prev] as [string, string]
+                        updated[currentSlot] = preloadUrl
+                        return updated
+                    })
+                }, 500)
+
+                onAdvance()
+            }).catch(e => {
                 setDebug(`P.Err: ${e.message.slice(0, 15)}`)
-                // Emergency: If it's a blob and failed, we'll let the onError handle it
+                // Fallback: if it fails, try to jump again in 2s
+                setTimeout(advanceBuffer, 2000)
             })
         }
 
-        // 3. Update the hidden slot's URL via React state for the next-next video
-        // We delay this briefly to let the swap finish
-        setTimeout(() => {
-            setSlotUrls(prev => {
-                const updated: [string, string] = [...prev] as [string, string]
-                updated[currentSlot] = preloadUrl
-                return updated
-            })
-        }, 500)
-
-        onAdvance()
+        // Step 1 & 2: Ensure next video is ready (readyState >= 2: HAVE_CURRENT_DATA)
+        if (nextVideo && nextVideo.readyState >= 2) {
+            performSwitch()
+        } else if (nextVideo) {
+            setDebug(`Wait S${nextSlot}...`)
+            const onCanPlay = () => {
+                nextVideo.removeEventListener('canplay', onCanPlay)
+                performSwitch()
+            }
+            nextVideo.addEventListener('canplay', onCanPlay)
+            // Safety timeout for waiting
+            setTimeout(() => {
+                nextVideo.removeEventListener('canplay', onCanPlay)
+                if (activeSlot === currentSlot) performSwitch()
+            }, 3000)
+        }
     }, [activeSlot, sorted, getUrl, onAdvance])
 
     // Global force-play listener and heartbeat for resilient autoplay
@@ -289,7 +316,8 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
         background: '#000',
         display: 'block',
         // Minimal transition or none for older hardware
-        transition: 'visibility 0s, opacity 0.1s linear',
+        // Smooth transition only for opacity
+        transition: 'opacity 0.2s linear',
     }
 
 
@@ -309,7 +337,6 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                         objectFit: 'fill',
                         opacity: slotOpacity[i],
                         zIndex: slotOpacity[i] > 0 ? 10 : 1,
-                        visibility: slotUrls[i] && slotOpacity[i] > 0 ? 'visible' : 'hidden',
                         pointerEvents: 'none',
                         border: 'none',
                         outline: 'none',
