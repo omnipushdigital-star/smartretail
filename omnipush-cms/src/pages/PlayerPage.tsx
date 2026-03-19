@@ -168,6 +168,17 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
     const watchdogRef = useRef<any>(null)
     const initialSyncDone = useRef(false)
 
+    // Watchdog trigger function (Shortened to 10s for faster browser recovery)
+    const triggerWatchdog = useCallback((delay = 10000) => {
+        if (watchdogRef.current) clearTimeout(watchdogRef.current)
+        watchdogRef.current = setTimeout(() => {
+            if (sorted.length > 1) {
+                setDebug("WD Skip")
+                advanceBuffer(true)
+            }
+        }, delay)
+    }, [sorted.length, advanceBuffer])
+
     const sorted = React.useMemo(
         () => [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
         [items]
@@ -233,8 +244,17 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
         const currentSlot = activeSlot
         const nextSlot: 0 | 1 = activeSlot === 0 ? 1 : 0
         const nextIdx = (idxRef.current + 1) % sorted.length
-
         const nextVideo = videoRefs[nextSlot].current
+
+        // PROACTIVE RECOVERY: If the next video is fundamentally broken (NETWORK_NO_SOURCE or error),
+        // don't even try to switch to it. Skip it immediately and try the one after.
+        if (nextVideo && (nextVideo.error || nextVideo.networkState === 3) && !forceNext) {
+            setDebug(`Skip Bad V${nextIdx}`)
+            idxRef.current = nextIdx
+            onAdvance()
+            setTimeout(() => advanceBuffer(), 500)
+            return
+        }
 
         const performSwitch = () => {
             if (!nextVideo) return
@@ -251,6 +271,9 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
 
             // 1. Play the next video
             const attemptPlay = () => {
+                // START WATCHDOG IMMEDIATELY on switch
+                triggerWatchdog(15000)
+
                 nextVideo.play().then(() => {
                     setDebug(`${nextIdx} Play OK`)
 
@@ -266,8 +289,9 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                         })
                     }, 500)
                 }).catch(e => {
-                    setDebug(`P.Err: ${e.message.slice(0, 15)}`)
-                    console.warn("[Video] Scripted play failed, will retry in heartbeat", e)
+                    const msg = e.message || 'Unknown'
+                    setDebug(`P.Err: ${msg.slice(0, 15)}`)
+                    console.warn("[Video] Scripted play failed:", e)
                 })
             }
 
@@ -312,17 +336,21 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
 
         // Global wake-up trigger
         const force = () => {
+            setDebug("User Prime")
             videoRefs.forEach(ref => {
-                if (ref.current && ref.current.paused) {
+                if (ref.current) {
+                    ref.current.muted = true
                     ref.current.play().catch(() => { })
                 }
             })
         }
         window.addEventListener('omnipush_force_play', force)
+        window.addEventListener('click', force, { once: true }) // Interaction priming
 
         return () => {
             clearInterval(interval)
             window.removeEventListener('omnipush_force_play', force)
+            window.removeEventListener('click', force)
         }
     }, [activeSlot])
 
@@ -359,21 +387,15 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                     webkit-playsinline="true"
                     preload="auto"
                     onTimeUpdate={() => {
-                        if (watchdogRef.current) clearTimeout(watchdogRef.current)
-                        if (i === activeSlot) {
-                            watchdogRef.current = setTimeout(() => {
-                                if (i === activeSlot && sorted.length > 1) {
-                                    setDebug("Watchdog Skip")
-                                    advanceBuffer()
-                                }
-                            }, 10000)
-                        }
+                        // Reset watchdog if we are actually playing
+                        if (i === activeSlot) triggerWatchdog(12000)
                     }}
                     onEnded={() => {
                         if (i === activeSlot) advanceBuffer()
                     }}
                     onError={() => {
                         setDebug(`Err (S${i})`)
+                        // If the currently visible video dies, skip it fast (1.5s)
                         if (i === activeSlot) setTimeout(() => advanceBuffer(true), 1500)
                     }}
                 />
