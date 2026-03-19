@@ -115,6 +115,16 @@ serve(async (req: Request) => {
             .eq("id", pub.bundle_id)
             .single();
 
+        // ── Early Exit if Up-to-Date ──
+        if (current_version && bundle?.version === current_version) {
+            console.log(`[Manifest] Device ${device_code} is already up to date (Version: ${current_version})`);
+            return Response.json({
+                up_to_date: true,
+                version: bundle.version,
+                poll_seconds: 30, // As requested: check every 30s
+            }, { headers: corsHeaders });
+        }
+
         // 4. Fetch layout + template
         const { data: layout } = await supabase
             .from("layouts")

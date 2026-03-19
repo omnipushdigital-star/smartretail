@@ -214,6 +214,14 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
             }
             initialSyncDone.current = true
             console.log("[Video] Initializing double buffer slots. Slot 0:", firstId)
+
+            // Explicitly play the first slot
+            setTimeout(() => {
+                if (v1.current) {
+                    v1.current.currentTime = 0
+                    v1.current.play().catch(e => console.warn("[Video] First play failed:", e))
+                }
+            }, 100)
         }
     }, [sorted, getUrl])
 
@@ -264,6 +272,8 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                 // START WATCHDOG IMMEDIATELY on switch
                 triggerWatchdog(15000)
 
+                // Reset to beginning to ensure clean start, especially if same URL is reused
+                nextVideo.currentTime = 0
                 nextVideo.play().then(() => {
                     setDebug(`${nextIdx} Play OK`)
 
@@ -382,7 +392,6 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                         pointerEvents: 'none',
                     }}
                     muted
-                    autoPlay
                     playsInline
                     crossOrigin="anonymous"
                     loop={false} // Double buffer handles looping
@@ -560,6 +569,24 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
     const nextUrl = nextAsset?.url || nextItem?.web_url
     const nextType = nextAsset?.type || nextItem?.type
 
+    const videoRef = useRef<HTMLVideoElement>(null)
+
+    // Explicitly handle video playback startup for mixed content
+    useEffect(() => {
+        if (type === 'video' && videoRef.current) {
+            const v = videoRef.current
+            const attempt = () => {
+                v.currentTime = 0
+                v.play().catch(e => console.warn("[PlaybackEngine] Video play failed:", e))
+            }
+            if (v.readyState >= 2) {
+                attempt()
+            } else {
+                v.addEventListener('canplay', attempt, { once: true })
+            }
+        }
+    }, [idx, type, url])
+
     if (!url) return (
         <div style={{
             position: 'absolute',
@@ -615,13 +642,14 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
                     {type === 'video' && url && (
                         <video
                             key={item.playlist_item_id}
+                            ref={videoRef}
                             src={url}
                             style={{
                                 position: 'absolute', top: 0, left: 0,
                                 width: '100%', height: '100%',
                                 objectFit: 'fill', background: '#000', display: 'block',
                             }}
-                            autoPlay muted playsInline
+                            muted playsInline
                             disableRemotePlayback
                             webkit-playsinline="true"
                             preload="auto"
@@ -1178,6 +1206,13 @@ export default function PlayerPage() {
                 origin: window.location.origin
             })
 
+            // ── Handling "Up to Date" response (no change detection) ──
+            if (data.up_to_date) {
+                console.log(`[Player] Content ${data.version} is up to date. Keep loop playing.`)
+                setOffline(false)
+                return true
+            }
+
             // ── Auto version-change detection ──
             // If we are already playing and the server returns a DIFFERENT version,
             // it means new content was published. Smoothly swap the manifest state
@@ -1273,6 +1308,7 @@ export default function PlayerPage() {
                     }
 
                     setManifest(cachedManifest)
+                    setVersion(cachedManifest.resolved?.version || null)
                     setOffline(true)
                     return true
                 } catch { /* ignore */ }
