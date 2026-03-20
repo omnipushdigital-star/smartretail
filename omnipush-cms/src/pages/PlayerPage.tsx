@@ -375,7 +375,7 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
         objectFit: 'fill',
         background: '#000',
         display: 'block',
-        transition: 'opacity 0.2s linear',
+        transition: 'none',
     }
 
     return (
@@ -625,7 +625,7 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
                     position: 'absolute',
                     top: 0, left: 0, right: 0, bottom: 0,
                     opacity: fade ? 1 : 0,
-                    transition: 'opacity 0.3s ease',
+                    transition: 'none',
                 }}>
                     {type === 'image' && url && (
                         <img
@@ -988,7 +988,12 @@ export default function PlayerPage() {
     const [version, setVersion] = useState<string | null>(null)
     const [syncProgress, setSyncProgress] = useState<{ current: number; total: number } | null>(null)
     const versionRef = useRef(version)
-    useEffect(() => { versionRef.current = version }, [version])
+    const manifestTimerRef = useRef<any>(null)
+    const hbTimerRef = useRef<any>(null)
+
+    useEffect(() => {
+        versionRef.current = version
+    }, [version])
 
     const [pairingPin, setPairingPin] = useState('')
     const [showDiagnostics, setShowDiagnostics] = useState(false)
@@ -1206,45 +1211,36 @@ export default function PlayerPage() {
                 origin: window.location.origin
             })
 
-            // ── Handling "Up to Date" response (no change detection) ──
+            // ── Handling "Up to Date" response ──
             if (data.up_to_date) {
                 console.log(`[Player] Content ${data.version} is up to date. Keep loop playing.`)
                 setOffline(false)
                 return true
             }
 
-            // ── Auto version-change detection ──
-            // If we are already playing and the server returns a DIFFERENT version,
-            // it means new content was published. Smoothly swap the manifest state
-            // without a full page reload.
             const newVersion = data.resolved?.version || null
             const wasPlaying = phase === 'playing' || phase === 'standby'
+
+            // ── Auto version-change detection (mid-playback) ──
             if (wasPlaying && newVersion && versionRef.current && newVersion !== versionRef.current) {
                 console.log(`[Player] 🔄 New version detected: ${versionRef.current} → ${newVersion}`)
-                // Sync new assets in background, then swap
                 if (data.assets) syncAssets(data.assets)
                 setManifest(data)
                 setVersion(newVersion)
+                versionRef.current = newVersion
                 localStorage.setItem(manifestKey(dc), JSON.stringify(data))
                 setOffline(false)
-
-                const win = window as any
-                if (win.AndroidHealth?.setStoreInfo) {
-                    win.AndroidHealth.setStoreInfo(data.device?.store_id || null, data.device?.store_name || null)
-                }
-
                 return true
             }
 
+            // ── Regular Load ──
             setManifest(data)
             setVersion(newVersion)
+            versionRef.current = newVersion
             localStorage.setItem(manifestKey(dc), JSON.stringify(data))
             setOffline(false)
 
-            // Proactively sync assets for offline use
-            if (data.assets) {
-                syncAssets(data.assets)
-            }
+            if (data.assets) syncAssets(data.assets)
 
             const win = window as any
             if (win.AndroidHealth?.setStoreInfo) {
@@ -1255,9 +1251,7 @@ export default function PlayerPage() {
         } catch (err: any) {
             const msg: string = (err.message || '').toLowerCase()
 
-            // Handle de-authorization (Device deleted or inactive)
             if (msg.includes('invalid credentials') || msg.includes('inactive device')) {
-                console.warn('[Player] Device de-authorized by server. Clearing local cache.')
                 localStorage.removeItem(secretKey(dc))
                 localStorage.removeItem(manifestKey(dc))
                 setSecret('')
@@ -1266,58 +1260,33 @@ export default function PlayerPage() {
                 return false
             }
 
-            // "No active publication" is not a real error — show standby
-            if (
-                msg.includes('no active publication') ||
-                msg.includes('no publication') ||
-                msg.includes('not found for this device')
-            ) {
+            if (msg.includes('no active publication') || msg.includes('no publication') || msg.includes('not found')) {
                 setPhase('standby')
                 if (err.data?.device) {
-                    setManifest({
-                        resolved: {
-                            role: err.data.device.role_name,
-                            scope: 'Standby',
-                            debug: err.data.debug
-                        }
-                    } as any)
+                    setManifest({ resolved: { role: err.data.device.role_name, scope: 'Standby' } } as any)
                 }
                 return true
             }
 
-            // Try cache ONLY for network/server errors (500, timeout, fetch failure)
             const cached = localStorage.getItem(manifestKey(dc))
             if (cached) {
                 try {
-                    console.log('[Player] Server unreachable — loading from localStorage cache.')
-                    const cachedManifest = JSON.parse(cached) as Manifest
-
-                    // ── Hydrate cached asset URLs from IndexedDB ──
-                    // Replace remote R2 URLs with local blob:// URLs so playback
-                    // works even if R2 is also unreachable.
-                    if (cachedManifest.assets?.length) {
-                        hydrateAssetsFromCache(cachedManifest.assets).then(hydrated => {
-                            setManifest(prev =>
-                                (prev
-                                    ? { ...prev, assets: hydrated }
-                                    : { ...cachedManifest, assets: hydrated }
-                                ) as Manifest
-                            )
-                            console.log('[Player] IndexedDB blob hydration complete ✅')
-                        })
+                    const c = JSON.parse(cached)
+                    setManifest(c)
+                    if (c.resolved?.version) {
+                        setVersion(c.resolved.version)
+                        versionRef.current = c.resolved.version
                     }
-
-                    setManifest(cachedManifest)
-                    setVersion(cachedManifest.resolved?.version || null)
                     setOffline(true)
                     return true
                 } catch { /* ignore */ }
             }
 
-            setErrorMsg(err.message || 'Failed to reach server')
+            setErrorMsg(err.message || 'Fetch failed')
+            setPhase('error')
             return false
         }
-    }, [dc, version])
+    }, [dc, version, phase, syncAssets, initPairing])
 
     // ── Send heartbeat ──
     const sendHeartbeat = useCallback(async (sec: string) => {
@@ -1466,28 +1435,42 @@ export default function PlayerPage() {
 
     // ── Polling: manifest every poll_seconds, heartbeat every 30s ──
     useEffect(() => {
-        if ((phase !== 'playing' && phase !== 'standby') || !secret) return
+        if ((phase !== 'playing' && phase !== 'standby') || !secret) {
+            if (manifestTimerRef.current) clearInterval(manifestTimerRef.current)
+            if (hbTimerRef.current) clearInterval(hbTimerRef.current)
+            return
+        }
 
-        // In standby poll every 30s to detect when content is published
-        const pollMs = phase === 'standby' ? 30_000 : (manifest?.poll_seconds ?? 30) * 1000
+        const pollSec = manifest?.poll_seconds ?? 30
+        const pollMs = phase === 'standby' ? 30_000 : pollSec * 1000
 
-        const manifestTimer = setInterval(async () => {
+        console.log(`[Player] Starting polling timers. Phase: ${phase}, Poll: ${pollSec}s`)
+
+        // Clear existing to avoid duplicates on re-run
+        if (manifestTimerRef.current) clearInterval(manifestTimerRef.current)
+        if (hbTimerRef.current) clearInterval(hbTimerRef.current)
+
+        manifestTimerRef.current = setInterval(async () => {
             const ok = await fetchManifest(secretRef.current)
             if (ok && phase === 'standby') setPhase('playing')
         }, pollMs)
 
-        const hbTimer = setInterval(() => {
+        hbTimerRef.current = setInterval(() => {
             sendHeartbeat(secretRef.current)
         }, HEARTBEAT_INTERVAL_MS)
 
-        // First heartbeat immediately
-        if (phase === 'playing') sendHeartbeat(secretRef.current)
+        // Initial heartbeat (debounced/prevented if just sent)
+        const lastHb = localStorage.getItem('last_hb_sent') || '0'
+        if (Date.now() - parseInt(lastHb) > 5000) {
+            sendHeartbeat(secretRef.current)
+            localStorage.setItem('last_hb_sent', Date.now().toString())
+        }
 
         return () => {
-            clearInterval(manifestTimer)
-            clearInterval(hbTimer)
+            if (manifestTimerRef.current) clearInterval(manifestTimerRef.current)
+            if (hbTimerRef.current) clearInterval(hbTimerRef.current)
         }
-    }, [phase, secret, manifest?.poll_seconds]) // eslint-disable-line
+    }, [phase, !!secret, manifest?.poll_seconds]) // Stable dependencies
 
     // ── Handle secret submission ──
     const handleSecret = async (s: string) => {
