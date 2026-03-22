@@ -379,11 +379,7 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
     }
 
     return (
-        <div ref={el => { if (el) console.log(`[Player] [UI] Container size: ${el.clientWidth}x${el.clientHeight}`) }}
-            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'blue', overflow: 'hidden' }}>
-            <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: 'white', fontSize: '50px', zIndex: 99999 }}>
-                REACT ACTIVE
-            </div>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'black', overflow: 'hidden' }}>
             {[0, 1].map(i => (
                 <video
                     key={i}
