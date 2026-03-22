@@ -380,6 +380,9 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
 
     return (
         <div style={{ position: 'absolute', inset: 0, background: 'blue', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: 'white', fontSize: '50px', zIndex: 99999 }}>
+                REACT ACTIVE
+            </div>
             {[0, 1].map(i => (
                 <video
                     key={i}
