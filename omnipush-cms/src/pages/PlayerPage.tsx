@@ -379,7 +379,11 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
     }
 
     return (
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'black', overflow: 'hidden' }}>
+        <div ref={el => { if (el) console.log(`[Player] [UI] Container size: ${el.clientWidth}x${el.clientHeight}`) }}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'blue', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: 'white', fontSize: '50px', zIndex: 99999 }}>
+                REACT ACTIVE
+            </div>
             {[0, 1].map(i => (
                 <video
                     key={i}
@@ -388,7 +392,11 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                     style={{
                         ...videoStyle,
                         visibility: i === activeSlot ? 'visible' : 'hidden',
-                        transform: i === activeSlot ? 'none' : 'translateX(-5000px)',
+                        position: 'absolute',
+                        top: i === activeSlot ? 0 : '-10000px',
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
                         zIndex: i === activeSlot ? 10 : 1,
                         pointerEvents: 'none',
                     }}
