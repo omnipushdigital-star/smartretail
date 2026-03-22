@@ -237,6 +237,12 @@ serve(async (req: Request) => {
                     duration_seconds: i.duration_seconds,
                     playback_speed: i.playback_speed,
                     sort_order: i.sort_order,
+                    is_scheduled: i.is_scheduled,
+                    start_date: i.start_date,
+                    end_date: i.end_date,
+                    start_time: i.start_time,
+                    end_time: i.end_time,
+                    days_of_week: i.days_of_week,
                 }));
             regionPlaylists[rm.region_id] = regionItems;
         }

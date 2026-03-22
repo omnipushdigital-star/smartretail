@@ -379,7 +379,7 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
     }
 
     return (
-        <div style={{ position: 'absolute', inset: 0, background: '#000', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', inset: 0, background: 'blue', overflow: 'hidden' }}>
             {[0, 1].map(i => (
                 <video
                     key={i}
@@ -405,9 +405,15 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                         if (i === activeSlot) advanceBuffer()
                     }}
                     onError={() => {
-                        setDebug(`Err (S${i})`)
+                        const err = videoRefs[i].current?.error;
+                        const msg = `Err (S${i}): code=${err?.code} msg=${err?.message}`;
+                        setDebug(msg)
+                        console.error('[Video] [Player] error:', msg)
                         // If the currently visible video dies, skip it fast (1.5s)
                         if (i === activeSlot) setTimeout(() => advanceBuffer(true), 1500)
+                    }}
+                    onCanPlay={() => {
+                        console.log(`[Video] [Player] Slot ${i} readyState=${videoRefs[i].current?.readyState} source=${videoRefs[i].current?.src}`)
                     }}
                 />
             ))}
@@ -441,7 +447,7 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
     }, [])
 
     const activeItems = useMemo(() => {
-        return items
+        const filtered = items
             .filter(item => {
                 if (!item.is_scheduled) return true
 
@@ -476,8 +482,10 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
 
                 return true
             })
-            .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-    }, [items, currentTime])
+
+        console.log(`[Player] [Schedule] Active Items: ${filtered.length}/${items.length} for Region ${region?.id || ''}`)
+        return filtered.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    }, [items, currentTime, region?.id])
 
     // Safety: Reset index if active list changes significantly
     useEffect(() => {
