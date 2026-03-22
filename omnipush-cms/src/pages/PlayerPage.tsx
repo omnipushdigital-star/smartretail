@@ -385,16 +385,19 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                     key={i}
                     ref={videoRefs[i]}
                     src={slotUrls[i]}
+                    controls={false}
                     style={{
-                        ...videoStyle,
-                        visibility: i === activeSlot ? 'visible' : 'hidden',
                         position: 'absolute',
-                        top: i === activeSlot ? 0 : '-10000px',
+                        top: 0,
                         left: 0,
                         width: '100%',
                         height: '100%',
+                        objectFit: 'fill',
+                        display: 'block',
                         zIndex: i === activeSlot ? 10 : 1,
+                        opacity: i === activeSlot ? 1 : 0,
                         pointerEvents: 'none',
+                        background: '#000',
                     }}
                     muted
                     playsInline
