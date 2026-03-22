@@ -120,10 +120,15 @@ const globalStyle = `
     transform: translate3d(0,0,0);
   }
 
-  /* 3. Kill all default browser controls/icons */
+  /* 3. Kill all default browser controls/icons - CRITICAL for Android WebView */
   video::-webkit-media-controls { display:none !important; }
   video::-webkit-media-controls-enclosure { display:none !important; }
   video::-webkit-media-controls-panel { display:none !important; }
+  video::-webkit-media-controls-play-button { display:none !important; }
+  video::-webkit-media-controls-start-playback-button { display:none !important; -webkit-appearance: none; }
+  video::-webkit-media-controls-shim { display:none !important; }
+  video::-internal-media-controls-download-button { display:none !important; }
+  video { pointer-events: none !important; outline: none !important; background: black !important; }
   
   /* 4. Kill scrollbars */
   ::-webkit-scrollbar { display: none !important; }
