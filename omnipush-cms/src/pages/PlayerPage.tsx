@@ -125,8 +125,10 @@ const globalStyle = `
   video::-webkit-media-controls-enclosure { display:none !important; }
   video::-webkit-media-controls-panel { display:none !important; }
   video::-webkit-media-controls-play-button { display:none !important; }
+  video::-webkit-media-controls-overlay-play-button { display:none !important; }
   video::-webkit-media-controls-start-playback-button { display:none !important; -webkit-appearance: none; }
   video::-webkit-media-controls-shim { display:none !important; }
+  video::-internal-media-controls-overlay-play-button { display:none !important; }
   video::-internal-media-controls-download-button { display:none !important; }
   video { pointer-events: none !important; outline: none !important; background: black !important; }
   
@@ -393,7 +395,7 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                     controls={false}
                     style={{
                         position: 'absolute',
-                        top: 0,
+                        top: i === activeSlot ? 0 : '-10000px',
                         left: 0,
                         width: '100%',
                         height: '100%',
@@ -401,6 +403,7 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                         display: 'block',
                         zIndex: i === activeSlot ? 10 : 1,
                         opacity: i === activeSlot ? 1 : 0,
+                        visibility: i === activeSlot ? 'visible' : 'hidden',
                         pointerEvents: 'none',
                         background: '#000',
                     }}
