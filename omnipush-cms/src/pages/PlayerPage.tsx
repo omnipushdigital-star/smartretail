@@ -379,7 +379,8 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
     }
 
     return (
-        <div style={{ position: 'absolute', inset: 0, background: 'blue', overflow: 'hidden' }}>
+        <div ref={el => { if (el) console.log(`[Player] [UI] Container size: ${el.clientWidth}x${el.clientHeight}`) }}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'blue', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: 'white', fontSize: '50px', zIndex: 99999 }}>
                 REACT ACTIVE
             </div>
@@ -390,8 +391,8 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                     src={slotUrls[i]}
                     style={{
                         ...videoStyle,
-                        opacity: slotOpacity[i],
-                        zIndex: slotOpacity[i] > 0 ? 10 : 1,
+                        display: i === activeSlot ? 'block' : 'none',
+                        zIndex: i === activeSlot ? 10 : 1,
                         pointerEvents: 'none',
                     }}
                     muted
@@ -810,7 +811,7 @@ function ErrorState({ device_code, msg, onRetry }: { device_code: string; msg: s
 // ─── Shared UI helpers ───────────────────────────────────────────────────────
 
 const bgStyle: React.CSSProperties = {
-    position: 'fixed', inset: 0,
+    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
     background: 'linear-gradient(135deg, #020617 0%, #0f172a 60%, #450a0a 100%)',
     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
     color: 'white', overflow: 'hidden',
@@ -1630,7 +1631,7 @@ export default function PlayerPage() {
             {/* PIN Prompt */}
             {showPinPrompt && (
                 <div style={{
-                    position: 'fixed', inset: 0, zIndex: 99999,
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999,
                     background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center'
                 }}>
@@ -1682,7 +1683,7 @@ export default function PlayerPage() {
             {/* Admin Panel */}
             {showAdminPanel && (
                 <div style={{
-                    position: 'fixed', inset: 0, zIndex: 99999,
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999,
                     background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(16px)',
                     display: 'flex', flexDirection: 'column',
                 }}>
@@ -1787,7 +1788,7 @@ export default function PlayerPage() {
     return (
         <div style={{
             position: 'fixed',
-            inset: 0,
+            top: 0, left: 0, right: 0, bottom: 0,
             width: '100vw',
             height: '100dvh',
             background: '#000',
