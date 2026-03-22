@@ -387,7 +387,8 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                     src={slotUrls[i]}
                     style={{
                         ...videoStyle,
-                        display: i === activeSlot ? 'block' : 'none',
+                        visibility: i === activeSlot ? 'visible' : 'hidden',
+                        transform: i === activeSlot ? 'none' : 'translateX(-5000px)',
                         zIndex: i === activeSlot ? 10 : 1,
                         pointerEvents: 'none',
                     }}
