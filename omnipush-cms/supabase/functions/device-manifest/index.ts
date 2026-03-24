@@ -1,5 +1,4 @@
 // supabase/functions/device-manifest/index.ts
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -7,7 +6,7 @@ const corsHeaders = {
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-serve(async (req: Request) => {
+Deno.serve(async (req: Request) => {
     if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
     try {
@@ -192,7 +191,7 @@ serve(async (req: Request) => {
 
         // 7. Generate signed URLs in bulk
         const storageItems = (items || []).filter((i: any) =>
-            i.media && (i.media.type === "image" || i.media.type === "video" || i.media.type === "ppt") && i.media.storage_path
+            i.media && (i.media.type === "image" || i.media.type === "video" || i.media.type === "ppt" || i.media.type === "presentation") && i.media.storage_path
         );
         const uniquePaths = [...new Set(storageItems.map((i: any) => i.media.storage_path))];
 

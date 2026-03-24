@@ -68,9 +68,8 @@ export default function MediaPage() {
         const toFix = misclassified?.filter(m => {
             const name = m.name.toLowerCase()
             const url = (assets.find(a => a.id === m.id)?.url || '').toLowerCase()
-            return name.includes('.ppt') || name.includes('.pptx') ||
-                url.includes('.ppt') || url.includes('.pptx') ||
-                name.endsWith('ppt') || name.endsWith('pptx')
+            return name.endsWith('.ppt') || name.endsWith('.pptx') || name.endsWith('.pptm') || name.endsWith('.pps') || name.endsWith('.ppsx') ||
+                url.endsWith('.ppt') || url.endsWith('.pptx') || url.endsWith('.pptm') || url.endsWith('.pps') || url.endsWith('.ppsx')
         })
 
         if (toFix && toFix.length > 0) {
@@ -100,10 +99,15 @@ export default function MediaPage() {
 
     const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
-    // ── File upload → goes to Supabase Storage, URL swapped to R2 public URL ──
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files
         if (!files || files.length === 0) return
+
+        if (!currentTenantId) {
+            toast.error('Please select a tenant first')
+            if (fileInput.current) fileInput.current.value = ''
+            return
+        }
 
         setUploading(true)
         try {
@@ -133,10 +137,12 @@ export default function MediaPage() {
                 const fileNameLower = file.name.toLowerCase()
                 const isPPT = fileNameLower.endsWith('.ppt') ||
                     fileNameLower.endsWith('.pptx') ||
-                    fileNameLower.includes('.ppt') ||
-                    fileNameLower.includes('.pptx') ||
+                    fileNameLower.endsWith('.pptm') ||
+                    fileNameLower.endsWith('.pps') ||
+                    fileNameLower.endsWith('.ppsx') ||
                     file.type === 'application/vnd.ms-powerpoint' ||
                     file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+                    file.type === 'application/vnd.openxmlformats-officedocument.presentationml.slideshow' ||
                     file.type.includes('presentation')
 
                 const type = file.type.startsWith('video') ? 'video' : (isPPT ? 'ppt' : 'image')
@@ -159,7 +165,7 @@ export default function MediaPage() {
             }
         } catch (err: any) {
             console.error('Upload error:', err)
-            toast.error('An unexpected error occurred during upload')
+            toast.error(err.message || 'An unexpected error occurred during upload')
         } finally {
             setUploading(false)
             loadAssets()

@@ -10,7 +10,7 @@ import html2canvas from 'html2canvas'
 
 interface ManifestAsset {
     media_id: string
-    type: 'image' | 'video' | 'web_url'
+    type: 'image' | 'video' | 'web_url' | 'ppt' | 'presentation'
     url: string | null
     checksum_sha256: string | null
     bytes: number | null
@@ -580,7 +580,15 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
     const item = activeItems[safeIdx]
     const asset = memoizedAssets.find(a => a.media_id === item?.media_id)
     const url = asset?.url || item?.web_url
-    const type = asset?.type || item?.type || (item?.media_id ? 'video' : 'image')
+    let type = asset?.type || item?.type || (item?.media_id ? 'video' : 'image')
+
+    // Safety: Auto-correct type if extension is PPT but DB says otherwise
+    if (url && (type === 'image' || type === 'video')) {
+        const ext = url.split('?')[0].split('.').pop()?.toLowerCase()
+        if (['ppt', 'pptx', 'pptm', 'pps', 'ppsx'].includes(ext || '')) {
+            type = 'presentation'
+        }
+    }
 
     // Use double buffer for videos to ensure smooth looping and better recovery
     const allVideos = useMemo(() => {
@@ -696,7 +704,7 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
                             title="content"
                         />
                     )}
-                    {type === 'ppt' && url && (
+                    {(type === 'ppt' || type === 'presentation') && url && (
                         <iframe
                             key={item.playlist_item_id}
                             src={`https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`}
@@ -796,9 +804,12 @@ function ErrorState({ device_code, msg, onRetry }: { device_code: string; msg: s
             <AmbientOrbs />
             <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem' }}>
                 <Logo />
-                <div style={{ marginTop: '2.5rem', background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 16, padding: '1.5rem 2rem', maxWidth: 380 }}>
+                <div style={{ marginTop: '2.5rem', background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 16, padding: '1.5rem 2rem', maxWidth: 450 }}>
                     <WifiOff size={28} color="#ef4444" style={{ margin: '0 auto 0.75rem' }} />
                     <div style={{ fontWeight: 600, color: '#ef4444', marginBottom: '0.5rem' }}>Connection Failed</div>
+                    <div style={{ fontSize: '0.7rem', color: '#64748b', fontFamily: 'monospace', marginBottom: '1rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem', borderRadius: 8 }}>
+                        DEVICE_CODE: {device_code}
+                    </div>
                     <div style={{ color: '#94a3b8', fontSize: '0.8125rem', marginBottom: '1.25rem', lineHeight: 1.6 }}>
                         {msg}
                     </div>
@@ -1044,13 +1055,17 @@ export default function PlayerPage() {
     const [showAdminPanel, setShowAdminPanel] = useState(false)
     const [pinInput, setPinInput] = useState('')
     const [pinError, setPinError] = useState(false)
+    const [showDebugManifest, setShowDebugManifest] = useState(false)
+    const [debugJSON, setDebugJSON] = useState('')
 
     const handleCornerTap = () => {
         tapCountRef.current += 1
+        console.log(`[Admin] Corner Tap ${tapCountRef.current}/5`)
         if (tapTimerRef.current) clearTimeout(tapTimerRef.current)
         // Reset counter after 3s of inactivity
         tapTimerRef.current = setTimeout(() => { tapCountRef.current = 0 }, 3000)
         if (tapCountRef.current >= 5) {
+            console.log(`[Admin] Opening PIN Prompt`)
             tapCountRef.current = 0
             setShowPinPrompt(true)
             setPinInput('')
@@ -1223,7 +1238,14 @@ export default function PlayerPage() {
                     type: asset.type,
                     checksum_sha256: asset.checksum_sha256
                 })
-                updatedAssets[i] = { ...asset, url: blobUrl }
+
+                // CRITICAL: Google Docs Viewer (used for PPT) cannot access blob: URLs.
+                // We keep the original remote URL for transparency in the manifest for these types.
+                if (asset.type !== 'ppt' && asset.type !== 'presentation') {
+                    updatedAssets[i] = { ...asset, url: blobUrl }
+                } else {
+                    console.log(`[Cache] Downloaded ${asset.media_id} for offline redundancy, but using remote URL for rendering.`)
+                }
             } catch (err) {
                 console.error(`[Cache] Failed to sync ${asset.media_id}`, err)
             } finally {
@@ -1551,108 +1573,25 @@ export default function PlayerPage() {
         return rp[regionKey] || []
     }
 
-    // ── Render ──
-    if (phase === 'loading') return <LoadingState device_code={dc} />
-    if (phase === 'pairing') return (
-        <div style={bgStyle}>
-            <AmbientOrbs />
-            <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem', maxWidth: 450 }}>
-                <Logo />
-                <div style={{ marginTop: '2.5rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: '2.5rem 2rem' }}>
-                    <div style={{ marginBottom: '1.5rem' }}>
-                        <div style={{ fontSize: '0.8rem', color: '#f87171', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700, marginBottom: '0.5rem' }}>Device Pairing Mode</div>
-                        <div style={{ color: '#f1f5f9', fontSize: '1.125rem', fontWeight: 600 }}>Get started in 30 seconds</div>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', marginBottom: '2rem' }}>
-                        {(pairingPin || '------').split('').map((char, i) => (
-                            <div key={i} style={{
-                                width: 48, height: 64, background: '#0f172a', border: '1px solid #1e293b',
-                                borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontSize: '2rem', fontWeight: 800, color: '#f1f5f9', fontFamily: 'monospace',
-                                boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.5)'
-                            }}>
-                                {char}
-                            </div>
-                        ))}
-                    </div>
-
-                    <div style={{ color: '#94a3b8', fontSize: '0.875rem', lineHeight: 1.6, marginBottom: '2rem' }}>
-                        Go to <strong style={{ color: '#f1f5f9' }}>Admin → Devices</strong> on your CMS <br />
-                        and enter this 6-digit code to link this screen.
-                    </div>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
-                        <div style={{ background: 'white', padding: '0.75rem', borderRadius: 10 }}>
-                            <QRCodeSVG value={`${window.location.origin}/player/${dc}?pairing=${pairingPin}`} size={120} level="M" />
-                        </div>
-                        <div style={{ fontSize: '0.7rem', color: '#475569' }}>
-                            Or scan to pair with your mobile phone
-                        </div>
-                    </div>
-
-                    <button
-                        onClick={() => setPhase('secret')}
-                        style={{ marginTop: '2rem', background: 'none', border: 'none', color: '#475569', fontSize: '0.75rem', cursor: 'pointer', textDecoration: 'underline' }}
-                    >
-                        I have a secret key - manual entry
-                    </button>
-                </div>
-            </div>
-            <BottomBar device_code={dc} />
-        </div>
+    // ── Pre-calculate corner tap zone ──
+    const cornerTapZone = (
+        <div
+            onClick={(e) => {
+                e.stopPropagation();
+                handleCornerTap();
+            }}
+            style={{
+                position: 'fixed',
+                top: 0,
+                right: 0,
+                width: 120,
+                height: 120,
+                zIndex: 9999999,
+                cursor: 'pointer',
+                // background: 'rgba(255,0,0,0.1)', // debug
+            }}
+        />
     )
-    if (phase === 'secret') return <SecretPrompt device_code={dc} onSubmit={handleSecret} />
-    if (phase === 'error') return <ErrorState device_code={dc} msg={errorMsg} onRetry={handleRetry} />
-
-    // ── Standby: authenticated but no content published yet ──
-    if (phase === 'standby') {
-        return (
-            <div style={bgStyle}>
-                <AmbientOrbs />
-                <div style={{ zIndex: 1, position: 'relative', textAlign: 'center' }}>
-                    <Logo />
-                    <div style={{ marginTop: '2.5rem', color: 'rgba(255,255,255,0.35)', fontSize: '0.9rem', lineHeight: 1.8 }}>
-                        <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📺</div>
-                        <div style={{ fontWeight: 600, color: '#f1f5f9', marginBottom: '0.25rem' }}>Display is Online</div>
-                        <div style={{ color: '#94a3b8' }}>Connected as <strong style={{ color: '#f87171' }}>{manifest?.resolved?.role || 'Unassigned'}</strong> role</div>
-                        <div style={{ marginTop: '1rem', color: 'rgba(255,255,255,0.3)', fontSize: '0.8125rem' }}>No active publication found for this role.</div>
-
-                        {manifest?.resolved?.debug && (
-                            <div style={{ marginTop: '1.5rem', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: 8, textAlign: 'left', display: 'inline-block', maxWidth: '90%' }}>
-                                <div style={{ fontSize: '0.65rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '0.5rem' }}>🔌 Database Link Diagnostics</div>
-                                <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontFamily: 'monospace', lineHeight: 1.5 }}>
-                                    Device Tenant: {manifest.resolved.debug.device_tenant}<br />
-                                    Device Role:   {manifest.resolved.debug.device_role_id}<br />
-                                    <hr style={{ border: 'none', borderTop: '1px solid #1e293b', margin: '0.75rem 0' }} />
-                                    Pubs in Tenant: {manifest.resolved.debug.total_tenant_pubs}<br />
-                                    Role Pub Status: {manifest.resolved.debug.found_role_pub?.active ? '✅ Active' : '❌ Inactive'}<br />
-                                    Pub Scope: {manifest.resolved.debug.found_role_pub?.scope || 'N/A'}<br />
-                                    Pub Tenant: {manifest.resolved.debug.found_role_pub?.tenant || 'N/A'}
-                                    {manifest.resolved.debug.resolution_error && (
-                                        <div style={{ marginTop: '0.5rem', color: '#f87171', fontWeight: 600 }}>
-                                            ⚠️ Resolution Error: {manifest.resolved.debug.resolution_error}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                        <div style={{ marginTop: '0.75rem', fontFamily: 'monospace', fontSize: '0.75rem', color: '#444' }}>
-                            {dc} · Polling for updates every 30s
-                        </div>
-                    </div>
-                    <div style={{ marginTop: '2rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1.25rem', borderRadius: 999, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e', fontSize: '0.8rem' }}>
-                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', display: 'inline-block', boxShadow: '0 0 8px #22c55e', animation: 'pulse 2s infinite' }} />
-                        Device Online · Awaiting Content
-                    </div>
-                    <div style={{ marginTop: '1.5rem', fontSize: '0.75rem', color: '#1e293b' }}>
-                        Publish a layout via Admin → Publish to start displaying content.
-                    </div>
-                </div>
-                {showDiagnostics && <BottomBar device_code={dc} version={version} offline={offline} />}
-            </div>
-        )
-    }
 
     // ── Admin panel button style helper ──
     const btnStyle = (bg: string, color = '#f1f5f9'): React.CSSProperties => ({
@@ -1667,7 +1606,7 @@ export default function PlayerPage() {
             {/* PIN Prompt */}
             {showPinPrompt && (
                 <div id="pin-prompt" style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999,
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99998,
                     background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center'
                 }}>
@@ -1746,8 +1685,8 @@ export default function PlayerPage() {
                             { label: 'Pub Scope', value: manifest?.resolved?.scope || 'Global' },
                         ].map(({ label, value }) => (
                             <div key={label} style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: '0.875rem 1rem' }}>
-                                <div style={{ fontSize: '0.65rem', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>{label}</div>
-                                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#f1f5f9', wordBreak: 'break-all' }}>{value}</div>
+                                <div style={{ fontSize: '0.65rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>{label}</div>
+                                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#f8fafc', wordBreak: 'break-all' }}>{value}</div>
                             </div>
                         ))}
                     </div>
@@ -1773,12 +1712,40 @@ export default function PlayerPage() {
                             ⚠️ Unpair Device
                         </button>
                         <button onClick={() => {
+                            setDebugJSON(JSON.stringify(manifest, null, 2))
+                            setShowDebugManifest(true)
+                        }} style={btnStyle('rgba(255,255,255,0.05)', '#94a3b8')}>
+                            🔍 Debug Manifest
+                        </button>
+                        <button onClick={() => {
                             window.dispatchEvent(new CustomEvent('omnipush_force_play'))
                             setShowAdminPanel(false)
                         }} style={btnStyle('#14532d', '#86efac')}>
                             ▶ Force Play
                         </button>
                     </div>
+
+                    {showDebugManifest && (
+                        <div style={{ padding: '0 2rem 1.5rem', maxHeight: '400px', overflow: 'auto' }}>
+                            <pre style={{
+                                background: '#020617', padding: '1rem', borderRadius: 8,
+                                fontSize: '0.65rem', color: '#64748b', fontFamily: 'monospace',
+                                border: '1px solid #1e293b', whiteSpace: 'pre-wrap', wordBreak: 'break-all'
+                            }}>
+                                {debugJSON}
+                            </pre>
+                            <button
+                                onClick={() => setShowDebugManifest(false)}
+                                style={{
+                                    marginTop: '0.75rem', width: '100%', padding: '0.5rem',
+                                    borderRadius: 6, background: '#1e293b', color: 'white',
+                                    border: 'none', cursor: 'pointer', fontSize: '0.75rem'
+                                }}
+                            >
+                                Close Debug View
+                            </button>
+                        </div>
+                    )}
                     <div style={{ padding: '1.5rem 2rem', fontSize: '0.7rem', color: '#334155', textAlign: 'center' }}>
                         OmniPush Admin · Tap anywhere outside or press Close to exit
                     </div>
@@ -1787,123 +1754,173 @@ export default function PlayerPage() {
         </>
     )
 
-    // Multi-Region Rendering
-    if (!manifest) return <LoadingState device_code={dc} />
+    // ── Main Content Resolver ──
+    const regions = manifest?.layout?.regions || [{ id: 'full', x: 0, y: 0, width: 100, height: 100 }]
+    const hasAnyContent = manifest ? Object.values(manifest.region_playlists || {}).some(items => items.length > 0) : false
 
-    const regions = manifest.layout?.regions || [{ id: 'full', x: 0, y: 0, width: 100, height: 100 }]
-    const hasAnyContent = Object.values(manifest.region_playlists || {}).some(items => items.length > 0)
-
-    // If NO content is published anywhere, show the "Awaiting Content" screen instead of black
-    if (!hasAnyContent) {
-        return (
+    const renderMain = () => {
+        if (phase === 'loading' || (!manifest && phase !== 'pairing' && phase !== 'secret' && phase !== 'error')) {
+            return <LoadingState device_code={dc} />
+        }
+        if (phase === 'pairing') return (
             <div style={bgStyle}>
                 <AmbientOrbs />
-                <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem' }}>
-                    <div style={{ background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(16px)', padding: '2.5rem', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 20px 50px rgba(0,0,0,0.3)' }}>
-                        <div style={{ width: 80, height: 80, borderRadius: '20px', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 2rem' }}>
-                            <Tv2 size={40} color="#fff" />
+                <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem', maxWidth: 450 }}>
+                    <Logo />
+                    <div style={{ marginTop: '2.5rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: '2.5rem 2rem' }}>
+                        <div style={{ marginBottom: '1.5rem' }}>
+                            <div style={{ fontSize: '0.8rem', color: '#f87171', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700, marginBottom: '0.5rem' }}>Device Pairing Mode</div>
+                            <div style={{ color: '#f1f5f9', fontSize: '1.125rem', fontWeight: 600 }}>Get started in 30 seconds</div>
                         </div>
-                        <h1 style={{ color: '#fff', fontSize: '1.75rem', fontWeight: 700, margin: '0 0 1rem' }}>No Active Content</h1>
-                        <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '1rem', maxWidth: 300, margin: '0 auto 2rem', lineHeight: 1.5 }}>
-                            This screen is connected, but no content has been assigned to this layout's regions.
-                        </p>
-                        <div style={{ padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '12px', fontSize: '0.85rem', color: '#94a3b8', textAlign: 'left', fontFamily: 'monospace' }}>
-                            Layout ID:   {manifest.layout?.layout_id?.slice(0, 8)}...<br />
-                            Pub Scope:   {manifest.resolved?.scope || 'N/A'}<br />
-                            Bundle ID:   {manifest.resolved?.bundle_id?.slice(0, 8) || 'N/A'}<br />
-                            Device Role: {manifest.device?.role_id?.slice(0, 8) || 'None'}
+
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', marginBottom: '2rem' }}>
+                            {(pairingPin || '------').split('').map((char, i) => (
+                                <div key={i} style={{
+                                    width: 48, height: 64, background: '#0f172a', border: '1px solid #1e293b',
+                                    borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontSize: '2rem', fontWeight: 800, color: '#f1f5f9', fontFamily: 'monospace',
+                                    boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.5)'
+                                }}>
+                                    {char}
+                                </div>
+                            ))}
+                        </div>
+
+                        <div style={{ color: '#94a3b8', fontSize: '0.875rem', lineHeight: 1.6, marginBottom: '2rem' }}>
+                            Go to <strong style={{ color: '#f1f5f9' }}>Admin → Devices</strong> on your CMS <br />
+                            and enter this 6-digit code to link this screen.
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+                            <div style={{ background: 'white', padding: '0.75rem', borderRadius: 10 }}>
+                                <QRCodeSVG value={`${window.location.origin}/player/${dc}?pairing=${pairingPin}`} size={120} level="M" />
+                            </div>
+                            <div style={{ fontSize: '0.7rem', color: '#475569' }}>
+                                Or scan to pair with your mobile phone
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={() => setPhase('secret')}
+                            style={{ marginTop: '2rem', background: 'none', border: 'none', color: '#475569', fontSize: '0.75rem', cursor: 'pointer', textDecoration: 'underline' }}
+                        >
+                            I have a secret key - manual entry
+                        </button>
+                    </div>
+                </div>
+                <BottomBar device_code={dc} />
+            </div>
+        )
+
+        if (phase === 'secret') return <SecretPrompt device_code={dc} onSubmit={handleSecret} />
+        if (phase === 'error') return <ErrorState device_code={dc} msg={errorMsg} onRetry={handleRetry} />
+
+        // ── Standby / No Content published yet ──
+        if (phase === 'standby' || (manifest && !hasAnyContent)) {
+            return (
+                <div style={bgStyle}>
+                    <AmbientOrbs />
+                    <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem' }}>
+                        <Logo />
+                        <div style={{ marginTop: '2.5rem', color: 'rgba(255,255,255,0.35)', fontSize: '0.9rem', lineHeight: 1.8 }}>
+                            <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📺</div>
+                            <div style={{ fontWeight: 600, color: '#f1f5f9', marginBottom: '0.25rem' }}>Display is Online</div>
+                            <div style={{ color: '#94a3b8' }}>Connected as <strong style={{ color: '#f87171' }}>{manifest?.resolved?.role || 'Unassigned'}</strong> role</div>
+
+                            {!hasAnyContent ? (
+                                <div style={{ marginTop: '1rem', color: 'rgba(255,255,255,0.3)', fontSize: '0.8125rem' }}>
+                                    No active content published yet.
+                                </div>
+                            ) : (
+                                <div style={{ marginTop: '1rem', color: 'rgba(255,255,255,0.3)', fontSize: '0.8125rem' }}>
+                                    Awaiting content stream...
+                                </div>
+                            )}
+
+                            {manifest?.resolved?.debug && (
+                                <div style={{ marginTop: '1.5rem', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: 8, textAlign: 'left', display: 'inline-block', maxWidth: '90%' }}>
+                                    <div style={{ fontSize: '0.65rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '0.5rem' }}>🔌 Database Link Diagnostics</div>
+                                    <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontFamily: 'monospace', lineHeight: 1.5 }}>
+                                        Device Tenant: {manifest.resolved.debug.device_tenant}<br />
+                                        Device Role:   {manifest.resolved.debug.device_role_id}<br />
+                                        <hr style={{ border: 'none', borderTop: '1px solid #1e293b', margin: '0.75rem 0' }} />
+                                        Pubs in Tenant: {manifest.resolved.debug.total_tenant_pubs}<br />
+                                        Role Pub Status: {manifest.resolved.debug.found_role_pub?.active ? '✅ Active' : '❌ Inactive'}<br />
+                                        Pub Scope: {manifest.resolved.debug.found_role_pub?.scope || 'N/A'}<br />
+                                        Pub Tenant: {manifest.resolved.debug.found_role_pub?.tenant || 'N/A'}
+                                        {manifest.resolved.debug.resolution_error && (
+                                            <div style={{ marginTop: '0.5rem', color: '#f87171', fontWeight: 600 }}>
+                                                ⚠️ Resolution Error: {manifest.resolved.debug.resolution_error}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                            <div style={{ marginTop: '0.75rem', fontFamily: 'monospace', fontSize: '0.75rem', color: '#444' }}>
+                                {dc} · Polling for updates every 30s
+                            </div>
+                        </div>
+                        <div style={{ marginTop: '2rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1.25rem', borderRadius: 999, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e', fontSize: '0.8rem' }}>
+                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', display: 'inline-block', boxShadow: '0 0 8px #22c55e', animation: 'pulse 2s infinite' }} />
+                            Device Online · Awaiting Content
                         </div>
                     </div>
                 </div>
+            )
+        }
 
-                {showDiagnostics && <BottomBar device_code={dc} version={version} offline={offline} />}
+        // ── Normal Playback ──
+        return (
+            <div style={{
+                position: 'fixed',
+                top: 0, left: 0, right: 0, bottom: 0,
+                width: '100vw',
+                height: '100dvh',
+                background: '#000',
+                overflow: 'hidden',
+                margin: 0, padding: 0,
+                zIndex: 1,
+            }}>
+                {regions.map((reg) => {
+                    const regionItems = manifest?.region_playlists?.[reg.id] || []
+                    if (regionItems.length === 0) return null
+                    return (
+                        <PlaybackEngine
+                            key={reg.id}
+                            region={reg}
+                            items={regionItems}
+                            assets={manifest!.assets}
+                        />
+                    )
+                })}
+
+                {/* Overlays */}
+                {offline && (
+                    <div style={{
+                        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+                        background: 'rgba(239,68,68,0.85)', padding: '0.5rem',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        gap: '0.5rem', fontSize: '0.8125rem', fontWeight: 500, color: 'white',
+                        backdropFilter: 'blur(4px)',
+                    }}>
+                        <WifiOff size={14} /> Offline — playing cached content
+                    </div>
+                )}
+                <style>{`
+                    @keyframes slideIn {
+                        from { transform: translateY(20px); opacity: 0; }
+                        to { transform: translateY(0); opacity: 1; }
+                    }
+                `}</style>
             </div>
         )
     }
 
     return (
-        <div style={{
-            position: 'fixed',
-            top: 0, left: 0, right: 0, bottom: 0,
-            width: '100vw',
-            height: '100dvh',
-            background: '#000',
-            overflow: 'hidden',
-            margin: 0, padding: 0,
-            zIndex: 1,
-            display: 'block',
-        }}>
-            {regions.map((reg) => {
-                const regionItems = manifest.region_playlists?.[reg.id] || []
-
-                // Fallback for empty region to prevent black hole
-                if (regionItems.length === 0) {
-                    return (
-                        <div key={reg.id} style={{
-                            position: 'absolute',
-                            top: `${reg.y}%`, left: `${reg.x}%`,
-                            width: `${reg.width}%`, height: `${reg.height}%`,
-                            background: '#0f172a', border: '1px solid rgba(255,255,255,0.05)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            flexDirection: 'column'
-                        }}>
-                            <div style={{ opacity: 0.2 }}>
-                                <ImageIcon size={32} color="#fff" />
-                            </div>
-                            <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.1)', marginTop: '0.5rem' }}>Region: {reg.id}</span>
-                        </div>
-                    )
-                }
-
-                return (
-                    <PlaybackEngine
-                        key={reg.id}
-                        region={reg}
-                        items={regionItems}
-                        assets={manifest.assets}
-                    />
-                )
-            })}
-
-
-
+        <div style={{ position: 'relative', width: '100vw', height: '100dvh', overflow: 'hidden', background: '#000' }}>
+            {renderMain()}
+            {cornerTapZone}
             <AdminPanel />
-
-            {/* Invisible 60×60 tap zone — top-right corner triggers admin panel */}
-            <div
-                onClick={handleCornerTap}
-                style={{
-                    position: 'fixed', top: 0, right: 0,
-                    width: 60, height: 60, zIndex: 99998,
-                    cursor: 'default',
-                }}
-            />
-
-            {/* Offline indicator overlay */}
-            {offline && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, zIndex: 999,
-                    background: 'rgba(239,68,68,0.85)', padding: '0.5rem',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    gap: '0.5rem', fontSize: '0.8125rem', fontWeight: 500, color: 'white',
-                    backdropFilter: 'blur(4px)',
-                }}>
-                    <WifiOff size={14} /> Offline — playing cached content
-                </div>
-            )}
-
-            {/* Bottom bar on top of content - hidden by default unless diagnostics active */}
-            {showDiagnostics && <BottomBar device_code={dc} version={version} offline={offline} />}
-
-            {/* Sync Overlay removed as per user request to avoid playback jitter/noise */}
-
-            {/* Styles for animation */}
-            <style>{`
-                @keyframes slideIn {
-                    from { transform: translateY(20px); opacity: 0; }
-                    to { transform: translateY(0); opacity: 1; }
-                }
-            `}</style>
         </div>
     )
 }
