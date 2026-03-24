@@ -11,7 +11,8 @@ serve(async (req: Request) => {
     if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
     try {
-        const { device_code, device_secret, current_version, origin } = await req.json();
+        const { device_code: raw_dc, device_secret, current_version, origin } = await req.json();
+        const device_code = (raw_dc || "").trim();
 
         if (!device_code || !device_secret)
             return Response.json({ error: "device_code and device_secret required" }, { status: 400, headers: corsHeaders });

@@ -13,7 +13,8 @@ serve(async (req: Request) => {
     if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
     try {
-        const { action, device_code, pairing_pin } = await req.json();
+        const { action, device_code: raw_dc, pairing_pin } = await req.json();
+        const device_code = (raw_dc || "").trim();
 
         const supabase = createClient(
             Deno.env.get("SUPABASE_URL")!,

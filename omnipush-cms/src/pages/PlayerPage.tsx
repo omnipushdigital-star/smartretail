@@ -981,7 +981,7 @@ console.warn = (...args) => {
 
 export default function PlayerPage() {
     const { device_code } = useParams<{ device_code: string }>()
-    const dc = device_code || ''
+    const dc = (device_code || '').trim()
 
     // Dynamic Viewport Sync for Browser and WebViews
     useEffect(() => {

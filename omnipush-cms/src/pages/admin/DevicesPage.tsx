@@ -99,11 +99,18 @@ export default function DevicesPage() {
     const loadData = useCallback(async () => {
         if (!currentTenantId) return
         setLoading(true)
+        let query = supabase.from('devices').select('*, store:stores(id,code,name), role:roles(id,name,key)')
+            .eq('tenant_id', currentTenantId)
+            .order('display_name')
+
+        if (viewMode === 'bin') {
+            query = query.not('deleted_at', 'is', null)
+        } else {
+            query = query.is('deleted_at', null)
+        }
+
         const [devicesRes, storesRes, rolesRes] = await Promise.all([
-            supabase.from('devices').select('*, store:stores(id,code,name), role:roles(id,name,key)')
-                .eq('tenant_id', currentTenantId)
-                .is('deleted_at', viewMode === 'bin' ? 'not.null' : null)
-                .order('display_name'),
+            query,
             supabase.from('stores').select('*').eq('tenant_id', currentTenantId).eq('active', true).order('name'),
             supabase.from('roles').select('*').eq('tenant_id', currentTenantId).order('name'),
         ])
@@ -149,7 +156,7 @@ export default function DevicesPage() {
             }
         }
         setHeartbeats(hbMap)
-    }, [currentTenantId])
+    }, [currentTenantId, viewMode])
 
     const fetchDevices = async () => {
         setLoading(true)
