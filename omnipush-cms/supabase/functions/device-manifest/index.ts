@@ -192,7 +192,7 @@ serve(async (req: Request) => {
 
         // 7. Generate signed URLs in bulk
         const storageItems = (items || []).filter((i: any) =>
-            i.media && (i.media.type === "image" || i.media.type === "video") && i.media.storage_path
+            i.media && (i.media.type === "image" || i.media.type === "video" || i.media.type === "ppt") && i.media.storage_path
         );
         const uniquePaths = [...new Set(storageItems.map((i: any) => i.media.storage_path))];
 
