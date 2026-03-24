@@ -44,7 +44,8 @@ export default function MonitoringPage() {
         const [devsRes, storesRes, rolesRes] = await Promise.all([
             supabase.from('devices')
                 .select('id, device_code, display_name, store_id, role_id, active, store:stores(name,code), role:roles(name,key)')
-                .eq('tenant_id', currentTenantId),
+                .eq('tenant_id', currentTenantId)
+                .is('deleted_at', null),
             supabase.from('stores').select('*').eq('tenant_id', currentTenantId).order('name'),
             supabase.from('roles').select('*').eq('tenant_id', currentTenantId).order('name'),
         ])
@@ -53,15 +54,20 @@ export default function MonitoringPage() {
         const deviceIds = devices.map(d => d.id)
         const deviceCodes = devices.map(d => d.device_code)
 
-        // Fetch ANY heartbeat for these devices or codes (Manual join fallback)
-        const { data: hData, error: hbErr } = await supabase.from('device_heartbeats')
-            .select('*')
-            .or(`device_id.in.(${deviceIds.map(id => `"${id}"`).join(',')}),device_code.in.(${deviceCodes.map(c => `"${c}"`).join(',')})`)
-            .order('last_seen_at', { ascending: false })
-            .limit(500)
+        let hData: any[] | null = []
 
-        if (hbErr) {
-            console.error('[Monitoring] Heartbeat Query Failed:', hbErr)
+        if (deviceIds.length > 0) {
+            // Fetch ANY heartbeat for these devices or codes (Manual join fallback)
+            const { data, error: hbErr } = await supabase.from('device_heartbeats')
+                .select('*')
+                .or(`device_id.in.(${deviceIds.map(id => `"${id}"`).join(',')}),device_code.in.(${deviceCodes.map(c => `"${c}"`).join(',')})`)
+                .order('last_seen_at', { ascending: false })
+                .limit(500)
+
+            hData = data
+            if (hbErr) {
+                console.error('[Monitoring] Heartbeat Query Failed:', hbErr)
+            }
         }
 
         const dMap: Record<string, DeviceInfo> = {}
@@ -112,6 +118,8 @@ export default function MonitoringPage() {
 
     const filteredLatest = latestHbs.filter(hb => {
         const device = deviceMap[hb.device_code]
+        if (!device) return false // Only show heartbeats for active, non-deleted devices
+
         const matchDevice = !filterDevice || hb.device_code.toLowerCase().includes(filterDevice.toLowerCase()) ||
             ((device?.display_name || '').toLowerCase().includes(filterDevice.toLowerCase()))
         const matchStatus = !filterStatus || (filterStatus === 'online' ? isOnline(hb.last_seen_at) : !isOnline(hb.last_seen_at))
@@ -151,11 +159,11 @@ export default function MonitoringPage() {
             {/* Summary cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
                 <div className="stat-card">
-                    <div className="stat-icon" style={{ background: 'rgba(90,100,246,0.15)' }}>
+                    <div className="stat-icon" style={{ background: 'rgba(var(--color-brand-rgb), 0.1)' }}>
                         <Activity size={22} color="var(--color-brand-500)" />
                     </div>
                     <div>
-                        <div className="stat-value">{latestHbs.length + unseenDevices.length}</div>
+                        <div className="stat-value">{latestHbs.filter(hb => deviceMap[hb.device_code]).length + unseenDevices.length}</div>
                         <div className="stat-label">Total Devices</div>
                     </div>
                 </div>
@@ -164,7 +172,7 @@ export default function MonitoringPage() {
                         <Wifi size={22} color="#22c55e" />
                     </div>
                     <div>
-                        <div className="stat-value" style={{ color: '#22c55e' }}>{online}</div>
+                        <div className="stat-value" style={{ color: '#22c55e' }}>{latestHbs.filter(hb => deviceMap[hb.device_code] && isOnline(hb.last_seen_at)).length}</div>
                         <div className="stat-label">Online (&lt;3 min)</div>
                     </div>
                 </div>
@@ -205,8 +213,8 @@ export default function MonitoringPage() {
 
             {/* Device status table */}
             <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: '1.5rem' }}>
-                <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid #1e293b', fontWeight: 600, fontSize: '0.875rem', color: '#94a3b8' }}>
-                    Device Status Overview
+                <div className="card-header pb-0 border-b-0">
+                    <h2 className="text-sm font-semibold text-surface-400">Device Status Overview</h2>
                 </div>
                 {loading ? (
                     <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Loading…</div>

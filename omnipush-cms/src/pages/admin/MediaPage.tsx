@@ -251,7 +251,7 @@ export default function MediaPage() {
                     <h1 className="page-title">Media Library</h1>
                     <p className="page-subtitle">
                         Manage images, videos, and web content for your displays
-                        {R2_BASE && <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: '#6366f1', background: 'rgba(99,102,241,0.1)', padding: '0.15rem 0.5rem', borderRadius: 4 }}>☁ Cloudflare R2</span>}
+                        {R2_BASE && <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: 'var(--color-brand-400)', background: 'rgba(var(--color-brand-rgb), 0.1)', padding: '0.15rem 0.5rem', borderRadius: 4 }}>☁ Cloudflare R2</span>}
                     </p>
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>

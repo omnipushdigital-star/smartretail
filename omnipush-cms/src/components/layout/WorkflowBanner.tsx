@@ -19,7 +19,7 @@ export default function WorkflowBanner() {
     const activeIndex = STAGES.findIndex(s => currentPath.startsWith(s.path))
 
     return (
-        <div className="w-full bg-surface-950/50 border-b border-white/5 backdrop-blur-sm overflow-x-auto no-scrollbar">
+        <div className="w-full bg-[color:var(--color-surface-950)] border-b border-[color:var(--color-surface-300)] backdrop-blur-sm overflow-x-auto no-scrollbar">
             <div className="flex items-center justify-center min-w-max px-6 py-3 gap-2">
                 {STAGES.map((stage, idx) => {
                     const Icon = stage.icon
@@ -32,17 +32,17 @@ export default function WorkflowBanner() {
                             <Link
                                 to={stage.path}
                                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all ${isActive
-                                        ? 'bg-brand-600/10 text-brand-500 ring-1 ring-brand-500/50 shadow-lg shadow-brand-500/10'
-                                        : isCompleted
-                                            ? 'text-emerald-500 hover:text-emerald-400'
-                                            : 'text-surface-500 hover:text-surface-300'
+                                    ? 'bg-brand-600/10 text-brand-600 ring-1 ring-brand-500/50 shadow-lg shadow-brand-500/10'
+                                    : isCompleted
+                                        ? 'text-green-600 hover:text-green-500 dark:text-green-500'
+                                        : 'text-[color:var(--color-surface-100)] hover:text-[color:var(--color-text-primary)]'
                                     }`}
                             >
                                 <div className={`flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-black border ${isActive
-                                        ? 'bg-brand-600 border-brand-500 text-white'
-                                        : isCompleted
-                                            ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-500'
-                                            : 'bg-surface-900 border-surface-700 text-surface-500'
+                                    ? 'bg-brand-600 border-brand-500 text-white'
+                                    : isCompleted
+                                        ? 'bg-green-500/10 border-green-500/50 text-green-600 dark:text-green-500'
+                                        : 'bg-[color:var(--color-surface-700)] border-[color:var(--color-surface-300)] text-[color:var(--color-surface-100)]'
                                     }`}>
                                     {isCompleted ? '✓' : idx + 1}
                                 </div>
@@ -52,7 +52,7 @@ export default function WorkflowBanner() {
                             </Link>
 
                             {idx < STAGES.length - 1 && (
-                                <ChevronRight size={14} className="text-surface-700 mx-1" />
+                                <ChevronRight size={14} className="text-[color:var(--color-surface-200)] mx-1" />
                             )}
                         </React.Fragment>
                     )

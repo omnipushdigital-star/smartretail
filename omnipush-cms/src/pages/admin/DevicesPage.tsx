@@ -31,7 +31,7 @@ function generateDeviceCode(storeName?: string, roleName?: string) {
         // Add a small 3-char random suffix to ensure uniqueness while keeping it identifyable
         const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
         const suffix = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-        return `${p1}_${p2}_${suffix} `;
+        return `${p1}_${p2}_${suffix}`;
     }
 
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -276,12 +276,17 @@ export default function DevicesPage() {
             if (!confirm(`PERMANENTLY DELETE "${code}"? This cannot be undone.`)) return
             setDeleting(id)
             try {
+                // Clear referenced rows to avoid basic foreign key constraint blocks
+                await supabase.from('device_commands').delete().eq('device_id', id)
+                await supabase.from('device_heartbeats').delete().eq('device_id', id)
+                await supabase.from('layout_publications').delete().eq('device_id', id)
+
                 const { error } = await supabase.from('devices').delete().eq('id', id)
                 if (error) throw error
                 toast.success('Device deleted permanently')
                 loadData()
             } catch (err: any) {
-                toast.error(err.message)
+                toast.error("Failed to delete device: " + err.message)
             }
         }
         setDeleting(null)
@@ -365,25 +370,25 @@ export default function DevicesPage() {
             toast.success(`Screenshot requested from ${deviceCode}. Waiting for device...`)
 
             // Poll Supabase Storage for the uploaded image
-            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
             const pollInterval = setInterval(async () => {
+                const fileName = `${deviceCode}_${commandId}.jpg`
                 const { data: files } = await supabase.storage
                     .from('device-screenshots')
-                    .list('screenshots', { search: deviceCode })
+                    .list('screenshots', { search: fileName })
 
                 if (files && files.length > 0) {
-                    // Sort by date desc — take the newest file for this device
-                    const sorted = files
-                        .filter(f => f.name.startsWith(deviceCode))
-                        .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())
+                    // Check if exact file exists
+                    const match = files.find(f => f.name === fileName)
+                    if (match) {
+                        const { data: { publicUrl } } = supabase.storage
+                            .from('device-screenshots')
+                            .getPublicUrl(`screenshots/${fileName}`)
 
-                    if (sorted.length > 0) {
-                        const publicUrl = `${supabaseUrl}/storage/v1/object/public/device-screenshots/screenshots/${sorted[0].name}`
                         clearInterval(pollInterval)
                         setScreenshotModal(prev => prev ? { ...prev, imageUrl: publicUrl, polling: false } : null)
                     }
                 }
-            }, 5000)
+            }, 3000)
 
             // Stop polling after 2 minutes regardless
             setTimeout(() => {
@@ -425,34 +430,23 @@ export default function DevicesPage() {
                 <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
 
                     {/* View Mode Toggle */}
-                    <div className="btn-group" style={{ background: '#0f172a', padding: 4, borderRadius: 8, display: 'inline-flex', gap: 2 }}>
+                    <div className="btn-group-glass">
                         <button
-                            className={`btn-tab ${viewMode === 'active' ? 'active' : ''}`}
+                            className={`btn-tab-glass ${viewMode === 'active' ? 'active' : ''}`}
                             onClick={() => setViewMode('active')}
-                            style={{
-                                padding: '0.4rem 1rem', fontSize: '0.8rem', borderRadius: 6,
-                                background: viewMode === 'active' ? '#1e293b' : 'transparent',
-                                color: viewMode === 'active' ? '#f8fafc' : '#64748b', border: 'none', cursor: 'pointer'
-                            }}
                         >
                             Active
                         </button>
                         <button
-                            className={`btn-tab ${viewMode === 'bin' ? 'active' : ''}`}
+                            className={`btn-tab-glass error-tab ${viewMode === 'bin' ? 'active' : ''}`}
                             onClick={() => setViewMode('bin')}
-                            style={{
-                                padding: '0.4rem 1rem', fontSize: '0.8rem', borderRadius: 6,
-                                background: viewMode === 'bin' ? '#ef444422' : 'transparent',
-                                color: viewMode === 'bin' ? '#ef4444' : '#64748b', border: 'none', cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', gap: 6
-                            }}
                         >
                             <Trash2 size={12} /> Bin
                         </button>
                     </div>
 
                     <div style={{ position: 'relative', flex: '1 1 200px' }}>
-                        <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+                        <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-surface-200)' }} />
                         <input type="text" className="input-field" placeholder={`Search ${viewMode === 'bin' ? 'bin' : 'devices'}...`} value={search}
                             onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ paddingLeft: '2rem' }} />
                     </div>
@@ -653,7 +647,8 @@ export default function DevicesPage() {
                             <input className="input-field"
                                 value={form.device_code}
                                 onChange={e => {
-                                    setForm(f => ({ ...f, device_code: e.target.value.toUpperCase().replace(/\s+/g, '_') }));
+                                    const val = e.target.value.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '');
+                                    setForm(f => ({ ...f, device_code: val }));
                                     setAutoSyncCode(false); // Stop auto-sync if manually edited
                                 }}
                                 placeholder="e.g. SHOP01_SCREEN01"
@@ -739,7 +734,7 @@ export default function DevicesPage() {
                         <div style={{ background: 'white', padding: '1rem', borderRadius: 8, marginBottom: '1rem' }}>
                             <QRCodeSVG
                                 id="pairing-qr"
-                                value={pairingInfo.device_code.includes('code=') ? pairingInfo.device_code : `${window.location.origin} /player/${pairingInfo.device_code}?secret = ${pairingInfo.device_secret} `}
+                                value={pairingInfo.device_code.includes('code=') ? pairingInfo.device_code : `${window.location.origin}/player/${pairingInfo.device_code}?secret=${pairingInfo.device_secret}`}
                                 size={180}
                                 level="H"
                                 includeMargin={false}
@@ -753,7 +748,7 @@ export default function DevicesPage() {
                     {[
                         { label: 'Device Code', value: pairingInfo.device_code, mono: true, highlight: true },
                         { label: 'Device Secret', value: pairingInfo.device_secret, mono: true },
-                        { label: 'Auto-Pair URL', value: `${window.location.origin} /player/${pairingInfo.device_code}?secret = ${pairingInfo.device_secret} `, mono: true },
+                        { label: 'Auto-Pair URL', value: `${window.location.origin}/player/${pairingInfo.device_code}?secret=${pairingInfo.device_secret}`, mono: true },
                     ].map(row => (
                         <div key={row.label} style={{ marginBottom: '1rem' }}>
                             <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.375rem' }}>

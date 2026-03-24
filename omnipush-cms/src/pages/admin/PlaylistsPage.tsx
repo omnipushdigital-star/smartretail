@@ -15,6 +15,12 @@ const PAGE_SIZE = 10
 function SortableItem({ item, onRemove }: { item: PlaylistItem & { media?: MediaAsset }, onRemove: (id: string) => void }) {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: item.id })
     const style = { transform: CSS.Transform.toString(transform), transition }
+    
+    const daysMap = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
+    const daysStr = item.days_of_week && item.days_of_week.length > 0 && item.days_of_week.length < 7 
+        ? item.days_of_week.map(d => daysMap[d]).join(', ') 
+        : (item.days_of_week?.length === 7 ? 'Everyday' : '')
+
     return (
         <div ref={setNodeRef} style={{ ...style, display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.625rem 0.75rem', background: 'var(--color-surface-900)', borderRadius: 8, marginBottom: '0.5rem', border: '1px solid var(--color-surface-800)' }} className="sortable-item">
             <span {...attributes} {...listeners} className="drag-handle"><GripVertical size={14} /></span>
@@ -22,7 +28,24 @@ function SortableItem({ item, onRemove }: { item: PlaylistItem & { media?: Media
             <span style={{ flex: 1, fontSize: '0.875rem', color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {item.media?.name || item.web_url || 'Unknown'}
             </span>
-            {item.is_scheduled && <span className="badge-schedule">⏰ Sched</span>}
+            {item.type === 'video' && item.playback_speed && (
+                <span className="badge-speed" style={{ fontSize: '0.7rem', padding: '0.125rem 0.375rem', background: 'rgba(167, 139, 250, 0.1)', color: '#c4b5fd', borderRadius: 4, whiteSpace: 'nowrap' }}>
+                    {item.playback_speed}x
+                </span>
+            )}
+            {item.is_scheduled && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-end', flexShrink: 0 }}>
+                    <span className="badge-schedule" style={{ fontSize: '0.7rem', padding: '0.125rem 0.375rem', background: 'rgba(234,179,8,0.1)', color: '#fbbf24', borderRadius: 4, display: 'flex', alignItems: 'center', gap: '0.25rem', whiteSpace: 'nowrap' }}>
+                        ⏰ {item.start_time || item.end_time ? `${item.start_time || '00:00'} - ${item.end_time || '23:59'}` : 'Scheduled'}
+                    </span>
+                    {(item.start_date || item.end_date || daysStr) && (
+                        <span style={{ fontSize: '0.65rem', color: 'var(--color-surface-400)', whiteSpace: 'nowrap' }}>
+                            {item.start_date || item.end_date ? `${item.start_date || '∞'} to ${item.end_date || '∞'}` : ''}
+                            {item.start_date || item.end_date ? (daysStr ? ` | ${daysStr}` : '') : daysStr}
+                        </span>
+                    )}
+                </div>
+            )}
             {item.duration_seconds && <span style={{ fontSize: '0.75rem', color: 'var(--color-surface-500)', flexShrink: 0 }}>{item.duration_seconds}s</span>}
             <button onClick={() => onRemove(item.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '0.25rem', display: 'flex' }}>
                 <X size={14} />

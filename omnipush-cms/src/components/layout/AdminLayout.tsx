@@ -31,25 +31,25 @@ export default function AdminLayout() {
             setTenant({
                 name: currentTenant.name || 'OmniPush',
                 logo_url: currentTenant.settings?.logo_url || 'https://i.ibb.co/vzB7K8N/apache-pizza-logo.png',
-                primary_color: currentTenant.settings?.primary_color || '#ef4444',
-                secondary_color: currentTenant.settings?.secondary_color || '#991b1b'
+                primary_color: currentTenant.settings?.primary_color || '#00daf3',
+                secondary_color: currentTenant.settings?.secondary_color || '#007e8c'
             })
         } else if (!tenantLoading) {
             // If not loading and no tenant found, use default fallback name
             setTenant({
                 name: 'System Root',
                 logo_url: 'https://i.ibb.co/vzB7K8N/apache-pizza-logo.png',
-                primary_color: '#ef4444',
-                secondary_color: '#991b1b'
+                primary_color: '#00daf3',
+                secondary_color: '#007e8c'
             })
         }
     }, [currentTenant, tenantLoading])
 
     function hexToRgb(hex: string) {
-        if (!hex || typeof hex !== 'string') return '239, 68, 68'
+        if (!hex || typeof hex !== 'string') return '0, 218, 243'
         let h = hex.replace('#', '')
         if (h.length === 3) h = h.split('').map(c => c + c).join('')
-        if (h.length !== 6) return '239, 68, 68'
+        if (h.length !== 6) return '0, 218, 243'
 
         const r = parseInt(h.slice(0, 2), 16)
         const g = parseInt(h.slice(2, 4), 16)
@@ -109,7 +109,7 @@ export default function AdminLayout() {
                         <span style={{
                             fontSize: '1.25rem',
                             fontWeight: 900,
-                            color: tenant?.primary_color || '#ef4444',
+                            color: tenant?.primary_color || '#00daf3',
                             letterSpacing: '0.05em',
                             textTransform: 'uppercase',
                             display: 'inline-block',
@@ -120,9 +120,9 @@ export default function AdminLayout() {
                         {(import.meta.env.VITE_APP_ENV !== 'production' || window.location.hostname.includes('smartretail-plum')) && (
                             <span style={{
                                 marginLeft: '1rem',
-                                background: 'rgba(239, 68, 68, 0.1)',
-                                border: '1px solid #ef4444',
-                                color: '#ef4444',
+                                background: 'rgba(var(--color-brand-rgb), 0.1)',
+                                border: '1px solid var(--color-brand-500)',
+                                color: 'var(--color-brand-500)',
                                 fontSize: '0.625rem',
                                 padding: '2px 8px',
                                 borderRadius: '100px',
@@ -171,7 +171,7 @@ export default function AdminLayout() {
                                         <span style={{ fontSize: '1rem', fontWeight: 800, color: theme === 'dark' ? '#f1f5f9' : '#1e1e2d', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                             {tenant?.name || 'Loading...'}
                                         </span>
-                                        <ChevronDown size={14} color={tenant?.primary_color || "#ef4444"} />
+                                        <ChevronDown size={14} color={tenant?.primary_color || "#00daf3"} />
                                     </div>
                                 </div>
                             </button>
@@ -201,11 +201,11 @@ export default function AdminLayout() {
                                                         width: '100%', display: 'flex', alignItems: 'center', gap: '0.75rem',
                                                         padding: '0.75rem',
                                                         background: t.id === currentTenantId
-                                                            ? (theme === 'dark' ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.05)')
+                                                            ? 'rgba(var(--color-brand-rgb), 0.1)'
                                                             : 'transparent',
                                                         border: 'none', borderRadius: 10, cursor: 'pointer', transition: 'all 0.2s',
                                                         color: t.id === currentTenantId
-                                                            ? (theme === 'dark' ? '#f87171' : '#ef4444')
+                                                            ? 'var(--color-brand-500)'
                                                             : (theme === 'dark' ? '#94a3b8' : '#475569'),
                                                         textAlign: 'left'
                                                     }}
@@ -219,9 +219,9 @@ export default function AdminLayout() {
                                                     </div>
                                                     <div style={{ flex: 1, overflow: 'hidden' }}>
                                                         <div style={{ fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</div>
-                                                        {t.id === currentTenantId && <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#ef4444' }}>Current Active</div>}
+                                                        {t.id === currentTenantId && <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--color-brand-500)' }}>Current Active</div>}
                                                     </div>
-                                                    {t.id === currentTenantId && <Check size={14} color="#ef4444" />}
+                                                    {t.id === currentTenantId && <Check size={14} color="var(--color-brand-500)" />}
                                                 </button>
                                             ))}
                                         </div>
@@ -243,7 +243,7 @@ export default function AdminLayout() {
                             style={{ background: 'none', border: '1px solid currentColor', borderRadius: 8, padding: '0.375rem 0.625rem', cursor: 'pointer', display: 'flex', alignItems: 'center', position: 'relative' }}
                         >
                             <Bell size={16} />
-                            <span style={{ position: 'absolute', top: 3, right: 3, width: 6, height: 6, borderRadius: '50%', background: tenant?.primary_color || '#ef4444' }} />
+                            <span style={{ position: 'absolute', top: 3, right: 3, width: 6, height: 6, borderRadius: '50%', background: tenant?.primary_color || '#00daf3' }} />
                         </button>
 
                         <div style={{ position: 'relative' }}>
@@ -251,7 +251,7 @@ export default function AdminLayout() {
                                 onClick={() => setShowUserMenu(!showUserMenu)}
                                 style={{
                                     width: 36, height: 36, borderRadius: '50%',
-                                    background: `linear-gradient(135deg, ${tenant?.primary_color || '#ef4444'}, ${tenant?.secondary_color || '#dc2626'})`,
+                                    background: `linear-gradient(135deg, ${tenant?.primary_color || '#00daf3'}, ${tenant?.secondary_color || '#007e8c'})`,
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                     fontSize: '0.85rem', fontWeight: 700, color: 'white',
                                     boxShadow: '0 4px 12px rgba(0,0,0,0.15)',

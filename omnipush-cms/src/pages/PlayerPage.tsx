@@ -4,6 +4,7 @@ import { WifiOff, Tv2, Lock, RefreshCw, Clock, Image as ImageIcon } from 'lucide
 import { QRCodeSVG } from 'qrcode.react'
 import { supabase, DEFAULT_TENANT_ID, callEdgeFn } from '../lib/supabase'
 import { downloadAndCache, hydrateAssetsFromCache } from '../lib/cache'
+import html2canvas from 'html2canvas'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -467,12 +468,11 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
 
                 // 1. Date Range Check
                 if (item.start_date) {
-                    const start = new Date(item.start_date)
+                    const start = new Date(item.start_date + 'T00:00:00')
                     if (currentTime < start) return false
                 }
                 if (item.end_date) {
-                    const end = new Date(item.end_date)
-                    end.setHours(23, 59, 59, 999)
+                    const end = new Date(item.end_date + 'T23:59:59')
                     if (currentTime > end) return false
                 }
 
@@ -541,10 +541,11 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
         if (activeItems.length === 0) return
         if (timerRef.current) clearTimeout(timerRef.current)
 
-        const item = activeItems[idx]
-        const asset = memoizedAssets.find(a => a.media_id === item.media_id)
-        const url = asset?.url || item.web_url
-        const type = asset?.type || item.type || (item.media_id ? 'video' : 'image')
+        const safeIdx = idx >= activeItems.length ? 0 : idx
+        const item = activeItems[safeIdx]
+        const asset = memoizedAssets.find(a => a.media_id === item?.media_id)
+        const url = asset?.url || item?.web_url
+        const type = asset?.type || item?.type || (item?.media_id ? 'video' : 'image')
 
         if (!url) {
             if (activeItems.length > 1) advance()
@@ -557,7 +558,7 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
         // If only 1 item, we don't set a timer to advance
         if (activeItems.length <= 1) return
 
-        const dur = (item.duration_seconds ?? (type === 'web_url' ? DEFAULT_WEB_DURATION : DEFAULT_IMAGE_DURATION)) * 1000
+        const dur = (item?.duration_seconds ?? (type === 'web_url' ? DEFAULT_WEB_DURATION : DEFAULT_IMAGE_DURATION)) * 1000
         timerRef.current = setTimeout(advance, dur)
         return () => { if (timerRef.current) clearTimeout(timerRef.current) }
     }, [idx, activeItems.length, advance, memoizedAssets, region.id])
@@ -575,10 +576,11 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
         </div>
     )
 
-    const item = activeItems[idx]
-    const asset = memoizedAssets.find(a => a.media_id === item.media_id)
-    const url = asset?.url || item.web_url
-    const type = asset?.type || item.type || (item.media_id ? 'video' : 'image')
+    const safeIdx = idx >= activeItems.length ? 0 : idx
+    const item = activeItems[safeIdx]
+    const asset = memoizedAssets.find(a => a.media_id === item?.media_id)
+    const url = asset?.url || item?.web_url
+    const type = asset?.type || item?.type || (item?.media_id ? 'video' : 'image')
 
     // Use double buffer for videos to ensure smooth looping and better recovery
     const allVideos = useMemo(() => {
@@ -586,7 +588,7 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
     }, [activeItems])
 
     // Preload next image
-    const nextItem = activeItems[(idx + 1) % activeItems.length]
+    const nextItem = activeItems[(safeIdx + 1) % activeItems.length]
     const nextAsset = memoizedAssets.find(a => a.media_id === nextItem?.media_id)
     const nextUrl = nextAsset?.url || nextItem?.web_url
     const nextType = nextAsset?.type || nextItem?.type
@@ -1077,6 +1079,32 @@ export default function PlayerPage() {
     }, [])
 
     // ── Command Processing ──
+    const captureBrowserScreenshot = useCallback(async (commandId: string) => {
+        try {
+            console.log(`[Player] Generating browser screenshot for command ${commandId}...`)
+            const canvas = await html2canvas(document.body, {
+                useCORS: true,
+                scale: 0.5,
+                logging: false,
+                backgroundColor: '#000000',
+                ignoreElements: (el) => el.id === 'admin-overlay' || el.id === 'pin-prompt'
+            })
+
+            const blob: Blob | null = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8))
+            if (!blob) throw new Error('Failed to create blob')
+
+            const fileName = `screenshots/${dc}_${commandId}.jpg`
+            const { error } = await supabase.storage
+                .from('device-screenshots')
+                .upload(fileName, blob, { contentType: 'image/jpeg', upsert: true })
+
+            if (error) throw error
+            console.log(`[Player] Browser screenshot uploaded: ${fileName}`)
+        } catch (err: any) {
+            console.error('[Player] Browser screenshot failed:', err.message)
+        }
+    }, [dc])
+
     const processIncomingCommands = useCallback(async (commands: any[]) => {
         for (const cmd of commands) {
             console.log(`[Player] Processing command: ${cmd.command} (${cmd.id})`)
@@ -1102,8 +1130,7 @@ export default function PlayerPage() {
                     if (win.AndroidHealth && win.AndroidHealth.takeScreenshot) {
                         win.AndroidHealth.takeScreenshot(cmd.id)
                     } else {
-                        // Fallback: In browser, we can't easily screenshot, but we record the attempt
-                        console.error('[Player] Native screenshot bridge NOT available.')
+                        await captureBrowserScreenshot(cmd.id)
                     }
                 }
             } catch (err: any) {
@@ -1147,10 +1174,9 @@ export default function PlayerPage() {
                     console.log('[Player] Remote Screenshot requested...')
                     const win = window as any
                     if (win.AndroidHealth && win.AndroidHealth.takeScreenshot) {
-                        // The Android app will handle the upload to Supabase Storage
                         win.AndroidHealth.takeScreenshot(cmd.id)
                     } else {
-                        console.error('[Player] Native screenshot bridge NOT available.')
+                        await captureBrowserScreenshot(cmd.id)
                     }
                 }
             }
@@ -1640,7 +1666,7 @@ export default function PlayerPage() {
         <>
             {/* PIN Prompt */}
             {showPinPrompt && (
-                <div style={{
+                <div id="pin-prompt" style={{
                     position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999,
                     background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center'
@@ -1692,7 +1718,7 @@ export default function PlayerPage() {
 
             {/* Admin Panel */}
             {showAdminPanel && (
-                <div style={{
+                <div id="admin-overlay" style={{
                     position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999,
                     background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(16px)',
                     display: 'flex', flexDirection: 'column',

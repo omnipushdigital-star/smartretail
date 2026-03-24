@@ -161,10 +161,10 @@ export default function DashboardPage() {
 
             {/* Network Overview Stats */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                <StatCard icon={<Store size={20} />} label="Total Stores" value={stats.stores} color="#6366f1" to="/admin/stores" />
-                <StatCard icon={<Monitor size={20} />} label="Total Devices" value={stats.devices} color="#8b5cf6" to="/admin/devices" />
+                <StatCard icon={<Store size={20} />} label="Total Stores" value={stats.stores} color="var(--color-brand-600)" to="/admin/stores" />
+                <StatCard icon={<Monitor size={20} />} label="Total Devices" value={stats.devices} color="var(--color-brand-500)" to="/admin/devices" />
                 <StatCard icon={<Wifi size={20} />} label="Online Now" value={stats.online} subValue={`${stats.playing} Playing`} color="#22c55e" to="/admin/monitoring" />
-                <StatCard icon={<WifiOff size={20} />} label="Offline / Idle" value={stats.offline} subValue="Issue" color="#ef4444" to="/admin/monitoring" />
+                <StatCard icon={<WifiOff size={20} />} label="Offline / Idle" value={stats.offline} subValue="Issue" color="var(--color-error-500)" to="/admin/monitoring" />
             </div>
 
             {/* Performance Metric Tiles */}
@@ -205,16 +205,16 @@ export default function DashboardPage() {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Live Screens List */}
-                <div className="lg:col-span-2 card-glass border border-white/5 rounded-2xl overflow-hidden bg-surface-900/50">
-                    <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/5">
+                <div className="lg:col-span-2 card p-0 border-0 rounded-2xl overflow-hidden shadow-lg">
+                    <div className="p-6 border-b border-surface-200 dark:border-white/5 flex justify-between items-center bg-surface-800 dark:bg-white/5">
                         <h3 className="text-lg font-semibold flex items-center gap-2">
-                            <Wifi size={20} className="text-brand-400" />
+                            <Wifi size={20} className="text-brand-500" />
                             Live Network Status
                         </h3>
                         <div className="flex gap-2">
                             <button className="text-[10px] font-bold uppercase tracking-widest text-white px-3 py-1 bg-brand-500 rounded">All</button>
-                            <button className="text-[10px] font-bold uppercase tracking-widest text-surface-400 px-3 py-1 hover:text-brand-400 transition-colors">Online</button>
-                            <button className="text-[10px] font-bold uppercase tracking-widest text-surface-400 px-3 py-1 hover:text-brand-400 transition-colors">Issues</button>
+                            <button className="text-[10px] font-bold uppercase tracking-widest text-surface-400 dark:text-surface-400 px-3 py-1 hover:text-brand-500 transition-colors">Online</button>
+                            <button className="text-[10px] font-bold uppercase tracking-widest text-surface-400 dark:text-surface-400 px-3 py-1 hover:text-brand-500 transition-colors">Issues</button>
                         </div>
                     </div>
 
@@ -222,20 +222,20 @@ export default function DashboardPage() {
                         {heartbeats.map(hb => {
                             const online = isOnline(hb.last_seen_at)
                             return (
-                                <div key={hb.id} className="flex items-center justify-between p-4 bg-surface-800/20 hover:bg-surface-800/40 border border-surface-700/30 rounded-xl transition-all group">
+                                <div key={hb.id} className="flex items-center justify-between p-4 bg-surface-50 hover:bg-surface-100 dark:bg-surface-800/20 dark:hover:bg-surface-800/40 border border-surface-200 dark:border-surface-700/30 rounded-xl transition-all group">
                                     <div className="flex items-center gap-4">
-                                        <div className={`w-12 h-12 rounded-lg flex items-center justify-center border ${online ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
+                                        <div className={`w-12 h-12 rounded-lg flex items-center justify-center border ${online ? 'bg-green-500/10 border-green-500/20 text-green-600 dark:text-green-500' : 'bg-red-500/10 border-red-500/20 text-red-600 dark:text-red-500'}`}>
                                             <Monitor size={20} />
                                         </div>
                                         <div>
-                                            <div className="text-sm font-semibold">{hb.device_code}</div>
-                                            <div className="text-xs text-surface-500 flex items-center gap-2">
+                                            <div className="text-sm font-semibold text-[color:var(--color-text-primary)]">{hb.device_code}</div>
+                                            <div className="text-xs text-surface-500 dark:text-white/40 flex items-center gap-2">
                                                 <span className={`w-2 h-2 rounded-full ${online ? 'bg-green-500' : 'bg-red-500'}`} />
                                                 {hb.device?.store?.name || hb.device?.display_name || 'Main Office'} · {hb.status || 'Active'}
                                             </div>
                                         </div>
                                     </div>
-                                    <button onClick={() => navigate('/admin/devices')} className="px-3 py-1.5 bg-surface-800 text-surface-300 hover:text-white rounded-lg text-xs font-semibold border border-white/5 opacity-0 group-hover:opacity-100 transition-all">
+                                    <button onClick={() => navigate('/admin/devices')} className="px-3 py-1.5 bg-surface-200 dark:bg-surface-800 text-surface-500 dark:text-surface-300 hover:text-brand-500 dark:hover:text-white rounded-lg text-xs font-semibold border border-surface-300 dark:border-white/5 opacity-0 group-hover:opacity-100 transition-all">
                                         Edit / Fix
                                     </button>
                                 </div>
@@ -251,7 +251,7 @@ export default function DashboardPage() {
 
                 {/* Quick Actions & High-level Alerts */}
                 <div className="space-y-6">
-                    <div className="card-glass border border-white/5 rounded-2xl p-6 bg-surface-900/50">
+                    <div className="card border-0 rounded-2xl p-6 shadow-lg">
                         <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
                             <Zap size={20} className="text-yellow-500" />
                             Quick Actions
@@ -264,13 +264,13 @@ export default function DashboardPage() {
                         </div>
                     </div>
 
-                    <div className="card-glass border border-white/5 rounded-2xl p-6 bg-surface-900/50">
+                    <div className="card border-0 rounded-2xl p-6 shadow-lg">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-lg font-semibold flex items-center gap-2">
                                 <AlertTriangle size={20} className="text-red-500" />
                                 Alerts
                             </h3>
-                            <button className="text-xs text-brand-400 font-bold hover:underline">View All</button>
+                            <button className="text-xs text-brand-500 font-bold hover:underline">View All</button>
                         </div>
                         {alerts.length > 0 ? (
                             <div className="space-y-4">
@@ -278,7 +278,7 @@ export default function DashboardPage() {
                                     <div key={i} className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex gap-3">
                                         <AlertTriangle size={16} className="text-red-500 shrink-0 mt-0.5" />
                                         <div>
-                                            <div className="text-xs font-bold text-red-500 mb-1">{a.device_code} Offline</div>
+                                            <div className="text-xs font-bold text-red-600 dark:text-red-500 mb-1">{a.device_code} Offline</div>
                                             <div className="text-[10px] text-surface-500">Last seen {formatDistanceToNow(new Date(a.last_seen_at), { addSuffix: true })}</div>
                                         </div>
                                     </div>
@@ -286,7 +286,7 @@ export default function DashboardPage() {
                             </div>
                         ) : (
                             <div className="text-center py-4">
-                                <span className="text-xs text-surface-600">All systems operational</span>
+                                <span className="text-xs text-surface-400 dark:text-surface-600">All systems operational</span>
                             </div>
                         )}
                     </div>
@@ -299,24 +299,24 @@ export default function DashboardPage() {
 function MetricTile({ title, value, trend, icon, color, to }: any) {
     const navigate = useNavigate()
     const colors: any = {
-        blue: 'from-blue-500/20 text-blue-400 border-blue-500/20',
-        green: 'from-green-500/20 text-green-400 border-green-500/20',
-        orange: 'from-orange-500/20 text-orange-400 border-orange-500/20',
-        red: 'from-red-500/20 text-red-400 border-red-500/20',
+        blue: 'from-blue-50/50 to-blue-100/30 text-blue-600 border-blue-200 dark:from-blue-500/20 dark:text-blue-400 dark:border-blue-500/20',
+        green: 'from-green-50/50 to-green-100/30 text-green-600 border-green-200 dark:from-green-500/20 dark:text-green-400 dark:border-green-500/20',
+        orange: 'from-orange-50/50 to-orange-100/30 text-orange-600 border-orange-200 dark:from-orange-500/20 dark:text-orange-400 dark:border-orange-500/20',
+        red: 'from-red-50/50 to-red-100/30 text-red-600 border-red-200 dark:from-red-500/20 dark:text-red-400 dark:border-red-500/20',
     }
 
     return (
         <div
             onClick={() => to && navigate(to)}
-            className={`p-5 rounded-2xl bg-gradient-to-br bg-surface-900 border ${colors[color]} shadow-lg cursor-pointer hover:translate-y-[-2px] transition-transform active:scale-95`}
+            className={`p-5 rounded-2xl bg-gradient-to-br bg-[color:var(--color-surface-500)] border ${colors[color]} shadow-md cursor-pointer hover:translate-y-[-2px] transition-transform active:scale-95`}
         >
             <div className="flex justify-between items-start mb-4">
-                <div className="p-2.5 bg-white/5 rounded-xl border border-white/5">{icon}</div>
+                <div className="p-2.5 bg-black/5 dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/5">{icon}</div>
                 <TrendingUp size={16} className="opacity-40" />
             </div>
             <div>
                 <div className="text-2xl font-bold mb-1">{value}</div>
-                <div className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-2">{title}</div>
+                <div className="text-[10px] font-bold uppercase tracking-widest opacity-70 mb-2">{title}</div>
                 <div className="text-[10px] font-semibold flex items-center gap-1 opacity-80">
                     <ArrowUpRight size={10} /> {trend}
                 </div>
@@ -327,11 +327,11 @@ function MetricTile({ title, value, trend, icon, color, to }: any) {
 
 function ActionTile({ title, sub, icon, onClick }: any) {
     return (
-        <button onClick={onClick} className="flex flex-col items-center justify-center p-4 bg-white/5 hover:bg-white/[0.08] border border-white/5 rounded-xl transition-all gap-2 group">
-            <div className="p-2 bg-white/5 rounded-lg group-hover:scale-110 transition-transform">{icon}</div>
+        <button onClick={onClick} className="flex flex-col items-center justify-center p-4 bg-surface-100 dark:bg-white/5 hover:bg-surface-200 dark:hover:bg-white/[0.08] border border-surface-200 dark:border-white/5 rounded-xl transition-all gap-2 group">
+            <div className={`p-2 bg-white/50 dark:bg-white/5 rounded-lg group-hover:scale-110 transition-transform text-[color:var(--color-brand-500)]`}>{icon}</div>
             <div className="text-center">
-                <div className="text-[11px] font-bold leading-tight">{title}</div>
-                <div className="text-[9px] text-surface-500 leading-tight mt-0.5">{sub}</div>
+                <div className="text-[11px] font-bold leading-tight text-[color:var(--color-text-primary)]">{title}</div>
+                <div className="text-[9px] text-surface-500 dark:text-white/40 leading-tight mt-0.5">{sub}</div>
             </div>
         </button>
     )

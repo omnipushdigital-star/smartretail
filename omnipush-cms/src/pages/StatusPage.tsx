@@ -12,15 +12,15 @@ export default function StatusPage() {
     }, [])
 
     const services = [
-        { name: 'Core API (Supabase)', status: 'operational', uptime: '99.99%', latency: '45ms', icon: <Database className="text-blue-500" /> },
+        { name: 'Core API (Supabase)', status: 'operational', uptime: '99.99%', latency: '45ms', icon: <Database className="text-brand-500" /> },
         { name: 'Content Delivery Network', status: 'operational', uptime: '100%', latency: '12ms', icon: <Globe className="text-emerald-500" /> },
-        { name: 'Edge Functions', status: 'operational', uptime: '99.95%', latency: '120ms', icon: <Zap className="text-amber-500" /> },
+        { name: 'Edge Functions', status: 'operational', uptime: '99.95%', latency: '120ms', icon: <Zap className="text-orange-500" /> },
         { name: 'Real-time Heartbeats', status: 'operational', uptime: '99.98%', latency: '85ms', icon: <Activity className="text-rose-500" /> },
         { name: 'Media Storage', status: 'operational', uptime: '100%', latency: '30ms', icon: <Server className="text-slate-500" /> },
     ]
 
     return (
-        <div style={{ minHeight: '100vh', background: 'var(--color-surface-950)', color: 'white', padding: '100px 5% 50px' }}>
+        <div style={{ minHeight: '100vh', background: 'var(--color-surface-950)', color: 'var(--color-text-primary)', padding: '100px 5% 50px' }}>
             {/* Nav */}
             <nav style={{
                 height: 80,
@@ -32,7 +32,8 @@ export default function StatusPage() {
                 top: 0, left: 0, right: 0,
                 zIndex: 100,
                 backdropFilter: 'blur(12px)',
-                borderBottom: '1px solid rgba(255,255,255,0.05)'
+                background: 'var(--color-surface-900/80)',
+                borderBottom: '1px solid var(--color-surface-800)'
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }} onClick={() => navigate('/')}>
                     <div style={{
@@ -44,7 +45,7 @@ export default function StatusPage() {
                     </div>
                     <span style={{ fontWeight: 800, fontSize: '1.125rem' }}>OmniPush</span>
                 </div>
-                <div style={{ fontSize: '0.875rem', color: '#64748b' }}>
+                <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>
                     Current Time: {currentTime.toLocaleTimeString()}
                 </div>
             </nav>
@@ -57,7 +58,7 @@ export default function StatusPage() {
                         gap: '0.75rem',
                         padding: '1rem 2rem',
                         background: 'rgba(34, 197, 94, 0.1)',
-                        border: '1px solid rgba(34, 197, 94, 0.2)',
+                        border: '1px solid rgba(24, 163, 75, 0.2)',
                         borderRadius: 16,
                         color: '#22c55e',
                         fontWeight: 700,
@@ -67,27 +68,27 @@ export default function StatusPage() {
                         <CheckCircle2 size={24} />
                         All Systems Operational
                     </div>
-                    <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', fontWeight: 800, marginBottom: '0.5rem' }}>System Status</h1>
-                    <p style={{ color: '#64748b' }}>Real-time health monitoring of the OmniPush Digital network.</p>
+                    <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', fontWeight: 800, marginBottom: '0.5rem', color: 'var(--color-text-primary)' }}>System Status</h1>
+                    <p style={{ color: 'var(--color-text-secondary)' }}>Real-time health monitoring of the OmniPush Digital network.</p>
                 </header>
 
-                <div className="glassmorphism" style={{ borderRadius: 24, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <div className="card" style={{ padding: 0, overflow: 'hidden', border: '1px solid var(--color-surface-800)' }}>
                     {services.map((s, i) => (
                         <div key={i} style={{
                             padding: '1.5rem 2rem',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
-                            borderBottom: i === services.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.05)',
-                            background: i % 2 === 0 ? 'rgba(255,255,255,0.01)' : 'transparent'
+                            borderBottom: i === services.length - 1 ? 'none' : '1px solid var(--color-surface-800)',
+                            background: i % 2 === 0 ? 'rgba(var(--color-surface-rgb), 0.02)' : 'transparent'
                         }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(255,255,255,0.03)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--color-surface-800)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                     {s.icon}
                                 </div>
                                 <div>
-                                    <div style={{ fontWeight: 600, fontSize: '1rem' }}>{s.name}</div>
-                                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Uptime: {s.uptime} · Latency: {s.latency}</div>
+                                    <div style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--color-text-primary)' }}>{s.name}</div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>Uptime: {s.uptime} · Latency: {s.latency}</div>
                                 </div>
                             </div>
                             <div style={{
@@ -107,29 +108,29 @@ export default function StatusPage() {
                 </div>
 
                 <div style={{ marginTop: '4rem' }}>
-                    <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.5rem' }}>Core Network Metrics</h3>
+                    <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.5rem', color: 'var(--color-text-primary)' }}>Core Network Metrics</h3>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem' }}>
-                        <div className="card" style={{ padding: '1.5rem', background: 'rgba(255,255,255,0.02)' }}>
-                            <div style={{ color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.5rem' }}>Active Players</div>
-                            <div style={{ fontSize: '2rem', fontWeight: 800, fontFamily: 'var(--font-display)' }}>1,248</div>
+                        <div className="card" style={{ padding: '1.5rem', background: 'rgba(var(--color-surface-rgb), 0.02)' }}>
+                            <div style={{ color: 'var(--color-text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.5rem' }}>Active Players</div>
+                            <div style={{ fontSize: '2rem', fontWeight: 800, fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>1,248</div>
                             <div style={{ fontSize: '0.75rem', color: '#22c55e', marginTop: '0.25rem' }}>↑ 12 in last hour</div>
                         </div>
-                        <div className="card" style={{ padding: '1.5rem', background: 'rgba(255,255,255,0.02)' }}>
-                            <div style={{ color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.5rem' }}>Content Delivery</div>
-                            <div style={{ fontSize: '2rem', fontWeight: 800, fontFamily: 'var(--font-display)' }}>42.5 TB</div>
-                            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem' }}>Monthly data served</div>
+                        <div className="card" style={{ padding: '1.5rem', background: 'rgba(var(--color-surface-rgb), 0.02)' }}>
+                            <div style={{ color: 'var(--color-text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.5rem' }}>Content Delivery</div>
+                            <div style={{ fontSize: '2rem', fontWeight: 800, fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>42.5 TB</div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: '0.25rem' }}>Monthly data served</div>
                         </div>
-                        <div className="card" style={{ padding: '1.5rem', background: 'rgba(255,255,255,0.02)' }}>
-                            <div style={{ color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.5rem' }}>API Requests</div>
-                            <div style={{ fontSize: '2rem', fontWeight: 800, fontFamily: 'var(--font-display)' }}>12.8M</div>
-                            <div style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '0.25rem' }}>Peak: 4.2k req/min</div>
+                        <div className="card" style={{ padding: '1.5rem', background: 'rgba(var(--color-surface-rgb), 0.02)' }}>
+                            <div style={{ color: 'var(--color-text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.5rem' }}>API Requests</div>
+                            <div style={{ fontSize: '2rem', fontWeight: 800, fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>12.8M</div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--color-brand-400)', marginTop: '0.25rem' }}>Peak: 4.2k req/min</div>
                         </div>
                     </div>
                 </div>
 
-                <footer style={{ marginTop: '5rem', textAlign: 'center', padding: '2rem', borderTop: '1px solid rgba(255,255,255,0.05)', color: '#475569', fontSize: '0.875rem' }}>
+                <footer style={{ marginTop: '5rem', textAlign: 'center', padding: '2rem', borderTop: '1px solid var(--color-surface-800)', color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
                     Automated checks performed every 60 seconds. <br />
-                    Contact <a href="mailto:support@omnipushdigital.com" style={{ color: 'var(--color-brand-400)', textDecoration: 'none' }}>support@omnipushdigital.com</a> for technical issues.
+                    Contact <a href="mailto:support@omnipushdigital.com" style={{ color: 'var(--color-brand-500)', textDecoration: 'none' }}>support@omnipushdigital.com</a> for technical issues.
                 </footer>
             </div>
         </div>

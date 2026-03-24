@@ -115,17 +115,7 @@ serve(async (req: Request) => {
             .eq("id", pub.bundle_id)
             .single();
 
-        // ── Early Exit if Up-to-Date ──
-        if (current_version && bundle?.version === current_version) {
-            console.log(`[Manifest] Device ${device_code} is already up to date (Version: ${current_version})`);
-            return Response.json({
-                up_to_date: true,
-                version: bundle.version,
-                poll_seconds: 30, // As requested: check every 30s
-            }, { headers: corsHeaders });
-        }
-
-        // 4. Fetch layout + template
+        // 4. Fetch layout + template (to get playlist items)
         const { data: layout } = await supabase
             .from("layouts")
             .select("id, name, template_id")
@@ -146,15 +136,34 @@ serve(async (req: Request) => {
 
         const playlistIds = [...new Set((regionMaps || []).map((r: any) => r.playlist_id))];
 
-        // 6. Fetch playlist items
+        // 6. Fetch playlist items to check their latest update
         const { data: rawItems } = await supabase
             .from("playlist_items")
             .select("*")
             .in("playlist_id", playlistIds)
             .order("sort_order");
 
+        // Calculate a dynamic version hash based on bundle version and items
+        const maxUpdated = (rawItems || []).reduce((max: number, item: any) => {
+            const t = new Date(item.updated_at || item.created_at).getTime();
+            return t > max ? t : max;
+        }, 0);
+
+        const dynamicVersion = `${bundle?.version || 'v0'}-${maxUpdated}`;
+
+        // ── Early Exit if Up-to-Date ──
+        // Only return up-to-date if the dynamic version matches EXACTLY.
+        if (current_version && dynamicVersion === current_version) {
+            console.log(`[Manifest] Device ${device_code} is already up to date (Version: ${current_version})`);
+            return Response.json({
+                up_to_date: true,
+                version: dynamicVersion,
+                poll_seconds: 30, // As requested: check every 30s
+            }, { headers: corsHeaders });
+        }
+
         // VALIDATION: Filter out items that are incomplete
-        const validRawItems = (rawItems || []).filter(item => {
+        const validRawItems = (rawItems || []).filter((item: any) => {
             if (item.type === 'web_url') return !!item.web_url;
             return !!item.media_id;
         });
@@ -278,7 +287,7 @@ serve(async (req: Request) => {
                 role: device.role?.name || null,
                 pub_id: pub.id || null,
                 bundle_id: bundle?.id || null,
-                version: bundle?.version || null,
+                version: dynamicVersion,
             },
             layout: {
                 layout_id: layout.id,
