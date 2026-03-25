@@ -590,12 +590,18 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
         }
     }
 
-    // Helper: convert any YouTube watch/short URL to a proper embed URL
+    // Helper: detect and build a YouTube embed URL
+    function getYouTubeId(rawUrl: string): string | null {
+        const m = rawUrl.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/|youtube\.com\/v\/)+([\w-]{11})/)
+        return m ? m[1] : null
+    }
+
     function getEmbedUrl(rawUrl: string): string {
-        const ytMatch = rawUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]{11})/)
-        if (ytMatch) {
-            const id = ytMatch[1]
-            return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&controls=0&loop=1&playlist=${id}`
+        const id = getYouTubeId(rawUrl)
+        if (id) {
+            // enablejsapi lets us postMessage to control playback
+            // controls=1 ensures fallback if autoplay JS fails
+            return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&loop=1&playlist=${id}&controls=1&rel=0&modestbranding=1&enablejsapi=1`
         }
         return rawUrl
     }
@@ -701,20 +707,44 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
                             onError={() => setTimeout(advance, 5000)}
                         />
                     )}
-                    {type === 'web_url' && url && (
-                        <iframe
-                            key={item.playlist_item_id}
-                            src={getEmbedUrl(url)}
-                            style={{
-                                position: 'absolute', top: 0, left: 0,
-                                width: '100%', height: '100%',
-                                border: 'none', display: 'block',
-                            }}
-                            allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-                            allowFullScreen
-                            title="content"
-                        />
-                    )}
+                    {type === 'web_url' && url && (() => {
+                        const ytId = getYouTubeId(url)
+                        const embedSrc = getEmbedUrl(url)
+                        return (
+                            <iframe
+                                key={item.playlist_item_id}
+                                src={embedSrc}
+                                style={{
+                                    position: 'absolute', top: 0, left: 0,
+                                    width: '100%', height: '100%',
+                                    border: 'none', display: 'block',
+                                    background: '#000',
+                                }}
+                                allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+                                allowFullScreen
+                                title="content"
+                                onLoad={(e) => {
+                                    if (!ytId) return
+                                    // Force YouTube to play via postMessage (IFrame API)
+                                    // This bypasses Chrome autoplay restriction on iframes
+                                    const iframe = e.currentTarget
+                                    const tryPlay = () => {
+                                        try {
+                                            iframe.contentWindow?.postMessage(JSON.stringify({
+                                                event: 'command',
+                                                func: 'playVideo',
+                                                args: []
+                                            }), 'https://www.youtube.com')
+                                        } catch (_) { }
+                                    }
+                                    // Send play command: immediately + again after 1s & 3s as backup
+                                    setTimeout(tryPlay, 500)
+                                    setTimeout(tryPlay, 1500)
+                                    setTimeout(tryPlay, 3000)
+                                }}
+                            />
+                        )
+                    })()}
                     {(type === 'ppt' || type === 'presentation') && url && (
                         <iframe
                             key={item.playlist_item_id + '_ppt'}
