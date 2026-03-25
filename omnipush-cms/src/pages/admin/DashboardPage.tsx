@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react'
-import { Monitor, Store, Wifi, WifiOff, AlertTriangle, Clock, FileCheck, ArrowUpRight, TrendingUp, Zap, RotateCcw, Camera, Send, Edit3, ShieldCheck, Activity } from 'lucide-react'
+import { Monitor, Store, Wifi, WifiOff, AlertTriangle, ArrowUpRight, TrendingUp, Zap, RotateCcw, Camera, Send, Edit3, ShieldCheck, Activity } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useTenant } from '../../contexts/TenantContext'
+import { useTheme } from '../../contexts/ThemeContext'
 import { DeviceHeartbeat } from '../../types'
 import { formatDistanceToNow } from 'date-fns'
 import toast from 'react-hot-toast'
@@ -17,14 +18,12 @@ interface Stats {
     roles: number
 }
 
-const ONLINE_THRESHOLD_MS = 10 * 60 * 1000 // 10 minutes (be lenient during debugging)
+const ONLINE_THRESHOLD_MS = 10 * 60 * 1000
 
 interface ProjectHeartbeat extends DeviceHeartbeat {
     device?: {
         display_name: string
-        store?: {
-            name: string
-        }
+        store?: { name: string }
     }
 }
 
@@ -35,6 +34,8 @@ function isOnline(lastSeen: string) {
 
 export default function DashboardPage() {
     const navigate = useNavigate()
+    const { theme } = useTheme()
+    const isLight = theme === 'light'
     const [stats, setStats] = useState<Stats>({ stores: 0, devices: 0, online: 0, playing: 0, offline: 0, activePubs: 0, roles: 0 })
     const [heartbeats, setHeartbeats] = useState<ProjectHeartbeat[]>([])
     const [alerts, setAlerts] = useState<ProjectHeartbeat[]>([])
@@ -43,32 +44,20 @@ export default function DashboardPage() {
     const { currentTenantId } = useTenant()
 
     useEffect(() => {
-        if (!currentTenantId) {
-            console.log('[Dashboard] Waiting for currentTenantId...')
-            return
-        }
+        if (!currentTenantId) return
 
         async function load() {
             try {
-                console.log(`[Dashboard] Loading stats for tenant: ${currentTenantId}`)
-                const onlineThreshold = new Date(Date.now() - ONLINE_THRESHOLD_MS).toISOString()
-
                 const [storesRes, devicesRes, pubsRes, rolesRes] = await Promise.all([
                     supabase.from('stores').select('id', { count: 'exact', head: true }).eq('tenant_id', currentTenantId),
-                    supabase.from('devices').select('id', { count: 'exact', head: true })
-                        .eq('tenant_id', currentTenantId)
-                        .is('deleted_at', null),
-                    supabase.from('layout_publications').select('id', { count: 'exact', head: true })
-                        .eq('tenant_id', currentTenantId)
-                        .eq('is_active', true)
-                        .limit(0),
+                    supabase.from('devices').select('id', { count: 'exact', head: true }).eq('tenant_id', currentTenantId).is('deleted_at', null),
+                    supabase.from('layout_publications').select('id', { count: 'exact', head: true }).eq('tenant_id', currentTenantId).eq('is_active', true).limit(0),
                     supabase.from('roles').select('id', { count: 'exact', head: true }).eq('tenant_id', currentTenantId),
                 ])
 
                 const { data: allDevices } = await supabase.from('devices').select('id, device_code, tenant_id').eq('tenant_id', currentTenantId).is('deleted_at', null)
                 const devices = allDevices || []
 
-                // Final counts with fallbacks
                 const totalStores = storesRes.count || 0
                 const totalDevicesCount = devicesRes.count || 0
                 const activePubs = pubsRes.count || 0
@@ -96,19 +85,11 @@ export default function DashboardPage() {
                         } else {
                             const current = hbMap.get(code)!
                             const timeDiff = new Date(current.last_seen_at).getTime() - new Date(hb.last_seen_at).getTime()
-
                             if (timeDiff < 60000) {
-                                // 1. Sticky 'playing' status
-                                if (current.status !== 'playing' && hb.status === 'playing') {
-                                    current.status = 'playing'
-                                }
-
-                                // 2. Merge meta: if current is missing health stats but previous (recent) has them, merge
+                                if (current.status !== 'playing' && hb.status === 'playing') current.status = 'playing'
                                 const curMeta = current.meta as any || {}
                                 const oldMeta = hb.meta as any || {}
-                                if (!curMeta.storage_total_gb && oldMeta.storage_total_gb) {
-                                    current.meta = { ...oldMeta, ...curMeta }
-                                }
+                                if (!curMeta.storage_total_gb && oldMeta.storage_total_gb) current.meta = { ...oldMeta, ...curMeta }
                             }
                         }
                     }
@@ -119,17 +100,14 @@ export default function DashboardPage() {
                 const online = onlineList.length
 
                 setStats({
-                    stores: totalStores,
-                    devices: totalDevicesCount,
-                    online,
+                    stores: totalStores, devices: totalDevicesCount, online,
                     playing: onlineList.filter(h => h.status === 'playing').length,
                     offline: Math.max(0, totalDevicesCount - online),
-                    activePubs: activePubs,
-                    roles: totalRoles,
+                    activePubs, roles: totalRoles,
                 })
                 setHeartbeats(latest)
             } catch (err: any) {
-                console.error('[Dashboard] Fetch logic error:', err)
+                console.error('[Dashboard] Fetch error:', err)
             } finally {
                 setLoading(false)
             }
@@ -139,154 +117,154 @@ export default function DashboardPage() {
         return () => clearInterval(interval)
     }, [currentTenantId])
 
+    // ── Theme-aware tokens ───────────────────────────────────────────────
+    const tk = {
+        canvas: isLight ? '#f7f9fd' : 'transparent',
+        cardBg: isLight ? '#ffffff' : 'var(--color-surface-500)',
+        cardBorder: isLight ? 'rgba(190,200,210,0.2)' : 'rgba(255,255,255,0.04)',
+        cardShadow: isLight ? '0 2px 16px rgba(0,55,81,0.05)' : '0 4px 20px rgba(0,0,0,0.2)',
+        rowBg: isLight ? '#f7f9fd' : 'rgba(255,255,255,0.03)',
+        rowHover: isLight ? '#f0f2f7' : 'rgba(255,255,255,0.06)',
+        rowBorder: isLight ? 'rgba(190,200,210,0.2)' : 'rgba(255,255,255,0.06)',
+        headerBg: isLight ? '#f7f9fd' : 'rgba(255,255,255,0.03)',
+        headerBorder: isLight ? 'rgba(190,200,210,0.15)' : 'rgba(255,255,255,0.05)',
+        textPrimary: isLight ? '#191c1f' : '#e2e8f0',
+        textMuted: isLight ? '#6e7881' : '#94a3b8',
+        actionBg: isLight ? '#f2f4f8' : 'rgba(255,255,255,0.05)',
+        actionHover: isLight ? '#e6e8ec' : 'rgba(255,255,255,0.09)',
+        actionBorder: isLight ? 'rgba(190,200,210,0.25)' : 'rgba(255,255,255,0.06)',
+        actionIconBg: isLight ? 'rgba(14,165,233,0.08)' : 'rgba(255,255,255,0.06)',
+        btnSecBg: isLight ? '#f2f4f8' : '#1e293b',
+        btnSecText: isLight ? '#334155' : '#f1f5f9',
+        btnSecBorder: isLight ? 'transparent' : '#334155',
+        arrowColor: isLight ? '#6e7881' : '#334155',
+    }
+
     return (
-        <div className="p-6">
+        <div className="p-6" style={{ background: tk.canvas, minHeight: '100%' }}>
+            {/* ── Header ─────────────────────────────────────────────── */}
             <div className="flex justify-between items-start mb-8">
                 <div>
-                    <h1 className="text-2xl font-bold flex items-center gap-2">
-                        <Monitor className="text-brand-500" size={28} />
+                    <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: tk.textPrimary, display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+                        <Monitor style={{ color: 'var(--color-brand-500)' }} size={26} />
                         Network Dashboard
                     </h1>
-                    <p className="text-surface-400 mt-1">Real-time overview of your retail display network</p>
+                    <p style={{ color: tk.textMuted, marginTop: '0.375rem', fontSize: '0.875rem' }}>
+                        Real-time overview of your retail display network
+                    </p>
                 </div>
-                <div className="flex gap-3">
-                    <button onClick={() => navigate('/admin/global')} className="flex items-center gap-2 px-4 py-2 bg-surface-800 border border-surface-700 text-white rounded-lg hover:bg-surface-700 transition-all">
-                        <ShieldCheck size={18} /> Global Hub
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                    <button
+                        onClick={() => navigate('/admin/global')}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', background: tk.btnSecBg, border: `1px solid ${tk.btnSecBorder}`, borderRadius: 10, color: tk.btnSecText, fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', transition: 'all 0.15s' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = tk.actionHover)}
+                        onMouseLeave={e => (e.currentTarget.style.background = tk.btnSecBg)}
+                    >
+                        <ShieldCheck size={16} /> Global Hub
                     </button>
-                    <button onClick={() => navigate('/admin/publish')} className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-lg transition-all shadow-lg shadow-brand-500/20">
-                        <Send size={18} /> Push All
+                    <button
+                        onClick={() => navigate('/admin/publish')}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1.25rem', background: 'linear-gradient(135deg, var(--color-brand-500), var(--color-brand-600))', border: 'none', borderRadius: 10, color: '#fff', fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer', boxShadow: '0 4px 14px rgba(14,165,233,0.3)', transition: 'all 0.15s' }}
+                    >
+                        <Send size={16} /> Push All
                     </button>
                 </div>
             </div>
 
-            {/* Network Overview Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                <StatCard icon={<Store size={20} />} label="Total Stores" value={stats.stores} color="var(--color-brand-600)" to="/admin/stores" />
-                <StatCard icon={<Monitor size={20} />} label="Total Devices" value={stats.devices} color="var(--color-brand-500)" to="/admin/devices" />
-                <StatCard icon={<Wifi size={20} />} label="Online Now" value={stats.online} subValue={`${stats.playing} Playing`} color="#22c55e" to="/admin/monitoring" />
-                <StatCard icon={<WifiOff size={20} />} label="Offline / Idle" value={stats.offline} subValue="Issue" color="var(--color-error-500)" to="/admin/monitoring" />
+            {/* ── Stat Cards Row ──────────────────────────────────────── */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+                <StatCard icon={<Store size={20} />} label="Total Stores" value={stats.stores} color="var(--color-brand-600)" to="/admin/stores" tk={tk} />
+                <StatCard icon={<Monitor size={20} />} label="Total Devices" value={stats.devices} color="var(--color-brand-500)" to="/admin/devices" tk={tk} />
+                <StatCard icon={<Wifi size={20} />} label="Online Now" value={stats.online} subValue={`${stats.playing} Playing`} color="#22c55e" to="/admin/monitoring" tk={tk} />
+                <StatCard icon={<WifiOff size={20} />} label="Offline / Idle" value={stats.offline} subValue="Issue" color="var(--color-error-500)" to="/admin/monitoring" tk={tk} />
             </div>
 
-            {/* Performance Metric Tiles */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
-                <MetricTile
-                    title="Display Uptime"
-                    value={`${((stats.online / (stats.devices || 1)) * 100).toFixed(1)}%`}
-                    trend="+0.3% vs last week"
-                    icon={<Activity size={22} />}
-                    color="green"
-                    to="/admin/monitoring"
-                />
-                <MetricTile
-                    title="Active Campaigns"
-                    value={stats.activePubs}
-                    trend="Running layouts"
-                    icon={<Zap size={22} />}
-                    color="orange"
-                    to="/admin/publish"
-                />
-                <MetricTile
-                    title="Network Health"
-                    value={stats.online === stats.devices && stats.devices > 0 ? 'Optimal' : stats.online > 0 ? 'Good' : 'Critical'}
-                    trend={`${stats.playing} out of ${stats.online} playing`}
-                    icon={<AlertTriangle size={22} />}
-                    color="blue"
-                    to="/admin/monitoring"
-                />
-                <MetricTile
-                    title="System Alerts"
-                    value={alerts.length}
-                    trend="Click to resolve"
-                    icon={<AlertTriangle size={22} />}
-                    color="red"
-                    to="/admin/monitoring"
-                />
+            {/* ── Metric Tiles Row ────────────────────────────────────── */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '2.5rem' }}>
+                <MetricTile title="Display Uptime" value={`${((stats.online / (stats.devices || 1)) * 100).toFixed(1)}%`} trend="+0.3% vs last week" icon={<Activity size={20} />} color="green" to="/admin/monitoring" isLight={isLight} />
+                <MetricTile title="Active Campaigns" value={stats.activePubs} trend="Running layouts" icon={<Zap size={20} />} color="orange" to="/admin/publish" isLight={isLight} />
+                <MetricTile title="Network Health" value={stats.online === stats.devices && stats.devices > 0 ? 'Optimal' : stats.online > 0 ? 'Good' : 'Critical'} trend={`${stats.playing} out of ${stats.online} playing`} icon={<AlertTriangle size={20} />} color="blue" to="/admin/monitoring" isLight={isLight} />
+                <MetricTile title="System Alerts" value={alerts.length} trend="Click to resolve" icon={<AlertTriangle size={20} />} color="red" to="/admin/monitoring" isLight={isLight} />
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Live Screens List */}
-                <div className="lg:col-span-2 card p-0 border-0 rounded-2xl overflow-hidden shadow-lg">
-                    <div className="p-6 border-b border-surface-200 dark:border-white/5 flex justify-between items-center bg-surface-800 dark:bg-white/5">
-                        <h3 className="text-lg font-semibold flex items-center gap-2">
-                            <Wifi size={20} className="text-brand-500" />
+            {/* ── Bottom Grid ────────────────────────────────────────── */}
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem' }}>
+
+                {/* Live Network Status */}
+                <div style={{ background: tk.cardBg, border: `1px solid ${tk.cardBorder}`, borderRadius: 16, boxShadow: tk.cardShadow, overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.25rem 1.5rem', borderBottom: `1px solid ${tk.headerBorder}`, background: tk.headerBg }}>
+                        <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: tk.textPrimary, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <Wifi size={18} style={{ color: 'var(--color-brand-500)' }} />
                             Live Network Status
                         </h3>
-                        <div className="flex gap-2">
-                            <button className="text-[10px] font-bold uppercase tracking-widest text-white px-3 py-1 bg-brand-500 rounded">All</button>
-                            <button className="text-[10px] font-bold uppercase tracking-widest text-surface-400 dark:text-surface-400 px-3 py-1 hover:text-brand-500 transition-colors">Online</button>
-                            <button className="text-[10px] font-bold uppercase tracking-widest text-surface-400 dark:text-surface-400 px-3 py-1 hover:text-brand-500 transition-colors">Issues</button>
+                        <div style={{ display: 'flex', gap: '0.375rem' }}>
+                            {['All', 'Online', 'Issues'].map((label, i) => (
+                                <button
+                                    key={label}
+                                    style={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '0.25rem 0.75rem', borderRadius: 6, border: 'none', cursor: 'pointer', background: i === 0 ? 'var(--color-brand-500)' : 'transparent', color: i === 0 ? '#fff' : tk.textMuted, transition: 'all 0.15s' }}
+                                >{label}</button>
+                            ))}
                         </div>
                     </div>
 
-                    <div className="p-4 space-y-3 max-h-[500px] overflow-y-auto">
-                        {heartbeats.map(hb => {
+                    <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.625rem', maxHeight: 420, overflowY: 'auto' }}>
+                        {loading ? (
+                            <div style={{ textAlign: 'center', padding: '3rem', color: tk.textMuted, fontSize: '0.875rem' }}>Loading devices…</div>
+                        ) : heartbeats.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '3rem', color: tk.textMuted, fontSize: '0.875rem' }}>No devices active yet.</div>
+                        ) : heartbeats.map(hb => {
                             const online = isOnline(hb.last_seen_at)
                             return (
-                                <div key={hb.id} className="flex items-center justify-between p-4 bg-surface-50 hover:bg-surface-100 dark:bg-surface-800/20 dark:hover:bg-surface-800/40 border border-surface-200 dark:border-surface-700/30 rounded-xl transition-all group">
-                                    <div className="flex items-center gap-4">
-                                        <div className={`w-12 h-12 rounded-lg flex items-center justify-center border ${online ? 'bg-green-500/10 border-green-500/20 text-green-600 dark:text-green-500' : 'bg-red-500/10 border-red-500/20 text-red-600 dark:text-red-500'}`}>
-                                            <Monitor size={20} />
-                                        </div>
-                                        <div>
-                                            <div className="text-sm font-semibold text-[color:var(--color-text-primary)]">{hb.device_code}</div>
-                                            <div className="text-xs text-surface-500 dark:text-white/40 flex items-center gap-2">
-                                                <span className={`w-2 h-2 rounded-full ${online ? 'bg-green-500' : 'bg-red-500'}`} />
-                                                {hb.device?.store?.name || hb.device?.display_name || 'Main Office'} · {hb.status || 'Active'}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <button onClick={() => navigate('/admin/devices')} className="px-3 py-1.5 bg-surface-200 dark:bg-surface-800 text-surface-500 dark:text-surface-300 hover:text-brand-500 dark:hover:text-white rounded-lg text-xs font-semibold border border-surface-300 dark:border-white/5 opacity-0 group-hover:opacity-100 transition-all">
-                                        Edit / Fix
-                                    </button>
-                                </div>
+                                <DeviceRow key={hb.id} hb={hb} online={online} tk={tk} onEdit={() => navigate('/admin/devices')} />
                             )
                         })}
-                        {heartbeats.length === 0 && (
-                            <div className="py-20 text-center text-surface-500">
-                                No devices active in this network yet.
-                            </div>
-                        )}
                     </div>
                 </div>
 
-                {/* Quick Actions & High-level Alerts */}
-                <div className="space-y-6">
-                    <div className="card border-0 rounded-2xl p-6 shadow-lg">
-                        <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
-                            <Zap size={20} className="text-yellow-500" />
+                {/* Right column */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+
+                    {/* Quick Actions */}
+                    <div style={{ background: tk.cardBg, border: `1px solid ${tk.cardBorder}`, borderRadius: 16, boxShadow: tk.cardShadow, padding: '1.5rem' }}>
+                        <h3 style={{ margin: '0 0 1.25rem', fontSize: '1rem', fontWeight: 700, color: tk.textPrimary, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <Zap size={18} style={{ color: '#f59e0b' }} />
                             Quick Actions
                         </h3>
-                        <div className="grid grid-cols-2 gap-4">
-                            <ActionTile onClick={() => navigate('/admin/menu-builder')} title="Update Menu" sub="Prices & items" icon={<Edit3 size={18} />} />
-                            <ActionTile onClick={() => navigate('/admin/publish')} title="Push to All" sub="Broadcast update" icon={<Send size={18} />} />
-                            <ActionTile onClick={() => toast.success('Reboot command sent to 8 screens!')} title="Reboot Screens" sub="Remote restart" icon={<RotateCcw size={18} />} />
-                            <ActionTile onClick={() => toast.success('Capturing screenshots...')} title="Screenshot" sub="Verify content" icon={<Camera size={18} />} />
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                            <ActionTile onClick={() => navigate('/admin/menu-builder')} title="Update Menu" sub="Prices & items" icon={<Edit3 size={16} />} tk={tk} />
+                            <ActionTile onClick={() => navigate('/admin/publish')} title="Push to All" sub="Broadcast update" icon={<Send size={16} />} tk={tk} />
+                            <ActionTile onClick={() => toast.success('Reboot command sent!')} title="Reboot Screens" sub="Remote restart" icon={<RotateCcw size={16} />} tk={tk} />
+                            <ActionTile onClick={() => toast.success('Capturing screenshots…')} title="Screenshot" sub="Verify content" icon={<Camera size={16} />} tk={tk} />
                         </div>
                     </div>
 
-                    <div className="card border-0 rounded-2xl p-6 shadow-lg">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-lg font-semibold flex items-center gap-2">
-                                <AlertTriangle size={20} className="text-red-500" />
+                    {/* Alerts */}
+                    <div style={{ background: tk.cardBg, border: `1px solid ${tk.cardBorder}`, borderRadius: 16, boxShadow: tk.cardShadow, padding: '1.5rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: tk.textPrimary, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <AlertTriangle size={18} style={{ color: '#ef4444' }} />
                                 Alerts
                             </h3>
-                            <button className="text-xs text-brand-500 font-bold hover:underline">View All</button>
+                            <button style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-brand-500)', background: 'none', border: 'none', cursor: 'pointer' }}>View All</button>
                         </div>
                         {alerts.length > 0 ? (
-                            <div className="space-y-4">
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                                 {alerts.slice(0, 2).map((a, i) => (
-                                    <div key={i} className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex gap-3">
-                                        <AlertTriangle size={16} className="text-red-500 shrink-0 mt-0.5" />
+                                    <div key={i} style={{ padding: '0.875rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, display: 'flex', gap: '0.75rem' }}>
+                                        <AlertTriangle size={14} style={{ color: '#ef4444', flexShrink: 0, marginTop: 2 }} />
                                         <div>
-                                            <div className="text-xs font-bold text-red-600 dark:text-red-500 mb-1">{a.device_code} Offline</div>
-                                            <div className="text-[10px] text-surface-500">Last seen {formatDistanceToNow(new Date(a.last_seen_at), { addSuffix: true })}</div>
+                                            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#ef4444', marginBottom: '0.25rem' }}>{a.device_code} Offline</div>
+                                            <div style={{ fontSize: '0.6875rem', color: tk.textMuted }}>Last seen {formatDistanceToNow(new Date(a.last_seen_at), { addSuffix: true })}</div>
                                         </div>
                                     </div>
                                 ))}
                             </div>
                         ) : (
-                            <div className="text-center py-4">
-                                <span className="text-xs text-surface-400 dark:text-surface-600">All systems operational</span>
+                            <div style={{ textAlign: 'center', padding: '1.5rem 0' }}>
+                                <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(34,197,94,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 0.75rem' }}>
+                                    <ShieldCheck size={18} style={{ color: '#22c55e' }} />
+                                </div>
+                                <span style={{ fontSize: '0.8125rem', color: tk.textMuted, fontWeight: 500 }}>All systems operational</span>
                             </div>
                         )}
                     </div>
@@ -296,93 +274,130 @@ export default function DashboardPage() {
     )
 }
 
-function MetricTile({ title, value, trend, icon, color, to }: any) {
-    const navigate = useNavigate()
-    const colors: any = {
-        blue: 'from-blue-50/50 to-blue-100/30 text-blue-600 border-blue-200 dark:from-blue-500/20 dark:text-blue-400 dark:border-blue-500/20',
-        green: 'from-green-50/50 to-green-100/30 text-green-600 border-green-200 dark:from-green-500/20 dark:text-green-400 dark:border-green-500/20',
-        orange: 'from-orange-50/50 to-orange-100/30 text-orange-600 border-orange-200 dark:from-orange-500/20 dark:text-orange-400 dark:border-orange-500/20',
-        red: 'from-red-50/50 to-red-100/30 text-red-600 border-red-200 dark:from-red-500/20 dark:text-red-400 dark:border-red-500/20',
-    }
+// ── Sub-components ───────────────────────────────────────────────────────
 
+function DeviceRow({ hb, online, tk, onEdit }: { hb: ProjectHeartbeat, online: boolean, tk: any, onEdit: () => void }) {
+    const [hovered, setHovered] = useState(false)
     return (
         <div
-            onClick={() => to && navigate(to)}
-            className={`p-5 rounded-2xl bg-gradient-to-br bg-[color:var(--color-surface-500)] border ${colors[color]} shadow-md cursor-pointer hover:translate-y-[-2px] transition-transform active:scale-95`}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.875rem 1rem', background: hovered ? tk.rowHover : tk.rowBg, border: `1px solid ${tk.rowBorder}`, borderRadius: 12, transition: 'all 0.15s', cursor: 'default' }}
         >
-            <div className="flex justify-between items-start mb-4">
-                <div className="p-2.5 bg-black/5 dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/5">{icon}</div>
-                <TrendingUp size={16} className="opacity-40" />
-            </div>
-            <div>
-                <div className="text-2xl font-bold mb-1">{value}</div>
-                <div className="text-[10px] font-bold uppercase tracking-widest opacity-70 mb-2">{title}</div>
-                <div className="text-[10px] font-semibold flex items-center gap-1 opacity-80">
-                    <ArrowUpRight size={10} /> {trend}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
+                <div style={{ width: 44, height: 44, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: online ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)', border: `1px solid ${online ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`, color: online ? '#22c55e' : '#ef4444', flexShrink: 0 }}>
+                    <Monitor size={18} />
+                </div>
+                <div>
+                    <div style={{ fontSize: '0.875rem', fontWeight: 700, color: tk.textPrimary, letterSpacing: '0.01em' }}>{hb.device_code}</div>
+                    <div style={{ fontSize: '0.75rem', color: tk.textMuted, display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.125rem' }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: online ? '#22c55e' : '#ef4444', flexShrink: 0, display: 'inline-block' }} />
+                        {hb.device?.store?.name || hb.device?.display_name || 'Main Office'} · {hb.status || 'Active'}
+                    </div>
                 </div>
             </div>
+            {hovered && (
+                <button
+                    onClick={onEdit}
+                    style={{ padding: '0.375rem 0.875rem', background: tk.actionBg, border: `1px solid ${tk.actionBorder}`, borderRadius: 8, color: tk.textMuted, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s' }}
+                    onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-brand-500)')}
+                    onMouseLeave={e => (e.currentTarget.style.color = tk.textMuted)}
+                >
+                    Edit / Fix
+                </button>
+            )}
         </div>
     )
 }
 
-function ActionTile({ title, sub, icon, onClick }: any) {
+function ActionTile({ title, sub, icon, onClick, tk }: any) {
+    const [hovered, setHovered] = useState(false)
     return (
-        <button onClick={onClick} className="flex flex-col items-center justify-center p-4 bg-surface-100 dark:bg-white/5 hover:bg-surface-200 dark:hover:bg-white/[0.08] border border-surface-200 dark:border-white/5 rounded-xl transition-all gap-2 group">
-            <div className={`p-2 bg-white/50 dark:bg-white/5 rounded-lg group-hover:scale-110 transition-transform text-[color:var(--color-brand-500)]`}>{icon}</div>
-            <div className="text-center">
-                <div className="text-[11px] font-bold leading-tight text-[color:var(--color-text-primary)]">{title}</div>
-                <div className="text-[9px] text-surface-500 dark:text-white/40 leading-tight mt-0.5">{sub}</div>
+        <button
+            onClick={onClick}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '1.125rem 0.75rem', background: hovered ? tk.actionHover : tk.actionBg, border: `1px solid ${tk.actionBorder}`, borderRadius: 12, gap: '0.625rem', cursor: 'pointer', transition: 'all 0.2s', transform: hovered ? 'translateY(-1px)' : 'translateY(0)' }}
+        >
+            <div style={{ padding: '0.5rem', background: tk.actionIconBg, borderRadius: 8, color: 'var(--color-brand-500)', display: 'flex', transform: hovered ? 'scale(1.1)' : 'scale(1)', transition: 'transform 0.2s' }}>
+                {icon}
+            </div>
+            <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: tk.textPrimary, lineHeight: 1.3 }}>{title}</div>
+                <div style={{ fontSize: '0.6875rem', color: tk.textMuted, marginTop: '0.125rem' }}>{sub}</div>
             </div>
         </button>
     )
 }
 
+function MetricTile({ title, value, trend, icon, color, to, isLight }: any) {
+    const navigate = useNavigate()
+    const [hovered, setHovered] = useState(false)
 
-function StatCard({
-    icon, label, value, subValue, color, to
-}: {
-    icon: React.ReactNode
-    label: string
-    value: number | string
-    subValue?: string
-    color: string
-    to?: string
+    const palette: Record<string, { lightBg: string; darkBg: string; lightText: string; darkText: string; lightBorder: string; darkBorder: string }> = {
+        green: { lightBg: '#f0fdf4', darkBg: 'rgba(34,197,94,0.12)', lightText: '#15803d', darkText: '#4ade80', lightBorder: 'rgba(34,197,94,0.2)', darkBorder: 'rgba(34,197,94,0.2)' },
+        orange: { lightBg: '#fff7ed', darkBg: 'rgba(249,115,22,0.12)', lightText: '#c2410c', darkText: '#fb923c', lightBorder: 'rgba(249,115,22,0.2)', darkBorder: 'rgba(249,115,22,0.2)' },
+        blue: { lightBg: '#f0f9ff', darkBg: 'rgba(14,165,233,0.12)', lightText: '#0369a1', darkText: '#38bdf8', lightBorder: 'rgba(14,165,233,0.2)', darkBorder: 'rgba(14,165,233,0.2)' },
+        red: { lightBg: '#fff1f2', darkBg: 'rgba(239,68,68,0.12)', lightText: '#dc2626', darkText: '#f87171', lightBorder: 'rgba(239,68,68,0.2)', darkBorder: 'rgba(239,68,68,0.2)' },
+    }
+
+    const p = palette[color] || palette.blue
+    const bg = isLight ? p.lightBg : p.darkBg
+    const text = isLight ? p.lightText : p.darkText
+    const border = isLight ? p.lightBorder : p.darkBorder
+    const shadow = isLight ? `0 2px 12px rgba(0,55,81,0.05)` : '0 4px 16px rgba(0,0,0,0.15)'
+
+    return (
+        <div
+            onClick={() => to && navigate(to)}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            style={{ padding: '1.25rem', borderRadius: 16, background: bg, border: `1px solid ${border}`, boxShadow: shadow, cursor: to ? 'pointer' : 'default', transform: hovered ? 'translateY(-3px)' : 'translateY(0)', transition: 'transform 0.18s ease, box-shadow 0.18s ease' }}
+        >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                <div style={{ padding: '0.5rem', background: isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.07)', borderRadius: 10, color: text, display: 'flex' }}>
+                    {icon}
+                </div>
+                <TrendingUp size={14} style={{ color: text, opacity: 0.5 }} />
+            </div>
+            <div style={{ fontSize: '1.625rem', fontWeight: 800, color: text, lineHeight: 1.1, marginBottom: '0.25rem' }}>{value}</div>
+            <div style={{ fontSize: '0.6875rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: text, opacity: 0.65, marginBottom: '0.5rem' }}>{title}</div>
+            <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: text, opacity: 0.7, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                <ArrowUpRight size={10} /> {trend}
+            </div>
+        </div>
+    )
+}
+
+function StatCard({ icon, label, value, subValue, color, to, tk }: {
+    icon: React.ReactNode, label: string, value: number | string,
+    subValue?: string, color: string, to?: string, tk: any
 }) {
     const navigate = useNavigate()
     const [hovered, setHovered] = useState(false)
 
-    const handleClick = () => { if (to) navigate(to) }
-
     return (
         <div
             className="stat-card"
-            onClick={handleClick}
+            onClick={() => to && navigate(to)}
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             style={{
                 cursor: to ? 'pointer' : 'default',
                 transform: hovered && to ? 'translateY(-3px)' : 'translateY(0)',
-                boxShadow: hovered && to ? `0 8px 24px rgba(0,0,0,0.3), 0 0 0 1px ${color}40` : undefined,
+                boxShadow: hovered && to ? `0 8px 24px ${color}30` : undefined,
                 transition: 'transform 0.18s ease, box-shadow 0.18s ease',
                 position: 'relative',
             }}
         >
-            <div className="stat-icon" style={{ background: `${color}20` }}>
+            <div className="stat-icon" style={{ background: `${color}18` }}>
                 <span style={{ color }}>{icon}</span>
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', whiteSpace: 'nowrap' }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
                     <div className="stat-value">{value}</div>
                     {subValue && (
-                        <div style={{
-                            fontSize: '0.7rem',
-                            fontWeight: 700,
-                            color: color,
-                            background: `${color}15`,
-                            padding: '1px 6px',
-                            borderRadius: '6px',
-                            letterSpacing: '0.02em'
-                        }}>
+                        <div style={{ fontSize: '0.6875rem', fontWeight: 700, color, background: `${color}15`, padding: '2px 7px', borderRadius: 6, letterSpacing: '0.02em', whiteSpace: 'nowrap' }}>
                             {subValue.toUpperCase()}
                         </div>
                     )}
@@ -390,13 +405,7 @@ function StatCard({
                 <div className="stat-label">{label}</div>
             </div>
             {to && (
-                <div style={{
-                    position: 'absolute', top: '0.75rem', right: '0.75rem',
-                    color: hovered ? color : '#334155',
-                    transition: 'color 0.18s ease, transform 0.18s ease',
-                    transform: hovered ? 'translate(1px, -1px)' : 'translate(0, 0)',
-                    display: 'flex',
-                }}>
+                <div style={{ position: 'absolute', top: '0.875rem', right: '0.875rem', color: hovered ? color : tk.arrowColor, transition: 'color 0.18s, transform 0.18s', transform: hovered ? 'translate(1px,-1px)' : 'translate(0,0)', display: 'flex' }}>
                     <ArrowUpRight size={14} />
                 </div>
             )}
