@@ -6,6 +6,17 @@ const corsHeaders = {
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+/** Convert YouTube watch/short URLs to embeddable format */
+function normalizeWebUrl(url: string | null | undefined): string | null | undefined {
+    if (!url) return url;
+    const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)+([\w-]{11})/);
+    if (ytMatch) {
+        const id = ytMatch[1];
+        return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&controls=0&loop=1&playlist=${id}`;
+    }
+    return url;
+}
+
 Deno.serve(async (req: Request) => {
     if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -182,6 +193,8 @@ Deno.serve(async (req: Request) => {
             if (finalWebUrl && finalWebUrl.startsWith('/') && origin) {
                 finalWebUrl = `${origin}${finalWebUrl}`;
             }
+            // Normalize YouTube watch URLs → embed format
+            finalWebUrl = normalizeWebUrl(finalWebUrl);
             return {
                 ...item,
                 web_url: finalWebUrl,
