@@ -59,7 +59,7 @@ export default function AdminLayout() {
 
 
     return (
-        <div style={{ display: 'flex' }}>
+        <div style={{ display: 'flex', minHeight: '100vh', overflow: 'hidden' }}>
             {/* Dynamic CSS Overrides for Tenant Branding with Theme Awareness */}
             {tenant && (
                 <style dangerouslySetInnerHTML={{
@@ -102,7 +102,7 @@ export default function AdminLayout() {
             )}
 
             <Sidebar />
-            <div className="main-content" style={{ flex: 1 }}>
+            <div className="main-content" style={{ flex: 1, minWidth: 0, overflow: 'auto' }}>
                 {/* Top bar */}
                 <header className="topbar">
                     <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>

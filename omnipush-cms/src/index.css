@@ -514,10 +514,13 @@ body.light .sidebar {
 
 .main-content {
   flex: 1;
+  min-width: 0;
+  /* Critical: prevents flex child from overflowing sidebar */
   min-height: 100vh;
   background: var(--color-surface-950);
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
 }
 
 body.light .main-content {

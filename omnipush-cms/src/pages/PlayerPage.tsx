@@ -706,8 +706,8 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
                     )}
                     {(type === 'ppt' || type === 'presentation') && url && (
                         <iframe
-                            key={item.playlist_item_id}
-                            src={`https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`}
+                            key={item.playlist_item_id + '_ppt'}
+                            src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`}
                             style={{
                                 position: 'absolute', top: 0, left: 0,
                                 width: '100%', height: '100%',
@@ -715,6 +715,7 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
                                 background: '#fff',
                             }}
                             title="ppt"
+                            frameBorder="0"
                         />
                     )}
                 </div>
