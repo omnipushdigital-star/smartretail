@@ -15,10 +15,10 @@ const PAGE_SIZE = 10
 function SortableItem({ item, onRemove }: { item: PlaylistItem & { media?: MediaAsset }, onRemove: (id: string) => void }) {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: item.id })
     const style = { transform: CSS.Transform.toString(transform), transition }
-    
+
     const daysMap = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
-    const daysStr = item.days_of_week && item.days_of_week.length > 0 && item.days_of_week.length < 7 
-        ? item.days_of_week.map(d => daysMap[d]).join(', ') 
+    const daysStr = item.days_of_week && item.days_of_week.length > 0 && item.days_of_week.length < 7
+        ? item.days_of_week.map(d => daysMap[d]).join(', ')
         : (item.days_of_week?.length === 7 ? 'Everyday' : '')
 
     return (
@@ -378,7 +378,37 @@ export default function PlaylistsPage() {
                                         <div style={{ height: '1px', flex: 1, background: '#1e293b' }}></div>
                                     </div>
                                     <label className="label">Manual URL Entry</label>
-                                    <input className="input-field" type="url" value={addUrl} onChange={e => { setAddUrl(e.target.value); setAddMediaId('') }} placeholder="https://..." />
+                                    <input
+                                        className="input-field"
+                                        type="url"
+                                        value={addUrl}
+                                        onChange={e => {
+                                            let val = e.target.value
+                                            // Auto-convert YouTube watch URLs to embed
+                                            const ytMatch = val.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]{11})/)
+                                            if (ytMatch) val = `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1&mute=1&controls=0&loop=1&playlist=${ytMatch[1]}`
+                                            setAddUrl(val)
+                                            setAddMediaId('')
+                                        }}
+                                        placeholder="https://... (YouTube, webpage, or dashboard)"
+                                    />
+                                    {/* YouTube auto-convert success notice */}
+                                    {addUrl.includes('youtube.com/embed/') && (
+                                        <div style={{ marginTop: '0.5rem', padding: '0.625rem 0.875rem', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: 8, fontSize: '0.75rem', color: '#16a34a', display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                                            <span style={{ flexShrink: 0, fontSize: '0.875rem' }}>✅</span>
+                                            <span><strong>YouTube embed detected</strong> — URL auto-converted to embed format. Video will play muted &amp; looped on screen.</span>
+                                        </div>
+                                    )}
+                                    {/* Warn if user pasted a plain youtube.com/watch URL that wasn't caught */}
+                                    {addUrl.includes('youtube.com/watch') && (
+                                        <div style={{ marginTop: '0.5rem', padding: '0.625rem 0.875rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 8, fontSize: '0.75rem', color: '#dc2626', display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                                            <span style={{ flexShrink: 0 }}>⚠️</span>
+                                            <span><strong>YouTube watch URL detected</strong> — This will be blocked by your browser. Please use the embed URL format: <code>https://www.youtube.com/embed/VIDEO_ID</code></span>
+                                        </div>
+                                    )}
+                                    <div style={{ marginTop: '0.375rem', fontSize: '0.6875rem', color: '#64748b' }}>
+                                        💡 Paste any YouTube link — it will be auto-converted to an embed URL.
+                                    </div>
                                 </div>
                             )}
 

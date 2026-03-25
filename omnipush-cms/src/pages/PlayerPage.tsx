@@ -590,6 +590,16 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
         }
     }
 
+    // Helper: convert any YouTube watch/short URL to a proper embed URL
+    function getEmbedUrl(rawUrl: string): string {
+        const ytMatch = rawUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]{11})/)
+        if (ytMatch) {
+            const id = ytMatch[1]
+            return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&controls=0&loop=1&playlist=${id}`
+        }
+        return rawUrl
+    }
+
     // Use double buffer for videos to ensure smooth looping and better recovery
     const allVideos = useMemo(() => {
         return activeItems.length >= 1 && activeItems.every(i => i.type === 'video')
@@ -694,13 +704,14 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
                     {type === 'web_url' && url && (
                         <iframe
                             key={item.playlist_item_id}
-                            src={url}
+                            src={getEmbedUrl(url)}
                             style={{
                                 position: 'absolute', top: 0, left: 0,
                                 width: '100%', height: '100%',
                                 border: 'none', display: 'block',
                             }}
-                            sandbox="allow-scripts allow-same-origin"
+                            allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+                            allowFullScreen
                             title="content"
                         />
                     )}
