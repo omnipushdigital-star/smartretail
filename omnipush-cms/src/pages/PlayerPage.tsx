@@ -520,20 +520,29 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
         }
     }, [idx, activeItems])
 
-    const advance = useCallback(() => {
-        // Critical: If only 1 item, NEVER advance/refresh (prevents reload flashes)
-        if (activeItems.length <= 1) return
+    // Stable ref to always have the current idx in async callbacks (no stale closures)
+    const idxRef = useRef(0)
+    idxRef.current = idx
 
-        const nextIdx = (idx + 1) % activeItems.length
-        // If we are about to switch to the SAME item, skip the fade cycle
-        if (nextIdx === idx) return
+    const advanceRef = useRef<() => void>(() => { })
+
+    const advance = useCallback(() => {
+        const currentIdx = idxRef.current
+        const len = activeItems.length
+        if (len === 0) return
+
+        // Single-item playlist: just restart from 0 (triggers re-render / re-fetch)
+        const nextIdx = len === 1 ? 0 : (currentIdx + 1) % len
 
         setFade(false)
         setTimeout(() => {
             setIdx(nextIdx)
             setFade(true)
         }, 300)
-    }, [idx, activeItems.length])
+    }, [activeItems.length])
+
+    // Keep advanceRef stable so the timer can always call the latest advance
+    advanceRef.current = advance
 
     const memoizedAssets = React.useMemo(() => assets, [JSON.stringify(assets)])
 
@@ -541,27 +550,29 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
         if (activeItems.length === 0) return
         if (timerRef.current) clearTimeout(timerRef.current)
 
-        const safeIdx = idx >= activeItems.length ? 0 : idx
+        const safeIdx = idxRef.current >= activeItems.length ? 0 : idxRef.current
         const item = activeItems[safeIdx]
         const asset = memoizedAssets.find(a => a.media_id === item?.media_id)
         const url = asset?.url || item?.web_url
         const type = asset?.type || item?.type || (item?.media_id ? 'video' : 'image')
 
         if (!url) {
-            if (activeItems.length > 1) advance()
+            // Skip missing content: advance after a short delay
+            timerRef.current = setTimeout(() => advanceRef.current(), 2000)
             return
         }
 
-        // Videos are handled by DoubleBufferVideo's own onEnded
-        if (type === 'video') return
+        // Videos in all-video playlists are handled by DoubleBufferVideo's onEnded
+        if (type === 'video' && activeItems.every(i => i.type === 'video')) return
 
-        // If only 1 item, we don't set a timer to advance
-        if (activeItems.length <= 1) return
+        const dur = ((item?.duration_seconds ?? 0) > 0
+            ? item!.duration_seconds!
+            : (type === 'web_url' ? DEFAULT_WEB_DURATION : DEFAULT_IMAGE_DURATION)) * 1000
 
-        const dur = (item?.duration_seconds ?? (type === 'web_url' ? DEFAULT_WEB_DURATION : DEFAULT_IMAGE_DURATION)) * 1000
-        timerRef.current = setTimeout(advance, dur)
+        console.log(`[Player] Timer set: ${dur / 1000}s for item type=${type} idx=${safeIdx}/${activeItems.length}`)
+        timerRef.current = setTimeout(() => advanceRef.current(), dur)
         return () => { if (timerRef.current) clearTimeout(timerRef.current) }
-    }, [idx, activeItems.length, advance, memoizedAssets, region.id])
+    }, [idx, activeItems.length, memoizedAssets, region.id])
 
     if (activeItems.length === 0) return (
         <div style={{
