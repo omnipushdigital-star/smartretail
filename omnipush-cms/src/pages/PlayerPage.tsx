@@ -208,9 +208,21 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
 
     // Initialize: Set first video to Slot 0 and second video to Slot 1 (Preload)
     useEffect(() => {
-        if (sorted.length > 0 && !initialSyncDone.current) {
+        if (sorted.length > 0) {
             const firstId = getUrl(sorted[0])
             const nextId = sorted.length > 1 ? getUrl(sorted[1]) : ''
+
+            // If sync is already done, ONLY re-sync if the current playing video is NO LONGER in the list
+            // or if the list was completely replaced.
+            if (initialSyncDone.current) {
+                // Check if currently playing video still exists in sorted list
+                const stillExists = sorted.some(s => getUrl(s) === slotUrls[activeSlot])
+                if (stillExists) return // Continue seamlessly, advanceBuffer will naturally find the newly added videos later
+
+                // If it doesn't exist, we must re-sync otherwise we are stuck looking for a deleted video
+                console.log("[Video] Re-syncing double buffer slots after playlist modification")
+            }
+
             setSlotUrls([firstId, nextId])
 
             // Set initial playback rate
@@ -223,11 +235,12 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
             initialSyncDone.current = true
             console.log("[Video] Initializing double buffer slots. Slot 0:", firstId)
 
-            // Explicitly play the first slot
+            // Explicitly play the active slot
             setTimeout(() => {
-                if (v1.current) {
-                    v1.current.currentTime = 0
-                    v1.current.play().catch(e => console.warn("[Video] First play failed:", e))
+                const activeVideo = activeSlot === 0 ? v1.current : v2.current
+                if (activeVideo) {
+                    activeVideo.currentTime = 0
+                    activeVideo.play().catch(e => console.warn("[Video] First play failed:", e))
                 }
             }, 100)
         }
@@ -512,6 +525,7 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
     useEffect(() => {
         if (activeItems.length > 0) {
             const currentItem = activeItems[idx]
+            if (!currentItem) return
             const label = currentItem.web_url || currentItem.media_id || 'unnamed'
             const win = window as any
             if (win.AndroidHealth?.setPlayerState) {
@@ -526,6 +540,8 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
 
     const advanceRef = useRef<() => void>(() => { })
 
+    const [timerTrigger, setTimerTrigger] = useState(0)
+
     const advance = useCallback(() => {
         const currentIdx = idxRef.current
         const len = activeItems.length
@@ -537,6 +553,7 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
         setFade(false)
         setTimeout(() => {
             setIdx(nextIdx)
+            setTimerTrigger(t => t + 1)
             setFade(true)
         }, 300)
     }, [activeItems.length])
@@ -570,9 +587,12 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
             : (type === 'web_url' ? DEFAULT_WEB_DURATION : DEFAULT_IMAGE_DURATION)) * 1000
 
         console.log(`[Player] Timer set: ${dur / 1000}s for item type=${type} idx=${safeIdx}/${activeItems.length}`)
-        timerRef.current = setTimeout(() => advanceRef.current(), dur)
+        timerRef.current = setTimeout(() => {
+            console.log(`[Player] Timer fired for idx=${safeIdx}. Advancing...`)
+            advanceRef.current()
+        }, dur)
         return () => { if (timerRef.current) clearTimeout(timerRef.current) }
-    }, [idx, activeItems.length, memoizedAssets, region.id])
+    }, [idx, timerTrigger, JSON.stringify(activeItems.map(i => i.playlist_item_id)), memoizedAssets, region.id])
 
     if (activeItems.length === 0) return (
         <div style={{
@@ -593,11 +613,14 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
     const url = asset?.url || item?.web_url
     let type = asset?.type || item?.type || (item?.media_id ? 'video' : 'image')
 
-    // Safety: Auto-correct type if extension is PPT but DB says otherwise
-    if (url && (type === 'image' || type === 'video')) {
+    // Safety: Auto-correct type if extension is PPT or Video but DB says otherwise
+    if (url) {
         const ext = url.split('?')[0].split('.').pop()?.toLowerCase()
         if (['ppt', 'pptx', 'pptm', 'pps', 'ppsx'].includes(ext || '')) {
             type = 'presentation'
+        }
+        if (['mp4', 'webm', 'mov', 'ogg'].includes(ext || '')) {
+            type = 'video'
         }
     }
 
@@ -611,16 +634,26 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
         const id = getYouTubeId(rawUrl)
         if (id) {
             // enablejsapi lets us postMessage to control playback
-            // controls=1 ensures fallback if autoplay JS fails
-            return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&loop=1&playlist=${id}&controls=1&rel=0&modestbranding=1&enablejsapi=1`
+            // controls=0 keeps it clean for signage
+            const origin = encodeURIComponent(window.location.origin)
+            return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&loop=1&playlist=${id}&controls=0&rel=0&modestbranding=1&enablejsapi=1&origin=${origin}`
         }
         return rawUrl
     }
 
     // Use double buffer for videos to ensure smooth looping and better recovery
     const allVideos = useMemo(() => {
-        return activeItems.length >= 1 && activeItems.every(i => i.type === 'video')
-    }, [activeItems])
+        return activeItems.length >= 1 && activeItems.every(i => {
+            const asset = memoizedAssets.find(a => a.media_id === i.media_id)
+            let t = asset?.type || i.type || (i.media_id ? 'video' : 'image')
+            const u = asset?.url || i.web_url
+            if (u) {
+                const ext = u.split('?')[0].split('.').pop()?.toLowerCase()
+                if (['mp4', 'webm', 'mov', 'ogg'].includes(ext || '')) t = 'video'
+            }
+            return t === 'video'
+        })
+    }, [activeItems, memoizedAssets])
 
     // Preload next image
     const nextItem = activeItems[(safeIdx + 1) % activeItems.length]
@@ -708,7 +741,9 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
                                 width: '100%', height: '100%',
                                 objectFit: 'fill', background: '#000', display: 'block',
                             }}
-                            muted playsInline
+                            autoPlay
+                            muted
+                            playsInline
                             disableRemotePlayback
                             webkit-playsinline="true"
                             preload="auto"
@@ -852,6 +887,14 @@ function SecretPrompt({ device_code, onSubmit }: { device_code: string; onSubmit
 }
 
 function ErrorState({ device_code, msg, onRetry }: { device_code: string; msg: string; onRetry: () => void }) {
+    // Auto-retry every 15 seconds so signage players don't stay dead forever after a short WiFi drop
+    useEffect(() => {
+        const t = setTimeout(() => {
+            onRetry()
+        }, 15000)
+        return () => clearTimeout(t)
+    }, [onRetry])
+
     return (
         <div style={bgStyle}>
             <AmbientOrbs />
@@ -1187,11 +1230,14 @@ export default function PlayerPage() {
                 // 2. Perform the actual logic
                 if (cmd.command === 'REBOOT' || cmd.command === 'RELOAD') {
                     console.warn('[Player] Remote Reload/Reboot triggered. Reloading page...')
+                    // Multiple layers of reload to bypass various browser locks
                     window.location.reload()
+                    setTimeout(() => { window.location.href = window.location.href }, 500)
                 } else if (cmd.command === 'CLEAR_CACHE') {
                     console.warn('[Player] Remote Clear Cache triggered. Purging local storage...')
                     localStorage.removeItem(manifestKey(dc))
                     window.location.reload()
+                    setTimeout(() => { window.location.href = window.location.href }, 500)
                 } else if (cmd.command === 'SCREENSHOT') {
                     console.log('[Player] Remote Screenshot requested...')
                     const win = window as any
@@ -1205,7 +1251,7 @@ export default function PlayerPage() {
                 console.error(`[Player] Command ${cmd.id} execution failed:`, err.message)
             }
         }
-    }, [dc])
+    }, [dc, captureBrowserScreenshot])
 
     // Keep checkCommands for legacy/backup or direct REST usage
     const checkCommands = useCallback(async () => {
@@ -1233,11 +1279,12 @@ export default function PlayerPage() {
                 if (cmd.command === 'REBOOT') {
                     console.warn('[Player] Remote Reboot triggered via CMS. Reloading page...')
                     window.location.reload()
+                    setTimeout(() => { window.location.href = window.location.href }, 500)
                 } else if (cmd.command === 'CLEAR_CACHE') {
                     console.warn('[Player] Remote Clear Cache triggered. Purging local storage...')
                     localStorage.removeItem(manifestKey(dc))
-                    // We keep the secretKey so the device stays paired
                     window.location.reload()
+                    setTimeout(() => { window.location.href = window.location.href }, 500)
                 } else if (cmd.command === 'SCREENSHOT') {
                     console.log('[Player] Remote Screenshot requested...')
                     const win = window as any
@@ -1251,7 +1298,7 @@ export default function PlayerPage() {
         } catch (err: any) {
             console.error('[Commands] Polling error:', err.message)
         }
-    }, [manifest?.device?.id])
+    }, [manifest?.device?.id, dc, captureBrowserScreenshot])
 
     useEffect(() => {
         if (!manifest?.device?.id) return

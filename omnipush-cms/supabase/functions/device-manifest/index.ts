@@ -120,24 +120,39 @@ Deno.serve(async (req: Request) => {
         }
 
         // 3. Fetch Bundle
-        const { data: bundle } = await supabase
+        const { data: bundle, error: bundleErr } = await supabase
             .from("bundles")
             .select("*")
             .eq("id", pub.bundle_id)
             .single();
 
+        if (bundleErr || !bundle) {
+            console.error("[Manifest] Bundle not found:", pub.bundle_id);
+            return Response.json({ error: "Bundle referenced in publication no longer exists." }, { status: 404, headers: corsHeaders });
+        }
+
         // 4. Fetch layout + template (to get playlist items)
-        const { data: layout } = await supabase
+        const { data: layout, error: layoutErr } = await supabase
             .from("layouts")
             .select("id, name, template_id")
             .eq("id", pub.layout_id)
             .single();
 
-        const { data: template } = await supabase
+        if (layoutErr || !layout) {
+            console.error("[Manifest] Layout not found:", pub.layout_id);
+            return Response.json({ error: "Layout referenced in publication no longer exists." }, { status: 404, headers: corsHeaders });
+        }
+
+        const { data: template, error: templateErr } = await supabase
             .from("layout_templates")
             .select("id, name, regions")
             .eq("id", layout.template_id)
             .single();
+
+        if (templateErr || !template) {
+            console.error("[Manifest] Template not found:", layout.template_id);
+            return Response.json({ error: "Template referenced in layout no longer exists." }, { status: 404, headers: corsHeaders });
+        }
 
         // 5. Fetch region→playlist mappings
         const { data: regionMaps } = await supabase
@@ -160,16 +175,16 @@ Deno.serve(async (req: Request) => {
             return t > max ? t : max;
         }, 0);
 
-        const dynamicVersion = `${bundle?.version || 'v0'}-${maxUpdated}`;
+        // Include publication time to ensure explicit "Publish" actions trigger updates
+        const pubTime = new Date(pub.published_at || pub.created_at).getTime();
+        const dynamicVersion = `${bundle.version || 'v0'}-${pubTime}-${maxUpdated}`;
 
         // ── Early Exit if Up-to-Date ──
-        // Only return up-to-date if the dynamic version matches EXACTLY.
         if (current_version && dynamicVersion === current_version) {
-            console.log(`[Manifest] Device ${device_code} is already up to date (Version: ${current_version})`);
             return Response.json({
                 up_to_date: true,
                 version: dynamicVersion,
-                poll_seconds: 30, // As requested: check every 30s
+                poll_seconds: 30,
             }, { headers: corsHeaders });
         }
 
@@ -179,7 +194,6 @@ Deno.serve(async (req: Request) => {
             return !!item.media_id;
         });
 
-        // Filter out nulls (web_urls have no media_id)
         const mediaIds = [...new Set(validRawItems.map((i: any) => i.media_id).filter(Boolean))];
         const { data: allMedia } = await supabase
             .from("media_assets")
@@ -189,11 +203,9 @@ Deno.serve(async (req: Request) => {
         // MAP ITEMS WITH ORIGIN SUPPORT
         const items = validRawItems.map((item: any) => {
             let finalWebUrl = item.web_url;
-            // Prepend origin if it's a relative URL
             if (finalWebUrl && finalWebUrl.startsWith('/') && origin) {
                 finalWebUrl = `${origin}${finalWebUrl}`;
             }
-            // Normalize YouTube watch URLs → embed format
             finalWebUrl = normalizeWebUrl(finalWebUrl);
             return {
                 ...item,
@@ -210,7 +222,6 @@ Deno.serve(async (req: Request) => {
 
         let signedUrlsMap: Record<string, string> = {};
         if (uniquePaths.length > 0) {
-            // Filter out paths that already have public URLs (e.g., Cloudflare R2)
             const pathsToSign = uniquePaths.filter(path => {
                 const asset = allMedia?.find(m => m.storage_path === path);
                 return !(asset?.url && (asset.url.includes('r2.dev') || asset.url.includes('omnipushdigital.com')));
@@ -230,13 +241,10 @@ Deno.serve(async (req: Request) => {
         const mediaAssets: any[] = [];
         const seenMedia = new Set<string>();
 
-        // We iterate over allMedia directly to ensure we catch everything we found
         for (const media of allMedia || []) {
             if (seenMedia.has(media.id)) continue;
             seenMedia.add(media.id);
-
             const url = signedUrlsMap[media.storage_path] || media.url || null;
-
             mediaAssets.push({
                 media_id: media.id,
                 type: media.type,
@@ -255,7 +263,7 @@ Deno.serve(async (req: Request) => {
                     playlist_item_id: i.id,
                     media_id: i.media_id,
                     type: i.type,
-                    web_url: i.web_url, // Now absolute
+                    web_url: i.web_url,
                     duration_seconds: i.duration_seconds,
                     playback_speed: i.playback_speed,
                     sort_order: i.sort_order,
@@ -269,13 +277,24 @@ Deno.serve(async (req: Request) => {
             regionPlaylists[rm.region_id] = regionItems;
         }
 
-        // 9. Check for app updates
+        // 9. Check for app updates (non-fatal)
+        let appUpdateOutput = null;
         const { data: latestUpdate } = await supabase
             .from('app_updates')
             .select('*')
             .order('version_code', { ascending: false })
-            .limit(1)
-            .single();
+            .limit(1);
+
+        if (latestUpdate && latestUpdate.length > 0) {
+            const up = latestUpdate[0];
+            appUpdateOutput = {
+                version_code: up.version_code,
+                version_name: up.version_name,
+                apk_url: up.apk_url,
+                force: up.force_update,
+                notes: up.notes
+            };
+        }
 
         const manifest = {
             device: {
@@ -288,18 +307,12 @@ Deno.serve(async (req: Request) => {
                 orientation: device.orientation,
                 resolution: device.resolution,
             },
-            app_update: latestUpdate ? {
-                version_code: latestUpdate.version_code,
-                version_name: latestUpdate.version_name,
-                apk_url: latestUpdate.apk_url,
-                force: latestUpdate.force_update,
-                notes: latestUpdate.notes
-            } : null,
+            app_update: appUpdateOutput,
             resolved: {
                 scope: resolvedScope,
                 role: device.role?.name || null,
                 pub_id: pub.id || null,
-                bundle_id: bundle?.id || null,
+                bundle_id: bundle.id || null,
                 version: dynamicVersion,
             },
             layout: {
@@ -312,11 +325,10 @@ Deno.serve(async (req: Request) => {
             poll_seconds: 30,
         };
 
-        console.log(`[Manifest] Success: ${resolvedScope} publication found. Version: ${bundle?.version || 'N/A'}. Assets: ${mediaAssets.length}. Regions: ${Object.keys(regionPlaylists).length}`);
-
+        console.log(`[Manifest] Success: ${resolvedScope} | v: ${dynamicVersion} | Assets: ${mediaAssets.length}`);
         return Response.json(manifest, { headers: corsHeaders });
     } catch (err: any) {
         console.error("[Manifest Fatal]", err);
-        return Response.json({ error: err.message }, { status: 500, headers: corsHeaders });
+        return Response.json({ error: err.message, stack: err.stack }, { status: 500, headers: corsHeaders });
     }
 });
