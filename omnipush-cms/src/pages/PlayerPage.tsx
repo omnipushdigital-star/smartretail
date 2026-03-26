@@ -121,17 +121,32 @@ const globalStyle = `
     transform: translate3d(0,0,0);
   }
 
-  /* 3. Kill all default browser controls/icons - CRITICAL for Android WebView */
-  video::-webkit-media-controls { display:none !important; }
-  video::-webkit-media-controls-enclosure { display:none !important; }
-  video::-webkit-media-controls-panel { display:none !important; }
-  video::-webkit-media-controls-play-button { display:none !important; }
-  video::-webkit-media-controls-overlay-play-button { display:none !important; }
-  video::-webkit-media-controls-start-playback-button { display:none !important; -webkit-appearance: none; }
+  /* 3. Kill all default browser controls/icons - CRITICAL for Chromium 87 / Android TV */
+  video::-webkit-media-controls { display:none !important; -webkit-appearance: none !important; }
+  video::-webkit-media-controls-enclosure { display:none !important; -webkit-appearance: none !important; }
+  video::-webkit-media-controls-panel { display:none !important; -webkit-appearance: none !important; }
+  video::-webkit-media-controls-play-button { display:none !important; -webkit-appearance: none !important; }
+  video::-webkit-media-controls-overlay-play-button { display:none !important; -webkit-appearance: none !important; }
+  video::-webkit-media-controls-start-playback-button { display:none !important; -webkit-appearance: none !important; }
   video::-webkit-media-controls-shim { display:none !important; }
   video::-internal-media-controls-overlay-play-button { display:none !important; }
   video::-internal-media-controls-download-button { display:none !important; }
-  video { pointer-events: none !important; outline: none !important; background: black !important; }
+  video::-internal-media-controls-loading-indicator { display:none !important; }
+  video::-webkit-media-controls-current-time-display { display:none !important; }
+  video::-webkit-media-controls-time-remaining-display { display:none !important; }
+  video::-webkit-media-controls-timeline { display:none !important; }
+  video::-webkit-media-controls-volume-control-container { display:none !important; }
+  video::-webkit-media-controls-toggle-closed-captions-button { display:none !important; }
+  
+  /* Additional hardware layer hide for Android 11 Droidlogic / System indicators */
+  video { 
+    pointer-events: none !important; 
+    outline: none !important; 
+    background: #000 !important;
+    mask-image: none !important;
+    -webkit-mask-image: none !important;
+    -webkit-tap-highlight-color: transparent !important;
+  }
   
   /* 4. Kill scrollbars */
   ::-webkit-scrollbar { display: none !important; }
@@ -160,22 +175,24 @@ interface VideoBufferProps {
     style?: React.CSSProperties
 }
 
-function DoubleBufferVideo({ items, assets, onAdvance }: {
+type TransitionEffect = 'fade' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'none'
+
+function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
     items: ManifestItem[]
     assets: ManifestAsset[]
     onAdvance: () => void
+    effect?: TransitionEffect
 }) {
     const [activeSlot, setActiveSlot] = useState<0 | 1>(0)
+    const [isTransitioning, setIsTransitioning] = useState(false)
     const v1 = useRef<HTMLVideoElement>(null)
     const v2 = useRef<HTMLVideoElement>(null)
     const videoRefs = [v1, v2]
     const [slotUrls, setSlotUrls] = useState<[string, string]>(['', ''])
-    const [slotOpacity, setSlotOpacity] = useState<[number, number]>([1, 0])
     const idxRef = useRef(0)
     const [debug, setDebug] = useState<string>('Init')
     const watchdogRef = useRef<any>(null)
     const initialSyncDone = useRef(false)
-
 
     const sorted = React.useMemo(
         () => [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
@@ -188,68 +205,21 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
         return asset?.url || item.web_url || ''
     }, [memoizedAssets])
 
-    // Effect to call .load() whenever a slot URL changes (Required for some Android browsers)
-    useEffect(() => {
-        if (v1.current && slotUrls[0]) v1.current.load()
-    }, [slotUrls[0]])
-    useEffect(() => {
-        if (v2.current && slotUrls[1]) v2.current.load()
-    }, [slotUrls[1]])
+    const advanceBufferRef = useRef<(force?: boolean) => void>(() => { })
 
-    // Browser priming: Mute and volume 0 explicitly via JS properties
-    useEffect(() => {
-        videoRefs.forEach(ref => {
-            if (ref.current) {
-                ref.current.muted = true
-                ref.current.volume = 0
+    const triggerWatchdog = useCallback((delay = 10000) => {
+        if (watchdogRef.current) clearTimeout(watchdogRef.current)
+        watchdogRef.current = setTimeout(() => {
+            if (sorted.length > 1) {
+                setDebug("WD Skip")
+                advanceBufferRef.current(true)
             }
-        })
-    }, [])
-
-    // Initialize: Set first video to Slot 0 and second video to Slot 1 (Preload)
-    useEffect(() => {
-        if (sorted.length > 0) {
-            const firstId = getUrl(sorted[0])
-            const nextId = sorted.length > 1 ? getUrl(sorted[1]) : ''
-
-            // If sync is already done, ONLY re-sync if the current playing video is NO LONGER in the list
-            // or if the list was completely replaced.
-            if (initialSyncDone.current) {
-                // Check if currently playing video still exists in sorted list
-                const stillExists = sorted.some(s => getUrl(s) === slotUrls[activeSlot])
-                if (stillExists) return // Continue seamlessly, advanceBuffer will naturally find the newly added videos later
-
-                // If it doesn't exist, we must re-sync otherwise we are stuck looking for a deleted video
-                console.log("[Video] Re-syncing double buffer slots after playlist modification")
-            }
-
-            setSlotUrls([firstId, nextId])
-
-            // Set initial playback rate
-            if (videoRefs[0].current) {
-                videoRefs[0].current.playbackRate = sorted[0].playback_speed || 1
-            }
-            if (videoRefs[1].current && sorted.length > 1) {
-                videoRefs[1].current.playbackRate = sorted[1].playback_speed || 1
-            }
-            initialSyncDone.current = true
-            console.log("[Video] Initializing double buffer slots. Slot 0:", firstId)
-
-            // Explicitly play the active slot
-            setTimeout(() => {
-                const activeVideo = activeSlot === 0 ? v1.current : v2.current
-                if (activeVideo) {
-                    activeVideo.currentTime = 0
-                    activeVideo.play().catch(e => console.warn("[Video] First play failed:", e))
-                }
-            }, 100)
-        }
-    }, [sorted, getUrl])
+        }, delay)
+    }, [sorted.length])
 
     const advanceBuffer = useCallback((forceNext = false) => {
         if (sorted.length === 0) return
 
-        // Single video loop optimization
         if (sorted.length === 1) {
             const v = videoRefs[activeSlot].current
             if (v) {
@@ -262,11 +232,10 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
 
         const currentSlot = activeSlot
         const nextSlot: 0 | 1 = activeSlot === 0 ? 1 : 0
-        const nextIdx = (idxRef.current + 1) % sorted.length
+        const currentVideo = videoRefs[currentSlot].current
         const nextVideo = videoRefs[nextSlot].current
+        const nextIdx = (idxRef.current + 1) % sorted.length
 
-        // PROACTIVE RECOVERY: If the next video has an actual error (CORS, 404, etc.)
-        // skip it immediately and try the one after. ONLY skip on error, not on initial network state.
         if (nextVideo && nextVideo.error && !forceNext) {
             setDebug(`Err Skip V${nextIdx}`)
             idxRef.current = nextIdx
@@ -278,49 +247,67 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
         const performSwitch = () => {
             if (!nextVideo) return
 
-            setDebug(`${idxRef.current}→${nextIdx} | SWAP`)
-            nextVideo.playbackRate = sorted[nextIdx].playback_speed || 1
+            setDebug(`${idxRef.current}→${nextIdx} | SAFE SWAP`)
 
-            // FIX: Swap active slot and visibility BEFORE calling play in browser.
-            // This makes the element 'active' in the browser's eyes and helps bypass autoplay restrictions.
-            setActiveSlot(nextSlot)
-            setSlotOpacity(nextSlot === 0 ? [1, 0] : [0, 1])
-            idxRef.current = nextIdx
-            onAdvance()
+            const releaseOld = () => {
+                if (!currentVideo) return;
+                try {
+                    console.log('[Player] Releasing O-Slot decoder:', currentSlot);
+                    // Crucial: hide old video instantly BEFORE mutating src so native play icon cannot render
+                    currentVideo.style.opacity = '0';
+                    currentVideo.style.visibility = 'hidden';
+                    currentVideo.pause();
+                    currentVideo.removeAttribute('src');
+                    currentVideo.load();
+                } catch (e) { /* ignore */ }
+            };
 
-            // 1. Play the next video
-            const attemptPlay = () => {
-                // START WATCHDOG IMMEDIATELY on switch
-                triggerWatchdog(15000)
-
-                // Reset to beginning to ensure clean start, especially if same URL is reused
-                nextVideo.currentTime = 0
-                nextVideo.play().then(() => {
-                    setDebug(`${nextIdx} Play OK`)
-
-                    // 2. Preload next-next URL into the old slot
-                    const preloadIdx = (nextIdx + 1) % sorted.length
-                    const preloadUrl = getUrl(sorted[preloadIdx])
-
-                    setTimeout(() => {
-                        setSlotUrls(prev => {
-                            const updated: [string, string] = [...prev] as [string, string]
-                            updated[currentSlot] = preloadUrl
-                            return updated
-                        })
-                    }, 500)
-                }).catch(e => {
-                    const msg = e.message || 'Unknown'
-                    setDebug(`P.Err: ${msg.slice(0, 15)}`)
-                    console.warn("[Video] Scripted play failed:", e)
-                })
+            // Start the next one FIRST, while it is still completely hidden!
+            triggerWatchdog(15000)
+            nextVideo.muted = true
+            nextVideo.currentTime = 0
+            if (sorted[nextIdx]) {
+                nextVideo.playbackRate = sorted[nextIdx].playback_speed || 1
             }
 
-            // Small delay to let React update DOM before calling play()
-            setTimeout(attemptPlay, 50)
+            nextVideo.play().then(() => {
+                console.log('[Player] Playing N-Slot:', nextIdx)
+                setDebug(`${nextIdx} PLAYING`)
+
+                // Now that it's confirmed playing, reveal it and trigger the transition CSS
+                setIsTransitioning(true)
+                setActiveSlot(nextSlot)
+                idxRef.current = nextIdx
+                onAdvance()
+
+                // Release old video slightly after new one is successfully active and covering the screen
+                setTimeout(releaseOld, 250);
+
+                // Keep transition flag true slightly longer for hardware to visually stabilize
+                setTimeout(() => {
+                    setIsTransitioning(false)
+
+                    // Queue next buffer
+                    const pIdx = (nextIdx + 1) % sorted.length
+                    const pUrl = getUrl(sorted[pIdx])
+                    setTimeout(() => {
+                        setSlotUrls(prev => {
+                            const up: [string, string] = [...prev] as [string, string]
+                            up[currentSlot] = pUrl
+                            return up
+                        })
+                    }, 300)
+                }, 850)
+
+            }).catch(e => {
+                console.error('[Player] Play Error:', e.message)
+                setDebug(`P.Err: ${e.message?.slice(0, 15)}`)
+                setIsTransitioning(false)
+                releaseOld();
+                setTimeout(() => advanceBuffer(true), 1500)
+            })
         }
 
-        // Ready Check
         if (nextVideo && nextVideo.readyState >= 2) {
             performSwitch()
         } else if (nextVideo) {
@@ -330,130 +317,132 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                 performSwitch()
             }
             nextVideo.addEventListener('canplay', onCanPlay)
-            // Safety timeout for buffering
             setTimeout(() => {
                 nextVideo.removeEventListener('canplay', onCanPlay)
-                if (activeSlot === currentSlot) {
-                    setDebug(`Skip Wait R:${nextVideo.readyState}`)
-                    performSwitch()
-                }
+                if (activeSlot === currentSlot) performSwitch()
             }, 5000)
         }
-    }, [activeSlot, sorted, getUrl, onAdvance])
+    }, [activeSlot, sorted, getUrl, onAdvance, triggerWatchdog])
 
-    // Watchdog trigger function (Shortened to 10s for faster browser recovery)
-    // Moved here after advanceBuffer to avoid TS hoist errors
-    const triggerWatchdog = useCallback((delay = 10000) => {
-        if (watchdogRef.current) clearTimeout(watchdogRef.current)
-        watchdogRef.current = setTimeout(() => {
-            if (sorted.length > 1) {
-                setDebug("WD Skip")
-                advanceBuffer(true)
+    useEffect(() => {
+        advanceBufferRef.current = advanceBuffer
+    }, [advanceBuffer])
+
+    useEffect(() => {
+        if (sorted.length > 0) {
+            const firstId = getUrl(sorted[0])
+            const nextId = sorted.length > 1 ? getUrl(sorted[1]) : ''
+            if (initialSyncDone.current) {
+                const stillExists = sorted.some(s => getUrl(s) === slotUrls[activeSlot])
+                if (stillExists) return
             }
-        }, delay)
-    }, [sorted.length, advanceBuffer])
+            setSlotUrls([firstId, nextId])
+            initialSyncDone.current = true
+            setTimeout(() => {
+                const v = activeSlot === 0 ? v1.current : v2.current
+                if (v) {
+                    v.currentTime = 0
+                    v.play().catch(() => { })
+                }
+            }, 100)
+        }
+    }, [sorted, getUrl])
 
-    // Autoplay heartbeat (Ensures playback resumes if stalled/paused by browser)
     useEffect(() => {
         const interval = setInterval(() => {
             const v = videoRefs[activeSlot].current
-            if (v) {
-                if (v.paused && v.readyState >= 2 && !v.ended) {
-                    v.play().catch(() => { })
-                }
-                if (v.readyState < 2 && !v.paused) {
-                    setDebug(d => d.includes('Stall') ? d : `Stall R:${v.readyState}`)
-                }
+            if (v && v.paused && v.readyState >= 3 && !v.ended) {
+                v.play().catch(() => { })
             }
         }, 1500)
-
-        // Global wake-up trigger
-        const force = () => {
-            setDebug("User Prime")
-            videoRefs.forEach(ref => {
-                if (ref.current) {
-                    ref.current.muted = true
-                    ref.current.play().catch(() => { })
-                }
-            })
-        }
-        window.addEventListener('omnipush_force_play', force)
-        window.addEventListener('click', force, { once: true }) // Interaction priming
-
-        return () => {
-            clearInterval(interval)
-            window.removeEventListener('omnipush_force_play', force)
-            window.removeEventListener('click', force)
-        }
+        return () => clearInterval(interval)
     }, [activeSlot])
 
-    if (sorted.length === 0) return null
+    const getTransitionStyle = (slot: number): React.CSSProperties => {
+        const isActive = activeSlot === slot
+        const e: TransitionEffect = effect ?? 'slide-up'
+        const style: React.CSSProperties = {
+            position: 'absolute',
+            top: 0, left: 0,
+            width: '100%', height: '100%',
+            objectFit: 'fill',
+            background: '#000',
+            transition: 'transform 800ms cubic-bezier(0.4, 0, 0.2, 1), opacity 800ms ease, visibility 0s 1s',
+            zIndex: isActive ? 10 : 5,
+            pointerEvents: 'none',
+            visibility: 'visible',
+            transform: 'translate3d(0, 0, 0)',
+            opacity: 1,
+            willChange: 'transform, opacity'
+        }
 
-    const videoStyle: React.CSSProperties = {
-        position: 'absolute',
-        top: 0, left: 0,
-        width: '100%', height: '100%',
-        objectFit: 'fill',
-        background: '#000',
-        display: 'block',
-        transition: 'none',
+        if (!isActive) {
+            switch (e) {
+                case 'fade':
+                    style.opacity = 0
+                    break
+                case 'slide-up':
+                    style.transform = 'translate3d(0, -100%, 0)'
+                    break
+                case 'slide-down':
+                    style.transform = 'translate3d(0, 100%, 0)'
+                    break
+                case 'slide-left':
+                    style.transform = 'translate3d(-100%, 0, 0)'
+                    break
+                case 'slide-right':
+                    style.transform = 'translate3d(100%, 0, 0)'
+                    break
+                case 'none':
+                    style.transition = 'none'
+                    style.opacity = 0
+                    break
+            }
+
+            // Cleanup: hide inactive slot after transition completes
+            if (style.opacity === 0) style.visibility = 'hidden'
+            // Amlogic: keep visible during slide so it can animate out
+            if (style.transform !== 'translate3d(0, 0, 0)') {
+                style.visibility = isTransitioning ? 'visible' : 'hidden'
+            }
+        }
+        return style
     }
 
     return (
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: '#000', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', inset: 0, background: '#000', overflow: 'hidden' }}>
+            <div style={{
+                position: 'absolute', inset: 0, zIndex: 100, background: '#000',
+                transition: 'opacity 300ms', pointerEvents: 'none',
+                opacity: isTransitioning ? 1 : 0
+            }} />
             {[0, 1].map(i => (
                 <video
                     key={i}
                     ref={videoRefs[i]}
                     src={slotUrls[i]}
+                    style={getTransitionStyle(i)}
                     controls={false}
-                    style={{
-                        position: 'absolute',
-                        top: i === activeSlot ? 0 : '-10000px',
-                        left: 0,
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'fill',
-                        display: 'block',
-                        zIndex: i === activeSlot ? 10 : 1,
-                        opacity: i === activeSlot ? 1 : 0,
-                        visibility: i === activeSlot ? 'visible' : 'hidden',
-                        pointerEvents: 'none',
-                        background: '#000',
-                    }}
+                    tabIndex={-1}
+                    disableRemotePlayback
                     muted
                     playsInline
-                    loop={false}
                     preload="auto"
-                    onTimeUpdate={() => {
-                        // Reset watchdog if we are actually playing
-                        if (i === activeSlot) triggerWatchdog(12000)
+                    autoPlay={false}
+                    disablePictureInPicture={true}
+                    // suppression of play icon: empty transparent poster
+                    poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+                    {...{
+                        'webkit-playsinline': 'true',
+                        'x-webkit-airplay': 'deny',
+                        'controlsList': 'nodownload nofullscreen noremoteplayback'
                     }}
-                    onEnded={() => {
-                        if (i === activeSlot) advanceBuffer()
-                    }}
-                    onError={() => {
-                        const err = videoRefs[i].current?.error;
-                        const msg = `Err (S${i}): code=${err?.code} msg=${err?.message}`;
-                        setDebug(msg)
-                        console.error('[Video] [Player] error:', msg)
-                        // If the currently visible video dies, skip it fast (1.5s)
-                        if (i === activeSlot) setTimeout(() => advanceBuffer(true), 1500)
-                    }}
-                    onCanPlay={() => {
-                        console.log(`[Video] [Player] Slot ${i} readyState=${videoRefs[i].current?.readyState} source=${videoRefs[i].current?.src}`)
-                    }}
+                    onEnded={() => { if (i === activeSlot) advanceBuffer() }}
+                    onTimeUpdate={() => { if (i === activeSlot) triggerWatchdog(12000) }}
                 />
             ))}
-
-            {/* Debug Overlay */}
-            <div style={{
-                position: 'absolute', bottom: 5, right: 5, zIndex: 9999,
-                fontSize: '9px', color: 'rgba(255,255,255,0.7)', fontFamily: 'monospace',
-                background: 'rgba(0,0,0,0.6)', padding: '4px 8px', borderRadius: '4px',
-                pointerEvents: 'none', border: '1px solid rgba(255,255,255,0.1)'
-            }}>
-                ID:{idxRef.current}/{sorted.length} | {debug} | R0:{videoRefs[0].current?.readyState} R1:{videoRefs[1].current?.readyState}
+            <div style={{ position: 'absolute', bottom: 4, left: 4, fontSize: 9, color: 'rgba(255,255,255,0.2)', zIndex: 110 }}>
+                {debug} | {activeSlot === 0 ? 'V1' : 'V2'} | {effect}
             </div>
         </div>
     )
@@ -709,6 +698,7 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
                     key={activeItems.map(i => i.playlist_item_id + i.media_id).join(',')}
                     items={activeItems}
                     assets={memoizedAssets}
+                    effect="slide-up"
                     onAdvance={advance}
                 />
             ) : (
@@ -819,6 +809,11 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
 // ─── UI States ────────────────────────────────────────────────────────────────
 
 function LoadingState({ device_code }: { device_code: string }) {
+    const [trouble, setTrouble] = useState(false)
+    useEffect(() => {
+        const t = setTimeout(() => setTrouble(true), 25000)
+        return () => clearTimeout(t)
+    }, [])
     return (
         <div style={bgStyle}>
             <AmbientOrbs />
@@ -827,6 +822,13 @@ function LoadingState({ device_code }: { device_code: string }) {
                 <div style={{ width: 40, height: 40, borderRadius: '50%', border: '3px solid #1e293b', borderTopColor: 'var(--color-brand-500)', animation: 'spin 0.8s linear infinite', margin: '2rem auto 1rem' }} />
                 <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>Connecting to network…</div>
                 <div style={{ fontFamily: 'monospace', color: '#f87171', fontSize: '0.8rem', marginTop: '0.5rem' }}>{device_code}</div>
+                {trouble && (
+                    <div style={{ marginTop: '2rem', animation: 'slideIn 0.5s ease' }}>
+                        <button onClick={() => window.location.reload()} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#64748b', padding: '0.5rem 1rem', borderRadius: 8, fontSize: '0.75rem', cursor: 'pointer' }}>
+                            Taking too long? Reload
+                        </button>
+                    </div>
+                )}
             </div>
             <BottomBar device_code={device_code} />
         </div>
@@ -1374,10 +1376,11 @@ export default function PlayerPage() {
     // ── Fetch manifest ──
     const fetchManifest = useCallback(async (sec: string): Promise<boolean> => {
         try {
+            console.log(`[Player] Fetching manifest: DC=${dc} | Origin=${window.location.origin}`)
             const data = await callEdgeFn('device-manifest', {
                 device_code: dc,
                 device_secret: sec,
-                current_version: version,
+                current_version: versionRef.current,
                 origin: window.location.origin
             })
 
@@ -1456,7 +1459,7 @@ export default function PlayerPage() {
             setPhase('error')
             return false
         }
-    }, [dc, version, phase, syncAssets, initPairing])
+    }, [dc, syncAssets, initPairing]) // REMOVED version, phase to stop re-triggering loops
 
     // ── Send heartbeat ──
     const sendHeartbeat = useCallback(async (sec: string) => {
@@ -1658,7 +1661,16 @@ export default function PlayerPage() {
 
     // ── Retry ──
     const handleRetry = () => {
-        window.location.reload()
+        console.log('[Player] Manual retry triggered...')
+        if (secretRef.current) {
+            setPhase('loading')
+            fetchManifest(secretRef.current).then(ok => {
+                if (ok) setPhase('playing')
+                else setPhase('error')
+            })
+        } else {
+            window.location.reload()
+        }
     }
 
     // ── Resolve playlist items for playback ──

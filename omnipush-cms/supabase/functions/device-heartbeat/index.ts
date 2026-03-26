@@ -80,7 +80,7 @@ serve(async (req: Request) => {
         const { error: hbErr } = await supabase.from("device_heartbeats").insert({
             device_id: device.id,
             device_code: device.device_code,
-            current_version: current_version || null,
+            current_version: current_version || body.app_version || null,
             ip_address: ip,
             status: status || "online",
             last_seen_at: new Date().toISOString(),

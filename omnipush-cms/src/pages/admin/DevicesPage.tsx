@@ -83,6 +83,7 @@ export default function DevicesPage() {
         imageUrl: string | null
         polling: boolean
     } | null>(null)
+    const [selectedHealthDevice, setSelectedHealthDevice] = useState<Device | null>(null)
 
     const slugify = (s: string) => s.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '').substring(0, 20);
 
@@ -145,7 +146,12 @@ export default function DevicesPage() {
                             current.status = 'playing'
                         }
 
-                        // 2. Merge meta: if current is missing health stats but previous (recent) has them, merge
+                        // 2. Merge 'current_version' if newest is null but recent has it
+                        if (!current.current_version && hb.current_version) {
+                            current.current_version = hb.current_version
+                        }
+
+                        // 3. Merge meta: if current is missing health stats but previous (recent) has them, merge
                         const curMeta = current.meta as any || {}
                         const oldMeta = hb.meta as any || {}
                         if (!curMeta.storage_total_gb && oldMeta.storage_total_gb) {
@@ -588,6 +594,14 @@ export default function DevicesPage() {
                                                                     <Download size={13} />
                                                                 </button>
                                                                 <button
+                                                                    onClick={() => setSelectedHealthDevice(d)}
+                                                                    className="btn-secondary"
+                                                                    style={{ padding: '0.375rem 0.625rem', color: '#06b6d4' }}
+                                                                    title="Device Health & Diagnostics"
+                                                                >
+                                                                    <Activity size={13} />
+                                                                </button>
+                                                                <button
                                                                     onClick={() => handleScreenshot(d.id, d.device_code)}
                                                                     className="btn-secondary"
                                                                     style={{ padding: '0.375rem 0.625rem' }}
@@ -790,42 +804,28 @@ export default function DevicesPage() {
                         Enter the 6-digit code displayed on your player screen to securely link it to this account.
                     </div>
 
-                    <div className="form-group">
-                        <label>Pairing Code</label>
+                    <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                        <label className="label">Pairing Code</label>
                         <input
                             type="text"
-                            placeholder="000000"
-                            maxLength={6}
+                            className="input-field"
                             value={claimPin}
-                            onChange={(e) => setClaimPin(e.target.value.replace(/[^0-9]/g, ''))}
-                            style={{
-                                textAlign: 'center',
-                                fontSize: '2rem',
-                                letterSpacing: '0.3em',
-                                fontWeight: 700,
-                                fontFamily: 'monospace',
-                                height: 'auto',
-                                padding: '1rem'
-                            }}
+                            onChange={e => setClaimPin(e.target.value.toUpperCase().slice(0, 6))}
+                            placeholder="000000"
+                            style={{ textAlign: 'center', fontSize: '2rem', letterSpacing: '0.5em', fontWeight: 800, height: '4rem' }}
                         />
                     </div>
 
-                    <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
+                    <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
                         <button className="btn-secondary" onClick={() => setShowClaimModal(false)}>Cancel</button>
-                        <button
-                            className="btn-primary"
-                            disabled={claiming || claimPin.length !== 6}
-                            onClick={handleClaim}
-                        >
-                            {claiming ? 'Pairing…' : 'Pair Device'}
+                        <button className="btn-primary" onClick={handleClaim} disabled={claiming || claimPin.length !== 6}>
+                            {claiming && <Loader2 size={14} />}
+                            {claiming ? 'Pairing...' : 'Pair Device'}
                         </button>
-                    </div>
-
-                    <div style={{ marginTop: '1.5rem', padding: '1rem', background: '#0f172a', borderRadius: 8, fontSize: '0.75rem', color: '#64748b', textAlign: 'center' }}>
-                        The code is unique and expires every 10 minutes for security.
                     </div>
                 </Modal>
             )}
+
             {/* Screenshot Viewer Modal */}
             {screenshotModal && (
                 <Modal title={`📸 Screenshot — ${screenshotModal.deviceCode}`} onClose={() => setScreenshotModal(null)}>
@@ -878,7 +878,101 @@ export default function DevicesPage() {
                     </div>
                 </Modal>
             )}
+
+            {selectedHealthDevice && (
+                <DeviceHealthModal
+                    device={selectedHealthDevice}
+                    heartbeat={heartbeats[selectedHealthDevice.device_code]}
+                    onClose={() => setSelectedHealthDevice(null)}
+                />
+            )}
         </div>
     )
+}
+
+function DeviceHealthModal({ device, heartbeat, onClose }: { device: Device, heartbeat?: DeviceHeartbeat, onClose: () => void }) {
+    if (!device) return null;
+    const meta = (heartbeat?.meta as any) || {};
+
+    const stats = [
+        { label: 'Battery', value: meta.battery_level !== undefined && meta.battery_level !== -1 ? `${meta.battery_level}%` : 'N/A', icon: Smartphone },
+        { label: 'Uptime', value: meta.uptime_hours ? `${meta.uptime_hours.toFixed(1)} hrs` : 'N/A', icon: History },
+        { label: 'Local IP', value: meta.local_ip || 'N/A', icon: Link },
+        { label: 'Network', value: meta.network_type || 'N/A', icon: Wifi },
+    ];
+
+    const storageUsage = meta.storage_total_gb ? (1 - (meta.storage_free_gb / meta.storage_total_gb)) * 100 : 0;
+    const ramUsage = meta.ram_total_mb ? (1 - (meta.ram_free_mb / meta.ram_total_mb)) * 100 : 0;
+
+    return (
+        <Modal title={`Health Monitoring: ${device.device_code}`} onClose={onClose} maxWidth="800px">
+            <div className="fade-in">
+                {/* Status Bar */}
+                <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                    <div className="card" style={{ flex: 1, padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'rgba(34, 197, 94, 0.05)', borderColor: 'rgba(34, 197, 94, 0.2)' }}>
+                        <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: '#10b981', fontWeight: 600 }}>Storage Usage</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <div style={{ flex: 1, height: 8, background: 'rgba(0,0,0,0.2)', borderRadius: 4, overflow: 'hidden' }}>
+                                <div style={{ width: `${storageUsage}%`, height: '100%', background: storageUsage > 90 ? '#ef4444' : '#10b981', borderRadius: 4 }} />
+                            </div>
+                            <span style={{ fontSize: '0.8125rem', fontWeight: 700, minWidth: 40 }}>{storageUsage.toFixed(0)}%</span>
+                        </div>
+                        <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{meta.storage_free_gb?.toFixed(2) || 0}GB free of {meta.storage_total_gb?.toFixed(2) || 0}GB</span>
+                    </div>
+
+                    <div className="card" style={{ flex: 1, padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'rgba(59, 130, 246, 0.05)', borderColor: 'rgba(59, 130, 246, 0.2)' }}>
+                        <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: '#3b82f6', fontWeight: 600 }}>RAM Usage</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <div style={{ flex: 1, height: 8, background: 'rgba(0,0,0,0.2)', borderRadius: 4, overflow: 'hidden' }}>
+                                <div style={{ width: `${ramUsage}%`, height: '100%', background: ramUsage > 90 ? '#ef4444' : '#3b82f6', borderRadius: 4 }} />
+                            </div>
+                            <span style={{ fontSize: '0.8125rem', fontWeight: 700, minWidth: 40 }}>{ramUsage.toFixed(0)}%</span>
+                        </div>
+                        <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{meta.ram_free_mb || 0}MB free of {meta.ram_total_mb || 0}MB</span>
+                    </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+                    {stats.map(s => (
+                        <div key={s.label} className="card" style={{ padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <div style={{ background: 'var(--color-surface-400)', padding: '0.5rem', borderRadius: 8, color: 'var(--color-brand-200)' }}>
+                                <s.icon size={16} />
+                            </div>
+                            <div>
+                                <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 600 }}>{s.label}</div>
+                                <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#f1f5f9' }}>{s.value}</div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                    <table style={{ margin: 0 }}>
+                        <tbody style={{ border: 'none' }}>
+                            {[
+                                { label: 'Device Model', value: meta.device_model || 'Unknown' },
+                                { label: 'Android Version', value: meta.android_version ? `${meta.android_version} (API ${meta.sdk_int})` : 'Unknown' },
+                                { label: 'Screen Resolution', value: meta.screen || 'Unknown' },
+                                { label: 'WebView Version', value: meta.webview_version || 'Unknown', wrap: true },
+                                { label: 'App Version', value: heartbeat?.current_version || 'v1.0.0' },
+                                { label: 'Public IP', value: heartbeat?.ip_address || 'Unknown' },
+                                { label: 'Last Error', value: meta.last_error || 'None', color: meta.last_error ? '#ef4444' : undefined },
+                                { label: 'Active URL', value: meta.webview_url || 'N/A', wrap: true },
+                            ].map((row, i) => (
+                                <tr key={row.label} style={{ background: i % 2 === 0 ? 'rgba(0,0,0,0.1)' : 'transparent', borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
+                                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600, width: '30%' }}>{row.label}</td>
+                                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: row.color || '#f1f5f9', wordBreak: row.wrap ? 'break-all' : undefined }}>{row.value}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
+                    <button className="btn-primary" onClick={onClose}>Close Diagnostics</button>
+                </div>
+            </div>
+        </Modal>
+    );
 }
 
