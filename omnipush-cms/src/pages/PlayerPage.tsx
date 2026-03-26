@@ -178,7 +178,7 @@ interface VideoBufferProps {
     style?: React.CSSProperties
 }
 
-type TransitionEffect = 'fade' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'none'
+type TransitionEffect = 'fade' | 'slide' | 'zoom' | 'none' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right'
 
 function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
     items: ManifestItem[]
@@ -388,21 +388,40 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
                 case 'fade':
                     style.opacity = 0
                     break
-                case 'slide-up':
-                    style.transform = 'translate3d(0, -100%, 0)'
-                    break
-                case 'slide-down':
-                    style.transform = 'translate3d(0, 100%, 0)'
-                    break
+                case 'slide':
                 case 'slide-left':
                     style.transform = 'translate3d(-100%, 0, 0)'
                     break
                 case 'slide-right':
                     style.transform = 'translate3d(100%, 0, 0)'
                     break
+                case 'slide-up':
+                    style.transform = 'translate3d(0, -100%, 0)'
+                    break
+                case 'slide-down':
+                    style.transform = 'translate3d(0, 100%, 0)'
+                    break
+                case 'zoom':
+                    style.transform = 'scale(0.95)'
+                    style.opacity = 0
+                    break
                 case 'none':
                     style.transition = 'none'
                     style.opacity = 0
+                    break
+            }
+        } else if (!ready) {
+            // Initial state for the ACTIVE item before it is "ready" (transitioning in)
+            switch (e) {
+                case 'slide':
+                case 'slide-left':
+                    style.transform = 'translate3d(100%, 0, 0)'
+                    break
+                case 'slide-right':
+                    style.transform = 'translate3d(-100%, 0, 0)'
+                    break
+                case 'zoom':
+                    style.transform = 'scale(1.05)'
                     break
             }
         }
