@@ -89,6 +89,76 @@ function LiveClock() {
     )
 }
 
+// ─── Status Overlay ──────────────────────────────────────────────────────────
+
+function StatusLine({ dc, manifest, offline, sync, version }: any) {
+    const stats = React.useMemo(() => {
+        if (!manifest) return { items: 0, synced: 0, total: 0 }
+        let itemsCount = 0
+        if (manifest.region_playlists) {
+            Object.values(manifest.region_playlists).forEach((list: any) => {
+                if (Array.isArray(list)) itemsCount += list.length
+            })
+        }
+        const assets = manifest.assets || []
+        const blobCount = assets.filter((a: any) => a.url?.startsWith('blob:')).length || 0
+        // Total assets to sync (exclude web urls which are never cached as blobs)
+        const totalToSync = assets.filter((a: any) => a.type !== 'web_url').length
+        return { items: itemsCount, synced: blobCount, total: totalToSync }
+    }, [manifest])
+
+    if (!manifest) return null
+
+    return (
+        <div style={{
+            position: 'fixed', bottom: 12, left: 12, zIndex: 99999,
+            display: 'flex', alignItems: 'center', gap: '10px',
+            padding: '5px 14px', borderRadius: '100px',
+            background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            boxShadow: '0 4px 15px rgba(0,0,0,0.4)',
+            color: 'rgba(255,255,255,0.6)', fontSize: '10px', fontWeight: 600,
+            textTransform: 'uppercase', letterSpacing: '0.04em',
+            pointerEvents: 'none', transition: 'all 0.5s ease'
+        }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: offline ? '#fbbf24' : '#10b981', boxShadow: `0 0 8px ${offline ? '#fbbf24' : '#10b981'}` }} />
+                <span style={{ color: 'rgba(255,255,255,0.85)' }}>{dc}</span>
+            </div>
+            <span style={{ opacity: 0.2 }}>|</span>
+            <span style={{ display: 'flex', gap: '4px' }}>
+                <span style={{ color: 'rgba(255,255,255,0.4)' }}>Playlist</span>
+                <span>{stats.items}</span>
+            </span>
+            <span style={{ opacity: 0.2 }}>|</span>
+            <span style={{ display: 'flex', gap: '4px' }}>
+                <span style={{ color: 'rgba(255,255,255,0.4)' }}>Cache</span>
+                <span style={{ color: stats.synced >= stats.total && stats.total > 0 ? '#10b981' : '#f59e0b' }}>
+                    {stats.synced}/{stats.total}
+                </span>
+            </span>
+            {sync && sync.current < sync.total && (
+                <>
+                    <span style={{ opacity: 0.2 }}>|</span>
+                    <span style={{ color: '#3b82f6' }}>Syncing {Math.round((sync.current / sync.total) * 100)}%</span>
+                </>
+            )}
+            {manifest.resolved?.role && (
+                <>
+                    <span style={{ opacity: 0.2 }}>|</span>
+                    <span>{manifest.resolved.role}</span>
+                </>
+            )}
+            {version && (
+                <>
+                    <span style={{ opacity: 0.2 }}>|</span>
+                    <span style={{ fontSize: '9px', opacity: 0.6 }}>V{version.split('-')[0]}</span>
+                </>
+            )}
+        </div>
+    )
+}
+
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
 // CSS to hide the default video "play/icon" flash in Android WebView
@@ -331,25 +401,34 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
         advanceBufferRef.current = advanceBuffer
     }, [advanceBuffer])
 
+    // ─── Initial Sync & Loopback ───
     useEffect(() => {
         if (sorted.length > 0) {
             const firstId = getUrl(sorted[0])
             const nextId = sorted.length > 1 ? getUrl(sorted[1]) : ''
-            if (initialSyncDone.current) {
-                const stillExists = sorted.some(s => getUrl(s) === slotUrls[activeSlot])
-                if (stillExists) return
+
+            // Only re-initialize if the IDs or URLs actually changed
+            const currentUrlsStr = JSON.stringify(slotUrls)
+            const newUrlsStr = JSON.stringify([firstId, nextId])
+
+            if (initialSyncDone.current && currentUrlsStr === newUrlsStr) {
+                return
             }
+
+            console.log('[DoubleBufferVideo] Initializing Slot URLs:', newUrlsStr)
             setSlotUrls([firstId, nextId])
             initialSyncDone.current = true
+
+            // Only force play on mount or true content change
             setTimeout(() => {
-                const v = activeSlot === 0 ? v1.current : v2.current
-                if (v) {
+                const v = videoRefs[activeSlot].current
+                if (v && v.paused) {
                     v.currentTime = 0
                     v.play().catch(() => { })
                 }
-            }, 100)
+            }, 150)
         }
-    }, [sorted, getUrl])
+    }, [sorted, getUrl]) // We want to re-check if items changed, but the internal guard handles ref-identity issues
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -461,6 +540,18 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
                             })
                         }, READY_TIMING)
                     }}
+                    onCanPlay={() => {
+                        // Safety fallback: if hardware doesn't fire "playing" for some reason, 
+                        // we still want to show the video after a reasonable delay if it's ready.
+                        setTimeout(() => {
+                            setIsReady(prev => {
+                                if (prev[i]) return prev // Already handled by onPlaying
+                                const up = [...prev] as [boolean, boolean]
+                                up[i] = true
+                                return up
+                            })
+                        }, 2000)
+                    }}
                     onEnded={() => {
                         setIsReady(prev => {
                             const up = [...prev] as [boolean, boolean]
@@ -472,9 +563,11 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
                     onTimeUpdate={() => { if (i === activeSlot) triggerWatchdog(12000) }}
                 />
             ))}
-            <div style={{ position: 'absolute', bottom: 4, left: 4, fontSize: 9, color: 'rgba(255,255,255,0.2)', zIndex: 110 }}>
-                {debug} | {activeSlot === 0 ? 'V1' : 'V2'} | {effect}
-            </div>
+            {false && (
+                <div style={{ position: 'absolute', bottom: 4, left: 4, fontSize: 9, color: 'rgba(255,255,255,0.2)', zIndex: 110 }}>
+                    {debug} | {activeSlot === 0 ? 'V1' : 'V2'} | {effect}
+                </div>
+            )}
         </div>
     )
 }
@@ -1364,35 +1457,40 @@ export default function PlayerPage() {
 
             // ── Handling "Up to Date" response ──
             if (data.up_to_date) {
-                console.log(`[Player] Content ${data.version} is up to date. Keep loop playing.`)
+                console.log(`[Player] Content up to date. Ensuring hydration...`)
                 setOffline(false)
+
+                // Even if the version is the same, we might have lost our session-local blob URLs (e.g. after a refresh/reboot).
+                // If the current state assets are server-side, re-hydrate them from cache.
+                if (manifest?.assets) {
+                    const needsHydration = manifest.assets.some(a =>
+                        a.url && !a.url.startsWith('blob:') &&
+                        a.type !== 'ppt' && a.type !== 'presentation' && a.type !== 'web_url'
+                    )
+                    if (needsHydration) {
+                        const hydrated = await hydrateAssetsFromCache(manifest.assets) as ManifestAsset[]
+                        setManifest(prev => prev ? { ...prev, assets: hydrated } : null)
+                    }
+                }
                 return true
             }
 
             const newVersion = data.resolved?.version || null
             const wasPlaying = phase === 'playing' || phase === 'standby'
 
-            // ── Auto version-change detection (mid-playback) ──
-            if (wasPlaying && newVersion && versionRef.current && newVersion !== versionRef.current) {
-                console.log(`[Player] 🔄 New version detected: ${versionRef.current} → ${newVersion}`)
-                if (data.assets) syncAssets(data.assets)
-                setManifest(data)
-                setVersion(newVersion)
-                versionRef.current = newVersion
-                localStorage.setItem(manifestKey(dc), JSON.stringify(data))
-                setOffline(false)
-                return true
-            }
+            // ── Regular Load or mid-playback version change ──
+            // Store original manifest in localStorage (without blob URLs which are session-local)
+            const mKey = manifestKey(dc)
+            localStorage.setItem(mKey, JSON.stringify(data))
 
-            // ── Regular Load ──
             setManifest(data)
             setVersion(newVersion)
             versionRef.current = newVersion
-            localStorage.setItem(manifestKey(dc), JSON.stringify(data))
             setOffline(false)
 
             if (data.assets) syncAssets(data.assets)
 
+            // Telemetry/Health update
             const win = window as any
             if (win.AndroidHealth?.setStoreInfo) {
                 win.AndroidHealth.setStoreInfo(data.device?.store_id || null, data.device?.store_name || null)
@@ -1401,7 +1499,9 @@ export default function PlayerPage() {
             return true
         } catch (err: any) {
             const msg: string = (err.message || '').toLowerCase()
+            console.warn('[Player] Fetch error (Checking offline cache):', msg)
 
+            // 1. Critical errors: Auth/Inactive (Stop playing/clear cache if needed)
             if (msg.includes('invalid credentials') || msg.includes('inactive device')) {
                 localStorage.removeItem(secretKey(dc))
                 localStorage.removeItem(manifestKey(dc))
@@ -1411,6 +1511,7 @@ export default function PlayerPage() {
                 return false
             }
 
+            // 2. Resource Errors (Try to handle standby or error phase)
             if (msg.includes('no active publication') || msg.includes('no publication') || msg.includes('not found')) {
                 setPhase('standby')
                 if (err.data?.device) {
@@ -1419,25 +1520,39 @@ export default function PlayerPage() {
                 return true
             }
 
-            const cached = localStorage.getItem(manifestKey(dc))
-            if (cached) {
+            // 3. Network Outage Fallback: Attempt offline playback from cache
+            const mKey = manifestKey(dc)
+            const cachedBody = localStorage.getItem(mKey)
+
+            if (cachedBody) {
                 try {
-                    const c = JSON.parse(cached)
-                    setManifest(c)
-                    if (c.resolved?.version) {
-                        setVersion(c.resolved.version)
-                        versionRef.current = c.resolved.version
+                    console.log('[Player] 📡 Offline mode: Hydrating from cache...')
+                    const cachedManifest: Manifest = JSON.parse(cachedBody)
+
+                    // Critical: Hydrate asset URLs from local IndexedDB cache
+                    const hydratedAssets = await hydrateAssetsFromCache(cachedManifest.assets || []) as ManifestAsset[]
+                    const offlineManifest = { ...cachedManifest, assets: hydratedAssets }
+
+                    setManifest(offlineManifest)
+                    if (cachedManifest.resolved?.version) {
+                        setVersion(cachedManifest.resolved.version)
+                        versionRef.current = cachedManifest.resolved.version
                     }
+
                     setOffline(true)
+                    setErrorMsg('') // Clear error since we are playing from cache
                     return true
-                } catch { /* ignore */ }
+                } catch (cacheErr) {
+                    console.error('[Player] Cache hydration failed:', cacheErr)
+                }
             }
 
-            setErrorMsg(err.message || 'Fetch failed')
-            setPhase('error')
+            // Final fallback: Show error if no cache exists
+            setErrorMsg(`Connection error and no local cache available. [${err.message || 'Unknown'}]`)
+            if (phase !== 'playing') setPhase('error')
             return false
         }
-    }, [dc, syncAssets, initPairing]) // REMOVED version, phase to stop re-triggering loops
+    }, [dc, syncAssets, initPairing, phase])
 
     // ── Send heartbeat ──
     const sendHeartbeat = useCallback(async (sec: string) => {
@@ -2011,6 +2126,13 @@ export default function PlayerPage() {
             {renderMain()}
             {cornerTapZone}
             <AdminPanel />
+            <StatusLine
+                dc={dc}
+                manifest={manifest}
+                offline={offline}
+                sync={syncProgress}
+                version={version}
+            />
         </div>
     )
 }
