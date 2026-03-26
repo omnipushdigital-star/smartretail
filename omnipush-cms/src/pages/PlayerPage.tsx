@@ -91,7 +91,7 @@ function LiveClock() {
 
 // ─── Status Overlay ──────────────────────────────────────────────────────────
 
-function StatusLine({ dc, manifest, offline, sync, version }: any) {
+function StatusLine({ dc, manifest, offline, sync, version, lastError }: any) {
     const stats = React.useMemo(() => {
         if (!manifest) return { items: 0, synced: 0, total: 0 }
         let itemsCount = 0
@@ -119,7 +119,8 @@ function StatusLine({ dc, manifest, offline, sync, version }: any) {
             boxShadow: '0 4px 15px rgba(0,0,0,0.4)',
             color: 'rgba(255,255,255,0.6)', fontSize: '10px', fontWeight: 600,
             textTransform: 'uppercase', letterSpacing: '0.04em',
-            pointerEvents: 'none', transition: 'all 0.5s ease'
+            pointerEvents: 'none', transition: 'all 0.5s ease',
+            maxWidth: '96vw', overflow: 'hidden'
         }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <div style={{ width: 6, height: 6, borderRadius: '50%', background: offline ? '#fbbf24' : '#10b981', boxShadow: `0 0 8px ${offline ? '#fbbf24' : '#10b981'}` }} />
@@ -141,6 +142,14 @@ function StatusLine({ dc, manifest, offline, sync, version }: any) {
                 <>
                     <span style={{ opacity: 0.2 }}>|</span>
                     <span style={{ color: '#3b82f6' }}>Syncing {Math.round((sync.current / sync.total) * 100)}%</span>
+                </>
+            )}
+            {lastError && (
+                <>
+                    <span style={{ opacity: 0.2 }}>|</span>
+                    <span style={{ color: '#f87171', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '150px' }}>
+                        ⚠ {lastError}
+                    </span>
                 </>
             )}
             {manifest.resolved?.role && (
@@ -327,18 +336,9 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
                 if (!currentVideo) return;
                 try {
                     console.log('[Player] Releasing O-Slot decoder:', currentSlot);
-                    // Crucial: hide old video instantly BEFORE mutating src so native play icon cannot render
+                    // Hide old video but keep it technically 'visible' so the browser doesn't pause it
                     currentVideo.style.opacity = '0';
-                    currentVideo.style.visibility = 'hidden';
                     currentVideo.pause();
-                    currentVideo.removeAttribute('src');
-                    currentVideo.load();
-                    // Sync state so React knows this slot is now empty and can be re-bound even to the same URL
-                    setSlotUrls(prev => {
-                        const up: [string, string] = [...prev] as [string, string]
-                        up[currentSlot] = ''
-                        return up
-                    })
                 } catch (e) { /* ignore */ }
             };
 
@@ -370,13 +370,13 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
                     // Queue next buffer
                     const pIdx = (nextIdx + 1) % sorted.length
                     const pUrl = getUrl(sorted[pIdx])
-                    setTimeout(() => {
-                        setSlotUrls(prev => {
-                            const up: [string, string] = [...prev] as [string, string]
-                            up[currentSlot] = pUrl
-                            return up
-                        })
-                    }, 300)
+
+                    setSlotUrls(prev => {
+                        if (prev[currentSlot] === pUrl) return prev // Avoid redundant src reset
+                        const up: [string, string] = [...prev] as [string, string]
+                        up[currentSlot] = pUrl
+                        return up
+                    })
                 }, 850)
 
             }).catch(e => {
@@ -464,9 +464,9 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
             transition: 'transform 800ms cubic-bezier(0.4, 0, 0.2, 1), opacity 600ms ease, visibility 0s',
             zIndex: isActive ? 10 : 5,
             pointerEvents: 'none',
-            visibility: (isActive || isTransitioning) ? 'visible' : 'hidden',
+            visibility: 'visible', // Stay 'visible' so Chrome/WebView doesn't pause background video
             transform: 'translate3d(0, 0, 0)',
-            opacity: ready ? 1 : 0, // Keep invisible until first frame
+            opacity: ready ? (isActive ? 1 : 0) : 0,
             willChange: 'transform, opacity'
         }
 
@@ -1189,6 +1189,7 @@ export default function PlayerPage() {
 
     const [phase, setPhase] = useState<Phase>('loading')
     const [secret, setSecret] = useState<string>('')
+    const [lastError, setLastError] = useState<string | null>(null)
     const [manifest, setManifest] = useState<Manifest | null>(null)
     const [offline, setOffline] = useState(false)
     const [errorMsg, setErrorMsg] = useState('')
@@ -1372,7 +1373,14 @@ export default function PlayerPage() {
                 }
             }
         } catch (err: any) {
-            console.error('[Commands] Polling error:', err.message)
+            // Silence noise for connection drops in the overlay
+            if (err.message?.includes('Failed to fetch') || err.message?.includes('Network Error')) {
+                console.warn('[Commands] Connection dropped, awaiting retry...')
+                setLastError('Connection dropped')
+            } else {
+                console.error('[Commands] Polling error:', err.message)
+                setLastError(err.message)
+            }
         }
     }, [manifest?.device?.id, dc, captureBrowserScreenshot])
 
@@ -2140,6 +2148,7 @@ export default function PlayerPage() {
                 offline={offline}
                 sync={syncProgress}
                 version={version}
+                lastError={lastError}
             />
         </div>
     )
