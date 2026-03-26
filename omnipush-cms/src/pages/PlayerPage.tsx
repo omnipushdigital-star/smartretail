@@ -62,8 +62,11 @@ interface Manifest {
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const HEARTBEAT_INTERVAL_MS = 30_000
-const DEFAULT_IMAGE_DURATION = 10 // 10s default for images
-const DEFAULT_WEB_DURATION = 30   // 30s default for web content
+const DEFAULT_IMAGE_DURATION = 10
+const DEFAULT_WEB_DURATION = 30
+const DEFAULT_VIDEO_DURATION = 300
+const TRANSITION_DURATION = 1000 // 1s smooth transition
+const READY_TIMING = 500 // 500ms safety buffer for Android hardware
 
 function secretKey(code: string) { return `omnipush_device_secret:${code}` }
 function manifestKey(code: string) { return `omnipush_manifest:${code}` }
@@ -358,21 +361,25 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
         return () => clearInterval(interval)
     }, [activeSlot])
 
+    const [isReady, setIsReady] = useState<[boolean, boolean]>([false, false])
+    const isReadyRef = useRef<boolean[]>([false, false])
+
     const getTransitionStyle = (slot: number): React.CSSProperties => {
         const isActive = activeSlot === slot
+        const ready = isReady[slot]
         const e: TransitionEffect = effect ?? 'slide-up'
         const style: React.CSSProperties = {
             position: 'absolute',
             top: 0, left: 0,
             width: '100%', height: '100%',
             objectFit: 'fill',
-            background: '#000',
-            transition: 'transform 800ms cubic-bezier(0.4, 0, 0.2, 1), opacity 800ms ease, visibility 0s 1s',
+            background: 'transparent', // Crucial: no black background hidden behind frames
+            transition: 'transform 800ms cubic-bezier(0.4, 0, 0.2, 1), opacity 600ms ease, visibility 0s',
             zIndex: isActive ? 10 : 5,
             pointerEvents: 'none',
-            visibility: 'visible',
+            visibility: (isActive || isTransitioning) ? 'visible' : 'hidden',
             transform: 'translate3d(0, 0, 0)',
-            opacity: 1,
+            opacity: ready ? 1 : 0, // Keep invisible until first frame
             willChange: 'transform, opacity'
         }
 
@@ -398,24 +405,12 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
                     style.opacity = 0
                     break
             }
-
-            // Cleanup: hide inactive slot after transition completes
-            if (style.opacity === 0) style.visibility = 'hidden'
-            // Amlogic: keep visible during slide so it can animate out
-            if (style.transform !== 'translate3d(0, 0, 0)') {
-                style.visibility = isTransitioning ? 'visible' : 'hidden'
-            }
         }
         return style
     }
 
     return (
         <div style={{ position: 'absolute', inset: 0, background: '#000', overflow: 'hidden' }}>
-            <div style={{
-                position: 'absolute', inset: 0, zIndex: 100, background: '#000',
-                transition: 'opacity 300ms', pointerEvents: 'none',
-                opacity: isTransitioning ? 1 : 0
-            }} />
             {[0, 1].map(i => (
                 <video
                     key={i}
@@ -430,14 +425,30 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
                     preload="auto"
                     autoPlay={false}
                     disablePictureInPicture={true}
-                    // suppression of play icon: empty transparent poster
                     poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
                     {...{
                         'webkit-playsinline': 'true',
                         'x-webkit-airplay': 'deny',
                         'controlsList': 'nodownload nofullscreen noremoteplayback'
                     }}
-                    onEnded={() => { if (i === activeSlot) advanceBuffer() }}
+                    onPlaying={() => {
+                        console.log(`[DoubleBufferVideo] Video Slot ${i} Playing, waiting ${READY_TIMING}ms buffer...`)
+                        setTimeout(() => {
+                            setIsReady(prev => {
+                                const up = [...prev] as [boolean, boolean]
+                                up[i] = true
+                                return up
+                            })
+                        }, READY_TIMING)
+                    }}
+                    onEnded={() => {
+                        setIsReady(prev => {
+                            const up = [...prev] as [boolean, boolean]
+                            up[i] = false
+                            return up
+                        })
+                        if (i === activeSlot) advanceBuffer()
+                    }}
                     onTimeUpdate={() => { if (i === activeSlot) triggerWatchdog(12000) }}
                 />
             ))}
@@ -453,67 +464,115 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
 
 function PlaybackEngine({ items, assets, region }: PlaybackProps) {
     const [idx, setIdx] = useState(0)
-    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-    const [fade, setFade] = useState(true)
+    const [prevIdx, setPrevIdx] = useState<number | null>(null)
+    const [isSwapping, setIsSwapping] = useState(false)
+    const [readyIdx, setReadyIdx] = useState<number | null>(null)
     const [currentTime, setCurrentTime] = useState(new Date())
 
-    // Perodic re-evaluation for schedules
+    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const idxRef = useRef(0)
+    idxRef.current = idx
+
+    // Periodic re-evaluation for schedules
     useEffect(() => {
-        const t = setInterval(() => setCurrentTime(new Date()), 10000)
+        const t = setInterval(() => setCurrentTime(new Date()), 15000)
         return () => clearInterval(t)
     }, [])
 
     const activeItems = useMemo(() => {
-        const filtered = items
-            .filter(item => {
-                if (!item.is_scheduled) return true
+        const filtered = items.filter(item => {
+            if (!item.is_scheduled) return true
 
-                // 1. Date Range Check
-                if (item.start_date) {
-                    const start = new Date(item.start_date + 'T00:00:00')
-                    if (currentTime < start) return false
+            // 1. Date Range Check
+            if (item.start_date) {
+                const start = new Date(item.start_date + 'T00:00:00')
+                if (currentTime < start) return false
+            }
+            if (item.end_date) {
+                const end = new Date(item.end_date + 'T23:59:59')
+                if (currentTime > end) return false
+            }
+
+            // 2. Day of Week Check
+            if (item.days_of_week && item.days_of_week.length > 0) {
+                if (!item.days_of_week.includes(currentTime.getDay())) return false
+            }
+
+            // 3. Time Check (Dayparting)
+            if (item.start_time || item.end_time) {
+                const nowSecs = currentTime.getHours() * 3600 + currentTime.getMinutes() * 60 + currentTime.getSeconds()
+                if (item.start_time) {
+                    const [h, m, s] = item.start_time.split(':').map(Number)
+                    if (nowSecs < (h * 3600 + (m || 0) * 60 + (s || 0))) return false
                 }
-                if (item.end_date) {
-                    const end = new Date(item.end_date + 'T23:59:59')
-                    if (currentTime > end) return false
+                if (item.end_time) {
+                    const [h, m, s] = item.end_time.split(':').map(Number)
+                    if (nowSecs > (h * 3600 + (m || 0) * 60 + (s || 0))) return false
                 }
+            }
 
-                // 2. Day of Week Check
-                if (item.days_of_week && item.days_of_week.length > 0) {
-                    if (!item.days_of_week.includes(currentTime.getDay())) return false
-                }
+            return true
+        })
 
-                // 3. Time Check (Dayparting)
-                if (item.start_time || item.end_time) {
-                    const nowSecs = currentTime.getHours() * 3600 + currentTime.getMinutes() * 60 + currentTime.getSeconds()
-                    if (item.start_time) {
-                        const [h, m, s] = item.start_time.split(':').map(Number)
-                        if (nowSecs < (h * 3600 + (m || 0) * 60 + (s || 0))) return false
-                    }
-                    if (item.end_time) {
-                        const [h, m, s] = item.end_time.split(':').map(Number)
-                        if (nowSecs > (h * 3600 + (m || 0) * 60 + (s || 0))) return false
-                    }
-                }
-
-                return true
-            })
-
-        console.log(`[Player] [Schedule] Active Items: ${filtered.length}/${items.length} for Region ${region?.id || ''}`)
         return filtered.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-    }, [items, currentTime, region?.id])
+    }, [items, currentTime])
 
-    // Safety: Reset index if active list changes significantly
+    // Safety: Reset index if active list changes significanly
     useEffect(() => {
         if (idx >= activeItems.length && activeItems.length > 0) {
             setIdx(0)
         }
     }, [activeItems.length, idx])
 
-    // Update Android Status on content change
+    const advance = useCallback(() => {
+        const len = activeItems.length
+        if (len === 0) return
+        const nextIdx = len === 1 ? 0 : (idxRef.current + 1) % len
+        setIdx(nextIdx)
+        setReadyIdx(null) // Reset ready state for next item
+    }, [activeItems.length])
+
+    // Track state for transitions
+    useEffect(() => {
+        if (idx !== prevIdx) {
+            setIsSwapping(true)
+            const t = setTimeout(() => {
+                setIsSwapping(false)
+                setPrevIdx(idx)
+            }, 1200)
+            return () => clearTimeout(t)
+        }
+    }, [idx, prevIdx])
+
+    // Timing effect
+    useEffect(() => {
+        if (activeItems.length === 0) return
+        if (timerRef.current) clearTimeout(timerRef.current)
+
+        const safeIdx = idx >= activeItems.length ? 0 : idx
+        const item = activeItems[safeIdx]
+        const asset = assets.find(a => a.media_id === item?.media_id)
+        const type = asset?.type || item?.type || (item?.media_id ? 'video' : 'image')
+
+        // Videos in all-video playlists are handled by DoubleBufferVideo's onEnded
+        if (type === 'video' && activeItems.every(i => {
+            const a = assets.find(as => as.media_id === i.media_id)
+            return (a?.type || i.type) === 'video'
+        })) return
+
+        const dur = ((item?.duration_seconds ?? 0) > 0
+            ? item!.duration_seconds!
+            : (type === 'video' ? DEFAULT_VIDEO_DURATION : (type === 'web_url' ? DEFAULT_WEB_DURATION : DEFAULT_IMAGE_DURATION))) * 1000
+
+        timerRef.current = setTimeout(advance, dur)
+        return () => { if (timerRef.current) clearTimeout(timerRef.current) }
+    }, [idx, activeItems, assets, advance])
+
+    // Android Status Sync
     useEffect(() => {
         if (activeItems.length > 0) {
-            const currentItem = activeItems[idx]
+            const safeIdx = idx >= activeItems.length ? 0 : idx
+            const currentItem = activeItems[safeIdx]
             if (!currentItem) return
             const label = currentItem.web_url || currentItem.media_id || 'unnamed'
             const win = window as any
@@ -523,65 +582,121 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
         }
     }, [idx, activeItems])
 
-    // Stable ref to always have the current idx in async callbacks (no stale closures)
-    const idxRef = useRef(0)
-    idxRef.current = idx
+    // Specialized All-Video Check
+    const allVideos = useMemo(() => {
+        return activeItems.length > 0 && activeItems.every(i => {
+            const asset = assets.find(a => a.media_id === i.media_id)
+            let t = asset?.type || i.type || (i.media_id ? 'video' : 'image')
+            const u = asset?.url || i.web_url
+            if (u) {
+                const ext = u.split('?')[0].split('.').pop()?.toLowerCase()
+                if (['mp4', 'webm', 'mov', 'ogg'].includes(ext || '')) t = 'video'
+            }
+            return t === 'video'
+        })
+    }, [activeItems, assets])
 
-    const advanceRef = useRef<() => void>(() => { })
+    function getYouTubeId(url: string) {
+        const m = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/|youtube\.com\/v\/)+([\w-]{11})/)
+        return m ? m[1] : null
+    }
 
-    const [timerTrigger, setTimerTrigger] = useState(0)
+    function getEmbedUrl(url: string) {
+        const id = getYouTubeId(url)
+        if (id) {
+            const origin = encodeURIComponent(window.location.origin)
+            return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&loop=1&playlist=${id}&controls=0&rel=0&modestbranding=1&enablejsapi=1&origin=${origin}`
+        }
+        return url
+    }
 
-    const advance = useCallback(() => {
-        const currentIdx = idxRef.current
-        const len = activeItems.length
-        if (len === 0) return
+    function getTransitionStyles(isActive: boolean, ready: boolean, transitionType?: string): React.CSSProperties {
+        const isSwappingOut = !isActive
 
-        // Single-item playlist: just restart from 0 (triggers re-render / re-fetch)
-        const nextIdx = len === 1 ? 0 : (currentIdx + 1) % len
-
-        setFade(false)
-        setTimeout(() => {
-            setIdx(nextIdx)
-            setTimerTrigger(t => t + 1)
-            setFade(true)
-        }, 300)
-    }, [activeItems.length])
-
-    // Keep advanceRef stable so the timer can always call the latest advance
-    advanceRef.current = advance
-
-    const memoizedAssets = React.useMemo(() => assets, [JSON.stringify(assets)])
-
-    useEffect(() => {
-        if (activeItems.length === 0) return
-        if (timerRef.current) clearTimeout(timerRef.current)
-
-        const safeIdx = idxRef.current >= activeItems.length ? 0 : idxRef.current
-        const item = activeItems[safeIdx]
-        const asset = memoizedAssets.find(a => a.media_id === item?.media_id)
-        const url = asset?.url || item?.web_url
-        const type = asset?.type || item?.type || (item?.media_id ? 'video' : 'image')
-
-        if (!url) {
-            // Skip missing content: advance after a short delay
-            timerRef.current = setTimeout(() => advanceRef.current(), 2000)
-            return
+        // Base styles
+        const styles: React.CSSProperties = {
+            opacity: (isActive && ready) ? 1 : (isSwappingOut ? 0 : 0),
+            transform: 'none',
+            transition: `all ${TRANSITION_DURATION}ms cubic-bezier(0.4, 0, 0.2, 1)`,
         }
 
-        // Videos in all-video playlists are handled by DoubleBufferVideo's onEnded
-        if (type === 'video' && activeItems.every(i => i.type === 'video')) return
+        if (transitionType === 'slide') {
+            styles.transform = isActive
+                ? (ready ? 'translateX(0)' : 'translateX(100%)')
+                : 'translateX(-100%)'
+        } else if (transitionType === 'zoom') {
+            styles.transform = isActive
+                ? (ready ? 'scale(1)' : 'scale(1.1)')
+                : 'scale(0.9)'
+        }
 
-        const dur = ((item?.duration_seconds ?? 0) > 0
-            ? item!.duration_seconds!
-            : (type === 'web_url' ? DEFAULT_WEB_DURATION : DEFAULT_IMAGE_DURATION)) * 1000
+        return styles
+    }
 
-        console.log(`[Player] Timer set: ${dur / 1000}s for item type=${type} idx=${safeIdx}/${activeItems.length}`)
-        timerRef.current = setTimeout(() => {
-            console.log(`[Player] Timer fired for idx=${safeIdx}. Advancing...`)
-            advanceRef.current()
-        }, dur)
-        return () => { if (timerRef.current) clearTimeout(timerRef.current) }
-    }, [idx, timerTrigger, JSON.stringify(activeItems.map(i => i.playlist_item_id)), memoizedAssets, region.id])
+    function renderItem(targetIdx: number, isActive: boolean) {
+        const item = activeItems[targetIdx]
+        if (!item) return null
+        const asset = assets.find(a => a.media_id === item.media_id)
+        const url = asset?.url || item.web_url
+        let type = asset?.type || item.type || (item.media_id ? 'video' : 'image')
+
+        if (url) {
+            const ext = url.split('?')[0].split('.').pop()?.toLowerCase()
+            if (['mp4', 'webm', 'mov', 'ogg'].includes(ext || '')) type = 'video'
+            if (['ppt', 'pptx'].includes(ext || '')) type = 'presentation'
+        }
+
+        const visible = isActive || (isSwapping && targetIdx === prevIdx)
+        const ready = readyIdx === targetIdx || type === 'web_url' || type === 'presentation'
+
+        // Fetch transition from item settings or default to fade
+        const transitionType = (item as any)?.settings?.transition
+
+        return (
+            <div key={`${item.playlist_item_id}-${targetIdx}`} style={{
+                position: 'absolute', inset: 0,
+                zIndex: isActive ? 10 : 5,
+                background: '#000',
+                margin: 0, padding: 0, overflow: 'hidden',
+                visibility: visible ? 'visible' : 'hidden',
+                ...getTransitionStyles(isActive, ready, transitionType)
+            }}>
+                {type === 'image' && url && (
+                    <img
+                        src={url}
+                        style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }}
+                        onLoad={() => setTimeout(() => setReadyIdx(targetIdx), READY_TIMING)}
+                    />
+                )}
+                {type === 'video' && url && (
+                    <video
+                        src={url}
+                        style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }}
+                        autoPlay muted playsInline
+                        poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+                        onPlaying={() => {
+                            console.log(`[PlaybackEngine] Video Playing, waiting ${READY_TIMING}ms buffer...`)
+                            setTimeout(() => setReadyIdx(targetIdx), READY_TIMING)
+                        }}
+                        onEnded={advance}
+                        onError={() => {
+                            setReadyIdx(targetIdx)
+                            setTimeout(advance, 3000)
+                        }}
+                    />
+                )}
+                {type === 'web_url' && url && (
+                    <iframe src={getEmbedUrl(url)} style={{ width: '100%', height: '100%', border: 'none', display: 'block' }} allow="autoplay" />
+                )}
+                {type === 'presentation' && url && (
+                    <iframe
+                        src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`}
+                        style={{ width: '100%', height: '100%', border: 'none', background: '#fff', display: 'block' }}
+                    />
+                )}
+            </div>
+        )
+    }
 
     if (activeItems.length === 0) return (
         <div style={{
@@ -596,212 +711,41 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
         </div>
     )
 
-    const safeIdx = idx >= activeItems.length ? 0 : idx
-    const item = activeItems[safeIdx]
-    const asset = memoizedAssets.find(a => a.media_id === item?.media_id)
-    const url = asset?.url || item?.web_url
-    let type = asset?.type || item?.type || (item?.media_id ? 'video' : 'image')
-
-    // Safety: Auto-correct type if extension is PPT or Video but DB says otherwise
-    if (url) {
-        const ext = url.split('?')[0].split('.').pop()?.toLowerCase()
-        if (['ppt', 'pptx', 'pptm', 'pps', 'ppsx'].includes(ext || '')) {
-            type = 'presentation'
-        }
-        if (['mp4', 'webm', 'mov', 'ogg'].includes(ext || '')) {
-            type = 'video'
-        }
-    }
-
-    // Helper: detect and build a YouTube embed URL
-    function getYouTubeId(rawUrl: string): string | null {
-        const m = rawUrl.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/|youtube\.com\/v\/)+([\w-]{11})/)
-        return m ? m[1] : null
-    }
-
-    function getEmbedUrl(rawUrl: string): string {
-        const id = getYouTubeId(rawUrl)
-        if (id) {
-            // enablejsapi lets us postMessage to control playback
-            // controls=0 keeps it clean for signage
-            const origin = encodeURIComponent(window.location.origin)
-            return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&loop=1&playlist=${id}&controls=0&rel=0&modestbranding=1&enablejsapi=1&origin=${origin}`
-        }
-        return rawUrl
-    }
-
-    // Use double buffer for videos to ensure smooth looping and better recovery
-    const allVideos = useMemo(() => {
-        return activeItems.length >= 1 && activeItems.every(i => {
-            const asset = memoizedAssets.find(a => a.media_id === i.media_id)
-            let t = asset?.type || i.type || (i.media_id ? 'video' : 'image')
-            const u = asset?.url || i.web_url
-            if (u) {
-                const ext = u.split('?')[0].split('.').pop()?.toLowerCase()
-                if (['mp4', 'webm', 'mov', 'ogg'].includes(ext || '')) t = 'video'
-            }
-            return t === 'video'
-        })
-    }, [activeItems, memoizedAssets])
-
-    // Preload next image
-    const nextItem = activeItems[(safeIdx + 1) % activeItems.length]
-    const nextAsset = memoizedAssets.find(a => a.media_id === nextItem?.media_id)
-    const nextUrl = nextAsset?.url || nextItem?.web_url
-    const nextType = nextAsset?.type || nextItem?.type
-
-    const videoRef = useRef<HTMLVideoElement>(null)
-
-    // Explicitly handle video playback startup for mixed content
-    useEffect(() => {
-        if (type === 'video' && videoRef.current) {
-            const v = videoRef.current
-            const attempt = () => {
-                v.currentTime = 0
-                v.play().catch(e => console.warn("[PlaybackEngine] Video play failed:", e))
-            }
-            if (v.readyState >= 2) {
-                attempt()
-            } else {
-                v.addEventListener('canplay', attempt, { once: true })
-            }
-        }
-    }, [idx, type, url])
-
-    if (!url) return (
+    return (
         <div style={{
             position: 'absolute',
             top: `${region.y}%`, left: `${region.x}%`,
             width: `${region.width}%`, height: `${region.height}%`,
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            background: '#0a0a0f', border: '1px solid #1e293b'
+            background: '#000', overflow: 'hidden', margin: 0, padding: 0
         }}>
-            <div style={{ color: '#475569', fontSize: '0.65rem', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Region: {region.id}</div>
-            <div style={{ color: 'rgba(255,255,255,0.1)', fontSize: '0.8rem' }}>No Content Assigned</div>
-        </div>
-    )
-
-    return (
-        <div style={{
-            position: 'absolute',
-            top: `${region.y}%`,
-            left: `${region.x}%`,
-            width: `${region.width}%`,
-            height: `${region.height}%`,
-            background: '#000',
-            overflow: 'hidden',
-            margin: 0, padding: 0,
-        }}>
-            {/* ✅ All-video playlist: use double buffer for flash-free looping */}
             {allVideos ? (
                 <DoubleBufferVideo
-                    key={activeItems.map(i => i.playlist_item_id + i.media_id).join(',')}
+                    key={activeItems.map(i => i.playlist_item_id).join(',')}
                     items={activeItems}
-                    assets={memoizedAssets}
-                    effect="slide-up"
+                    assets={assets}
                     onAdvance={advance}
+                    effect="none"
                 />
             ) : (
-                /* Mixed content: use fade-based switching */
-                <div style={{
-                    position: 'absolute',
-                    top: 0, left: 0, right: 0, bottom: 0,
-                    opacity: fade ? 1 : 0,
-                    transition: 'none',
-                }}>
-                    {type === 'image' && url && (
-                        <img
-                            key={item.playlist_item_id}
-                            src={url}
-                            alt=""
-                            style={{
-                                position: 'absolute', top: 0, left: 0,
-                                width: '100%', height: '100%',
-                                objectFit: 'fill', display: 'block',
-                            }}
-                        />
-                    )}
-                    {type === 'video' && url && (
-                        <video
-                            key={item.playlist_item_id}
-                            ref={videoRef}
-                            src={url}
-                            style={{
-                                position: 'absolute', top: 0, left: 0,
-                                width: '100%', height: '100%',
-                                objectFit: 'fill', background: '#000', display: 'block',
-                            }}
-                            autoPlay
-                            muted
-                            playsInline
-                            disableRemotePlayback
-                            webkit-playsinline="true"
-                            preload="auto"
-                            loop={activeItems.length === 1}
-                            onPlay={(e) => e.currentTarget.playbackRate = item.playback_speed || 1}
-                            onEnded={advance}
-                            onError={() => setTimeout(advance, 5000)}
-                        />
-                    )}
-                    {type === 'web_url' && url && (() => {
-                        const ytId = getYouTubeId(url)
-                        const embedSrc = getEmbedUrl(url)
-                        return (
-                            <iframe
-                                key={item.playlist_item_id}
-                                src={embedSrc}
-                                style={{
-                                    position: 'absolute', top: 0, left: 0,
-                                    width: '100%', height: '100%',
-                                    border: 'none', display: 'block',
-                                    background: '#000',
-                                }}
-                                allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-                                allowFullScreen
-                                title="content"
-                                onLoad={(e) => {
-                                    if (!ytId) return
-                                    // Force YouTube to play via postMessage (IFrame API)
-                                    // This bypasses Chrome autoplay restriction on iframes
-                                    const iframe = e.currentTarget
-                                    const tryPlay = () => {
-                                        try {
-                                            iframe.contentWindow?.postMessage(JSON.stringify({
-                                                event: 'command',
-                                                func: 'playVideo',
-                                                args: []
-                                            }), 'https://www.youtube.com')
-                                        } catch (_) { }
-                                    }
-                                    // Send play command: immediately + again after 1s & 3s as backup
-                                    setTimeout(tryPlay, 500)
-                                    setTimeout(tryPlay, 1500)
-                                    setTimeout(tryPlay, 3000)
-                                }}
-                            />
-                        )
-                    })()}
-                    {(type === 'ppt' || type === 'presentation') && url && (
-                        <iframe
-                            key={item.playlist_item_id + '_ppt'}
-                            src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`}
-                            style={{
-                                position: 'absolute', top: 0, left: 0,
-                                width: '100%', height: '100%',
-                                border: 'none', display: 'block',
-                                background: '#fff',
-                            }}
-                            title="ppt"
-                            frameBorder="0"
-                        />
-                    )}
-                </div>
+                <>
+                    {/* Layer 1: Previous item (for fading out) */}
+                    {prevIdx !== null && prevIdx !== idx && renderItem(prevIdx, false)}
+                    {/* Layer 2: Current item (fading in) */}
+                    {renderItem(idx, true)}
+                </>
             )}
 
-            {/* Preload next image in background */}
-            {!allVideos && nextType === 'image' && nextUrl && (
-                <img src={nextUrl} alt="" style={{ display: 'none' }} />
-            )}
+            {/* Preload next item if it's an image */}
+            {(() => {
+                const nextItem = activeItems[(idx + 1) % activeItems.length]
+                const nextAsset = assets.find(a => a.media_id === nextItem?.media_id)
+                const nextUrl = nextAsset?.url || nextItem?.web_url
+                const nextType = nextAsset?.type || nextItem?.type || (nextItem?.media_id ? 'video' : 'image')
+                if (nextType === 'image' && nextUrl && !allVideos) {
+                    return <img src={nextUrl} alt="" style={{ display: 'none' }} />
+                }
+                return null
+            })()}
         </div>
     )
 }
@@ -1348,8 +1292,10 @@ export default function PlayerPage() {
                 } else {
                     console.log(`[Cache] Downloaded ${asset.media_id} for offline redundancy, but using remote URL for rendering.`)
                 }
-            } catch (err) {
-                console.error(`[Cache] Failed to sync ${asset.media_id}`, err)
+            } catch (err: any) {
+                const errorStr = err?.message || JSON.stringify(err) || 'Unknown Error'
+                console.error(`[Cache] Failed to sync ${asset.media_id}:`, errorStr)
+                setErrorMsg(`[Cache] Sync failed: ${errorStr}`)
             } finally {
                 completed++
                 setSyncProgress({ current: completed, total: updatedAssets.length })
