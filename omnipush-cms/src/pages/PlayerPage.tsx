@@ -65,7 +65,7 @@ const HEARTBEAT_INTERVAL_MS = 30_000
 const DEFAULT_IMAGE_DURATION = 10
 const DEFAULT_WEB_DURATION = 30
 const DEFAULT_VIDEO_DURATION = 300
-const TRANSITION_DURATION = 1000 // 1s smooth transition
+const TRANSITION_DURATION = 800 // 0.8s smooth transition
 const READY_TIMING = 500 // 500ms safety buffer for Android hardware
 
 function secretKey(code: string) { return `omnipush_device_secret:${code}` }
@@ -98,9 +98,9 @@ const globalStyle = `
     margin: 0 !important;
     padding: 0 !important;
     width: 100vw !important;
-    height: 100dvh !important;
-    min-height: 100dvh !important;
-    max-height: 100dvh !important;
+    height: 100vh !important;
+    min-height: 100vh !important;
+    max-height: 100vh !important;
     overflow: hidden !important;
     position: fixed !important;
     top: 0; left: 0; right: 0; bottom: 0;
@@ -410,7 +410,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
     }
 
     return (
-        <div style={{ position: 'absolute', inset: 0, background: '#000', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: '#000', overflow: 'hidden' }}>
             {[0, 1].map(i => (
                 <video
                     key={i}
@@ -433,6 +433,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
                     }}
                     onPlaying={() => {
                         console.log(`[DoubleBufferVideo] Video Slot ${i} Playing, waiting ${READY_TIMING}ms buffer...`)
+                        // Delay ready state slightly to ensure first frame hardware swap is stable
                         setTimeout(() => {
                             setIsReady(prev => {
                                 const up = [...prev] as [boolean, boolean]
@@ -539,7 +540,7 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
             const t = setTimeout(() => {
                 setIsSwapping(false)
                 setPrevIdx(idx)
-            }, 1200)
+            }, 2500) // Increased to ensure transition finishes on slow hardware
             return () => clearTimeout(t)
         }
     }, [idx, prevIdx])
@@ -610,24 +611,27 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
         return url
     }
 
-    function getTransitionStyles(isActive: boolean, ready: boolean, transitionType?: string): React.CSSProperties {
-        const isSwappingOut = !isActive
+    function getTransitionStyles(isActive: boolean, transitionType?: string): React.CSSProperties {
+        // We are ready to move if the new item is ready OR we're not in a swapping state (startup)
+        const isTargetReady = readyIdx === idx || !isSwapping
 
-        // Base styles
         const styles: React.CSSProperties = {
-            opacity: (isActive && ready) ? 1 : (isSwappingOut ? 0 : 0),
-            transform: 'none',
-            transition: `all ${TRANSITION_DURATION}ms cubic-bezier(0.4, 0, 0.2, 1)`,
+            opacity: isActive ? (isTargetReady ? 1 : 0) : (isTargetReady ? 0 : 1),
+            transform: 'translate3d(0, 0, 0)',
+            transition: transitionType === 'none' ? 'none' : `all ${TRANSITION_DURATION}ms cubic-bezier(0.4, 0, 0.2, 1)`,
+            willChange: 'transform, opacity',
+            backfaceVisibility: 'hidden',
+            pointerEvents: isActive ? 'auto' : 'none'
         }
 
         if (transitionType === 'slide') {
             styles.transform = isActive
-                ? (ready ? 'translateX(0)' : 'translateX(100%)')
-                : 'translateX(-100%)'
+                ? (isTargetReady ? 'translate3d(0, 0, 0)' : 'translate3d(100%, 0, 0)')
+                : (isTargetReady ? 'translate3d(-100%, 0, 0)' : 'translate3d(0, 0, 0)')
         } else if (transitionType === 'zoom') {
             styles.transform = isActive
-                ? (ready ? 'scale(1)' : 'scale(1.1)')
-                : 'scale(0.9)'
+                ? (isTargetReady ? 'scale(1)' : 'scale(1.05)')
+                : (isTargetReady ? 'scale(0.95)' : 'scale(1)')
         }
 
         return styles
@@ -647,19 +651,20 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
         }
 
         const visible = isActive || (isSwapping && targetIdx === prevIdx)
-        const ready = readyIdx === targetIdx || type === 'web_url' || type === 'presentation'
 
-        // Fetch transition from item settings or default to fade
-        const transitionType = (item as any)?.settings?.transition
+        // Fetch transition from item settings or default to slide
+        const transitionType = (item as any)?.settings?.transition || 'slide'
 
         return (
             <div key={`${item.playlist_item_id}-${targetIdx}`} style={{
-                position: 'absolute', inset: 0,
+                position: 'absolute',
+                top: 0, left: 0, width: '100%', height: '100%',
                 zIndex: isActive ? 10 : 5,
                 background: '#000',
                 margin: 0, padding: 0, overflow: 'hidden',
                 visibility: visible ? 'visible' : 'hidden',
-                ...getTransitionStyles(isActive, ready, transitionType)
+                ...getTransitionStyles(isActive, transitionType),
+                willChange: 'transform, opacity'
             }}>
                 {type === 'image' && url && (
                     <img
@@ -716,7 +721,12 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
             position: 'absolute',
             top: `${region.y}%`, left: `${region.x}%`,
             width: `${region.width}%`, height: `${region.height}%`,
-            background: '#000', overflow: 'hidden', margin: 0, padding: 0
+            background: '#000',
+            overflow: 'hidden',
+            margin: 0, padding: 0,
+            transform: 'translate3d(0, 0, 0)', // Create containment layer
+            backfaceVisibility: 'hidden',
+            transformStyle: 'preserve-3d'
         }}>
             {allVideos ? (
                 <DoubleBufferVideo
@@ -724,7 +734,7 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
                     items={activeItems}
                     assets={assets}
                     onAdvance={advance}
-                    effect="none"
+                    effect={(activeItems[idx] as any)?.settings?.transition || 'slide'}
                 />
             ) : (
                 <>
@@ -1975,7 +1985,7 @@ export default function PlayerPage() {
     }
 
     return (
-        <div style={{ position: 'relative', width: '100vw', height: '100dvh', overflow: 'hidden', background: '#000' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', overflow: 'hidden', background: '#000', touchAction: 'none' }}>
             {renderMain()}
             {cornerTapZone}
             <AdminPanel />
