@@ -266,6 +266,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
     const [debug, setDebug] = useState<string>('Init')
     const watchdogRef = useRef<any>(null)
     const initialSyncDone = useRef(false)
+    const lastMediaIdsRef = useRef<string>('')
 
     const sorted = React.useMemo(
         () => [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
@@ -413,15 +414,16 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
             const firstId = getUrl(sorted[0])
             const nextId = sorted.length > 1 ? getUrl(sorted[1]) : ''
 
-            // Only re-initialize if the IDs or URLs actually changed
-            const currentUrlsStr = JSON.stringify(slotUrls)
-            const newUrlsStr = JSON.stringify([firstId, nextId])
+            // Only re-initialize if the Media IDs actually changed. 
+            // Comparing Blob URLs is volatile since they change every hydration.
+            const newMediaIds = JSON.stringify(sorted.map(i => i.media_id))
 
-            if (initialSyncDone.current && currentUrlsStr === newUrlsStr) {
+            if (initialSyncDone.current && lastMediaIdsRef.current === newMediaIds) {
                 return
             }
 
-            console.log('[DoubleBufferVideo] Initializing Slot URLs:', newUrlsStr)
+            console.log('[DoubleBufferVideo] Content Changed or Initializing. Syncing Slots...')
+            lastMediaIdsRef.current = newMediaIds
             setSlotUrls([firstId, nextId])
             initialSyncDone.current = true
 
