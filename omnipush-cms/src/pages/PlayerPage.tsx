@@ -1322,9 +1322,12 @@ export default function PlayerPage() {
                     console.log(`[Cache] Downloaded ${asset.media_id} for offline redundancy, but using remote URL for rendering.`)
                 }
             } catch (err: any) {
-                const errorStr = err?.message || JSON.stringify(err) || 'Unknown Error'
-                console.error(`[Cache] Failed to sync ${asset.media_id}:`, errorStr)
-                setErrorMsg(`[Cache] Sync failed: ${errorStr}`)
+                const errorStr = (typeof err === 'string' ? err : err?.message) || 'Sync Error'
+                console.warn(`[Cache] Sync failed for ${asset.media_id}:`, errorStr, { url: asset.url })
+                // We DON'T set a fatal error display on the dashboard if we have a remote source url available as a fallback
+                if (!asset.url) {
+                    setErrorMsg(`[Cache] Critical sync failed: ${asset.media_id} has no valid source URL`)
+                }
             } finally {
                 completed++
                 setSyncProgress({ current: completed, total: updatedAssets.length })

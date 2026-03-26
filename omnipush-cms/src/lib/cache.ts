@@ -101,9 +101,12 @@ export async function downloadAndCache(asset: { media_id: string; url: string; c
         })
 
         return URL.createObjectURL(blob)
-    } catch (err) {
-        console.error(`[Cache] Download error for ${asset.media_id}:`, err)
-        throw err
+    } catch (err: any) {
+        console.error(`[Cache] Fetch failed for ${asset.media_id} (${asset.url}):`, err)
+        // Check for specific CORS/Network indicators on old WebViews
+        const isNetworkError = !err.message || err.message === 'Failed to fetch' || err.name === 'TypeError'
+        const reason = isNetworkError ? 'Network/CORS blocked' : err.message
+        throw new Error(reason)
     }
 }
 
