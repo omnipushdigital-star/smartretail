@@ -332,6 +332,12 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
                     currentVideo.pause();
                     currentVideo.removeAttribute('src');
                     currentVideo.load();
+                    // Sync state so React knows this slot is now empty and can be re-bound even to the same URL
+                    setSlotUrls(prev => {
+                        const up: [string, string] = [...prev] as [string, string]
+                        up[currentSlot] = ''
+                        return up
+                    })
                 } catch (e) { /* ignore */ }
             };
 
@@ -511,7 +517,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: '#000', overflow: 'hidden' }}>
             {[0, 1].map(i => (
                 <video
-                    key={i}
+                    key={`${i}-${slotUrls[i]}`}
                     ref={videoRefs[i]}
                     src={slotUrls[i]}
                     style={getTransitionStyle(i)}
