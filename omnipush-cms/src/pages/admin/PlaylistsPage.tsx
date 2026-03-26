@@ -12,7 +12,11 @@ import { CSS } from '@dnd-kit/utilities'
 
 const PAGE_SIZE = 10
 
-function SortableItem({ item, onRemove }: { item: PlaylistItem & { media?: MediaAsset }, onRemove: (id: string) => void }) {
+function SortableItem({ item, onRemove, onUpdateSettings }: {
+    item: PlaylistItem & { media?: MediaAsset },
+    onRemove: (id: string) => void,
+    onUpdateSettings: (id: string, settings: any) => void
+}) {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: item.id })
     const style = { transform: CSS.Transform.toString(transform), transition }
 
@@ -47,6 +51,25 @@ function SortableItem({ item, onRemove }: { item: PlaylistItem & { media?: Media
                 </div>
             )}
             {item.duration_seconds && <span style={{ fontSize: '0.75rem', color: 'var(--color-surface-500)', flexShrink: 0 }}>{item.duration_seconds}s</span>}
+
+            <select
+                value={item.settings?.transition || 'slide'}
+                onChange={(e) => onUpdateSettings(item.id, { ...item.settings, transition: e.target.value })}
+                style={{
+                    fontSize: '0.7rem',
+                    padding: '0.125rem 0.25rem',
+                    background: 'var(--color-surface-800)',
+                    color: 'var(--color-text-secondary)',
+                    border: '1px solid var(--color-surface-700)',
+                    borderRadius: 4,
+                    cursor: 'pointer'
+                }}
+            >
+                <option value="slide">Slide</option>
+                <option value="zoom">Zoom</option>
+                <option value="fade">Fade</option>
+                <option value="none">None</option>
+            </select>
             <button onClick={() => onRemove(item.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '0.25rem', display: 'flex' }}>
                 <X size={14} />
             </button>
@@ -78,6 +101,7 @@ export default function PlaylistsPage() {
     const [addStartTime, setAddStartTime] = useState('')
     const [addEndTime, setAddEndTime] = useState('')
     const [addDaysOfWeek, setAddDaysOfWeek] = useState<number[]>([0, 1, 2, 3, 4, 5, 6])
+    const [addTransition, setAddTransition] = useState<'slide' | 'zoom' | 'fade' | 'none'>('slide')
     const { currentTenantId } = useTenant()
 
     const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }))
@@ -171,6 +195,7 @@ export default function PlaylistsPage() {
             playlist_id: editingPlaylist.id,
             type: addType,
             sort_order: maxOrder,
+            settings: { transition: addTransition }
         }
 
         if (hasLibraryAsset) {
@@ -195,7 +220,7 @@ export default function PlaylistsPage() {
         // Insert and then resolve the media manually to avoid ambiguity
         const { data: newItem, error } = await supabase.from('playlist_items')
             .insert(payload)
-            .select('id, playlist_id, type, sort_order, media_id, web_url, duration_seconds, playback_speed')
+            .select('id, playlist_id, type, sort_order, media_id, web_url, duration_seconds, playback_speed, settings')
             .single()
         if (error) { toast.error(error.message); return }
 
@@ -225,6 +250,12 @@ export default function PlaylistsPage() {
         const newItems = arrayMove(playlistItems, oldIndex, newIndex).map((item, idx) => ({ ...item, sort_order: idx }))
         setPlaylistItems(newItems)
         await Promise.all(newItems.map(item => supabase.from('playlist_items').update({ sort_order: item.sort_order }).eq('id', item.id)))
+    }
+
+    const updateItemSettings = async (itemId: string, settings: any) => {
+        setPlaylistItems(items => items.map(i => i.id === itemId ? { ...i, settings } : i))
+        const { error } = await supabase.from('playlist_items').update({ settings }).eq('id', itemId)
+        if (error) toast.error('Failed to update settings')
     }
 
     const filteredMedia = mediaAssets.filter(m => m.type === addType)
@@ -428,10 +459,19 @@ export default function PlaylistsPage() {
                                         <option value="1.0">1.0x (Normal)</option>
                                         <option value="1.25">1.25x</option>
                                         <option value="1.5">1.5x (Fast)</option>
-                                        <option value="2.0">2.0x (Double Speed)</option>
                                     </select>
                                 </div>
                             )}
+
+                            <div className="form-group">
+                                <label className="label">Transition Effect</label>
+                                <select className="input-field" value={addTransition} onChange={e => setAddTransition(e.target.value as any)}>
+                                    <option value="slide">Slide (Horizontal)</option>
+                                    <option value="zoom">Zoom</option>
+                                    <option value="fade">Fade</option>
+                                    <option value="none">None</option>
+                                </select>
+                            </div>
 
                             {/* Scheduling Section */}
                             <div style={{ marginTop: '1.5rem', padding: '1rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 12 }}>
@@ -508,7 +548,7 @@ export default function PlaylistsPage() {
                                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                                     <SortableContext items={playlistItems.map(i => i.id)} strategy={verticalListSortingStrategy}>
                                         {playlistItems.map(item => (
-                                            <SortableItem key={item.id} item={item} onRemove={removeItem} />
+                                            <SortableItem key={item.id} item={item} onRemove={removeItem} onUpdateSettings={updateItemSettings} />
                                         ))}
                                     </SortableContext>
                                 </DndContext>

@@ -87,6 +87,7 @@ export interface PlaylistItem {
     start_time?: string
     end_time?: string
     days_of_week?: number[] // 0-6
+    settings?: any
     created_at: string
     updated_at: string
     media?: MediaAsset
