@@ -112,78 +112,61 @@ function StatusLine({ dc, manifest, offline, sync, version, lastError }: any) {
     return (
         <div style={{
             position: 'fixed', bottom: 12, left: 12, zIndex: 99999,
-            display: 'flex', alignItems: 'center', gap: '8px',
-            padding: '4px 12px', borderRadius: '100px',
-            background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(16px)',
-            border: '1px solid rgba(255,255,255,0.14)',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-            color: 'rgba(255,255,255,0.7)', fontSize: '10px', fontWeight: 600,
+            display: 'flex', alignItems: 'center', gap: '10px',
+            padding: '5px 14px', borderRadius: '100px',
+            background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            boxShadow: '0 4px 15px rgba(0,0,0,0.4)',
+            color: 'rgba(255,255,255,0.6)', fontSize: '10px', fontWeight: 600,
             textTransform: 'uppercase', letterSpacing: '0.04em',
-            pointerEvents: 'none', transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-            maxWidth: 'calc(100vw - 24px)', overflow: 'hidden'
+            pointerEvents: 'none', transition: 'all 0.5s ease',
+            maxWidth: '96vw', overflow: 'hidden'
         }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <div style={{ width: 6, height: 6, borderRadius: '50%', background: offline ? '#fbbf24' : '#10b981', boxShadow: `0 0 10px ${offline ? '#fbbf24' : '#10b981'}` }} />
-                <span style={{ color: '#fff' }}>{dc}</span>
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: offline ? '#fbbf24' : '#10b981', boxShadow: `0 0 8px ${offline ? '#fbbf24' : '#10b981'}` }} />
+                <span style={{ color: 'rgba(255,255,255,0.85)' }}>{dc}</span>
             </div>
-
             <span style={{ opacity: 0.2 }}>|</span>
-            <div style={{ display: 'flex', gap: '4px', alignItems: 'baseline' }}>
-                <span style={{ opacity: 0.5, fontSize: '8px' }}>PL</span>
-                <span style={{ color: '#fff' }}>{stats.items}</span>
-            </div>
-
+            <span style={{ display: 'flex', gap: '4px' }}>
+                <span style={{ color: 'rgba(255,255,255,0.4)' }}>Playlist</span>
+                <span>{stats.items}</span>
+            </span>
             <span style={{ opacity: 0.2 }}>|</span>
-            <div style={{ display: 'flex', gap: '4px', alignItems: 'baseline' }}>
-                <span style={{ opacity: 0.5, fontSize: '8px' }}>CACHE</span>
+            <span style={{ display: 'flex', gap: '4px' }}>
+                <span style={{ color: 'rgba(255,255,255,0.4)' }}>Cache</span>
                 <span style={{ color: stats.synced >= stats.total && stats.total > 0 ? '#10b981' : '#f59e0b' }}>
                     {stats.synced}/{stats.total}
                 </span>
-            </div>
-
+            </span>
             {sync && sync.current < sync.total && (
                 <>
                     <span style={{ opacity: 0.2 }}>|</span>
-                    <span style={{ color: '#3b82f6', animation: 'pulse 2s infinite' }}>SYNC {Math.round((sync.current / sync.total) * 100)}%</span>
+                    <span style={{ color: '#3b82f6' }}>Syncing {Math.round((sync.current / sync.total) * 100)}%</span>
                 </>
             )}
-
             {lastError && (
                 <>
                     <span style={{ opacity: 0.2 }}>|</span>
-                    <span style={{
-                        color: '#f87171',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        maxWidth: '200px',
-                        background: 'rgba(239, 68, 68, 0.1)',
-                        padding: '2px 6px',
-                        borderRadius: '4px',
-                        border: '1px solid rgba(239, 68, 68, 0.2)'
-                    }}>
+                    <span style={{ color: '#f87171', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '150px' }}>
                         ⚠ {lastError}
                     </span>
                 </>
             )}
-
             {manifest.resolved?.role && (
                 <>
                     <span style={{ opacity: 0.2 }}>|</span>
-                    <span style={{ opacity: 0.8 }}>{manifest.resolved.role}</span>
+                    <span>{manifest.resolved.role}</span>
                 </>
             )}
-
             {version && (
                 <>
                     <span style={{ opacity: 0.2 }}>|</span>
-                    <span style={{ fontSize: '9px', opacity: 0.5 }}>V{version.split('-')[0]}</span>
+                    <span style={{ fontSize: '9px', opacity: 0.6 }}>V{version.split('-')[0]}</span>
                 </>
             )}
         </div>
     )
 }
-
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
@@ -276,12 +259,11 @@ interface VideoBufferProps {
 
 type TransitionEffect = 'fade' | 'slide' | 'zoom' | 'none' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right'
 
-function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', initialIdx = 0 }: {
+function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
     items: ManifestItem[]
     assets: ManifestAsset[]
     onAdvance: () => void
     effect?: TransitionEffect
-    initialIdx?: number
 }) {
     const [activeSlot, setActiveSlot] = useState<0 | 1>(0)
     const [isTransitioning, setIsTransitioning] = useState(false)
@@ -289,12 +271,11 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', init
     const v2 = useRef<HTMLVideoElement>(null)
     const videoRefs = [v1, v2]
     const [slotUrls, setSlotUrls] = useState<[string, string]>(['', ''])
-    const idxRef = useRef(initialIdx)
+    const idxRef = useRef(0)
     const [debug, setDebug] = useState<string>('Init')
     const watchdogRef = useRef<any>(null)
     const initialSyncDone = useRef(false)
     const lastMediaIdsRef = useRef<string>('')
-    const transitioningRef = useRef(false)
 
     const sorted = React.useMemo(
         () => [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
@@ -309,13 +290,11 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', init
 
     const advanceBufferRef = useRef<(force?: boolean) => void>(() => { })
 
-    const triggerWatchdog = useCallback((delay = 12000) => {
+    const triggerWatchdog = useCallback((delay = 10000) => {
         if (watchdogRef.current) clearTimeout(watchdogRef.current)
         watchdogRef.current = setTimeout(() => {
             if (sorted.length > 1) {
-                console.warn('[Player] DoubleBufferVideo: Watchdog skipping stalled video')
                 setDebug("WD Skip")
-                transitioningRef.current = false // Reset re-entry guard
                 advanceBufferRef.current(true)
             }
         }, delay)
@@ -323,9 +302,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', init
 
     const advanceBuffer = useCallback((forceNext = false) => {
         if (sorted.length === 0) return
-        if (transitioningRef.current && !forceNext) return // Prevent overlapped transitions
 
-        // Case: Single item looping
         if (sorted.length === 1) {
             const v = videoRefs[activeSlot].current
             if (v) {
@@ -352,29 +329,20 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', init
 
         const performSwitch = () => {
             if (!nextVideo) return
-            if (transitioningRef.current && !forceNext) return
 
-            transitioningRef.current = true
             setDebug(`${idxRef.current}→${nextIdx} | SAFE SWAP`)
 
             const releaseOld = () => {
                 if (!currentVideo) return;
                 try {
                     console.log('[Player] Releasing O-Slot decoder:', currentSlot);
-                    // Crucial: hide old video instantly to prevent native play icon from rendering.
-                    // DO NOT remove src or call load()! Doing so tears down the hardware decoder 
-                    // and crashes the new video on Amlogic S905W2 chips.
+                    // Hide old video but keep it technically 'visible' so the browser doesn't pause it
                     currentVideo.style.opacity = '0';
-                    currentVideo.style.visibility = 'hidden';
                     currentVideo.pause();
                 } catch (e) { /* ignore */ }
             };
 
-            // MUST clear any inline styles leftover from a previous releaseOld cycle!
-            nextVideo.style.opacity = '';
-            // Force it to be visible BEFORE play() to bypass Chromium's power-saving restriction
-            nextVideo.style.visibility = 'visible';
-
+            // Start the next one FIRST, while it is still completely hidden!
             triggerWatchdog(15000)
             nextVideo.muted = true
             nextVideo.currentTime = 0
@@ -386,10 +354,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', init
                 console.log('[Player] Playing N-Slot:', nextIdx)
                 setDebug(`${nextIdx} PLAYING`)
 
-                // Now that it's confirmed playing, clear the inline override so React CSS takes over
-                nextVideo.style.visibility = '';
-
-                // Step sequence: Trigger CSS to animate the swap
+                // Now that it's confirmed playing, reveal it and trigger the transition CSS
                 setIsTransitioning(true)
                 setActiveSlot(nextSlot)
                 idxRef.current = nextIdx
@@ -398,29 +363,26 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', init
                 // Release old video slightly after new one is successfully active and covering the screen
                 setTimeout(releaseOld, 250);
 
-                // Keep transition flag true slightly longer for CSS animations to finish
+                // Keep transition flag true slightly longer for hardware to visually stabilize
                 setTimeout(() => {
                     setIsTransitioning(false)
-                    transitioningRef.current = false
 
                     // Queue next buffer
                     const pIdx = (nextIdx + 1) % sorted.length
                     const pUrl = getUrl(sorted[pIdx])
-                    setTimeout(() => {
-                        setSlotUrls(prev => {
-                            const up: [string, string] = [...prev] as [string, string]
-                            up[currentSlot] = pUrl
-                            return up
-                        })
-                    }, 300)
+
+                    setSlotUrls(prev => {
+                        if (prev[currentSlot] === pUrl) return prev // Avoid redundant src reset
+                        const up: [string, string] = [...prev] as [string, string]
+                        up[currentSlot] = pUrl
+                        return up
+                    })
                 }, 850)
 
             }).catch(e => {
                 console.error('[Player] Play Error:', e.message)
                 setDebug(`P.Err: ${e.message?.slice(0, 15)}`)
-                nextVideo.style.visibility = '';
                 setIsTransitioning(false)
-                transitioningRef.current = false
                 releaseOld();
                 setTimeout(() => advanceBuffer(true), 1500)
             })
@@ -435,14 +397,12 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', init
                 performSwitch()
             }
             nextVideo.addEventListener('canplay', onCanPlay)
-            // Trigger switch anyway if hardware stalls on the event
             setTimeout(() => {
                 nextVideo.removeEventListener('canplay', onCanPlay)
-                if (activeSlot === currentSlot && !transitioningRef.current) performSwitch()
-            }, 6000)
+                if (activeSlot === currentSlot) performSwitch()
+            }, 5000)
         }
     }, [activeSlot, sorted, getUrl, onAdvance, triggerWatchdog])
-
 
     useEffect(() => {
         advanceBufferRef.current = advanceBuffer
@@ -489,6 +449,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', init
     }, [activeSlot])
 
     const [isReady, setIsReady] = useState<[boolean, boolean]>([false, false])
+    const isReadyRef = useRef<boolean[]>([false, false])
 
     const getTransitionStyle = (slot: number): React.CSSProperties => {
         const isActive = activeSlot === slot
@@ -500,12 +461,12 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', init
             width: '100%', height: '100%',
             objectFit: 'fill',
             background: 'transparent', // Crucial: no black background hidden behind frames
-            transition: 'transform 850ms cubic-bezier(0.4, 0, 0.2, 1), opacity 700ms ease',
+            transition: 'transform 800ms cubic-bezier(0.4, 0, 0.2, 1), opacity 600ms ease, visibility 0s',
             zIndex: isActive ? 10 : 5,
             pointerEvents: 'none',
             visibility: 'visible', // Stay 'visible' so Chrome/WebView doesn't pause background video
             transform: 'translate3d(0, 0, 0)',
-            opacity: isActive ? (ready ? 1 : 0) : 0,
+            opacity: ready ? (isActive ? 1 : 0) : 0,
             willChange: 'transform, opacity'
         }
 
@@ -536,6 +497,20 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', init
                     style.opacity = 0
                     break
             }
+        } else if (!ready) {
+            // Initial state for the ACTIVE item before it is "ready" (transitioning in)
+            switch (e) {
+                case 'slide':
+                case 'slide-left':
+                    style.transform = 'translate3d(100%, 0, 0)'
+                    break
+                case 'slide-right':
+                    style.transform = 'translate3d(-100%, 0, 0)'
+                    break
+                case 'zoom':
+                    style.transform = 'scale(1.05)'
+                    break
+            }
         }
         return style
     }
@@ -563,37 +538,37 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', init
                         'controlsList': 'nodownload nofullscreen noremoteplayback'
                     }}
                     onPlaying={() => {
-                        // Mark as ready immediately when actual playback starts
-                        setIsReady(prev => {
-                            const up = [...prev] as [boolean, boolean]
-                            up[i] = true
-                            return up
-                        })
-                    }}
-                    onCanPlay={() => {
-                        // Preload readiness
-                        setIsReady(prev => {
-                            if (prev[i]) return prev
-                            const up = [...prev] as [boolean, boolean]
-                            up[i] = true
-                            return up
-                        })
-                    }}
-                    onEnded={() => {
-                        if (i === activeSlot) {
+                        console.log(`[DoubleBufferVideo] Video Slot ${i} Playing, waiting ${READY_TIMING}ms buffer...`)
+                        // Delay ready state slightly to ensure first frame hardware swap is stable
+                        setTimeout(() => {
                             setIsReady(prev => {
                                 const up = [...prev] as [boolean, boolean]
-                                up[i] = false
+                                up[i] = true
                                 return up
                             })
-                            advanceBuffer()
-                        }
+                        }, READY_TIMING)
                     }}
-                    onTimeUpdate={() => { if (i === activeSlot) triggerWatchdog(15000) }}
-                    onError={(e) => {
-                        const err = (e.target as HTMLVideoElement).error?.message || 'Media Error'
-                        console.error(`[Player] Loop Slot ${i} Error:`, err)
+                    onCanPlay={() => {
+                        // Safety fallback: if hardware doesn't fire "playing" for some reason, 
+                        // we still want to show the video after a reasonable delay if it's ready.
+                        setTimeout(() => {
+                            setIsReady(prev => {
+                                if (prev[i]) return prev // Already handled by onPlaying
+                                const up = [...prev] as [boolean, boolean]
+                                up[i] = true
+                                return up
+                            })
+                        }, 2000)
                     }}
+                    onEnded={() => {
+                        setIsReady(prev => {
+                            const up = [...prev] as [boolean, boolean]
+                            up[i] = false
+                            return up
+                        })
+                        if (i === activeSlot) advanceBuffer()
+                    }}
+                    onTimeUpdate={() => { if (i === activeSlot) triggerWatchdog(12000) }}
                 />
             ))}
             {false && (
@@ -880,7 +855,6 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
                     assets={assets}
                     onAdvance={advance}
                     effect={(activeItems[idx] as any)?.settings?.transition || 'slide'}
-                    initialIdx={idx}
                 />
             ) : (
                 <>
@@ -1163,11 +1137,6 @@ console.error = (...args) => {
     if (consoleLogs.length > MAX_LOGS) consoleLogs.shift()
     originalError.apply(console, args)
 
-    // Bridge errors to UI
-    if (window.dispatchEvent) {
-        window.dispatchEvent(new CustomEvent('omnipush_error', { detail: msg }))
-    }
-
     const win = window as any
     if (win.AndroidHealth?.reportError) {
         win.AndroidHealth.reportError(msg)
@@ -1188,16 +1157,10 @@ console.warn = (...args) => {
     originalWarn.apply(console, args)
 
     const win = window as any
-    // Only surface prominent warnings to UI
-    if (window.dispatchEvent && (msg.includes('Connection dropped') || msg.includes('stalled'))) {
-        window.dispatchEvent(new CustomEvent('omnipush_warn', { detail: msg }))
-    }
-
     if (win.AndroidHealth?.logLine) {
         win.AndroidHealth.logLine(`⚠️ WARN: ${msg}`)
     }
 }
-
 
 export default function PlayerPage() {
     const { device_code } = useParams<{ device_code: string }>()
@@ -1244,18 +1207,6 @@ export default function PlayerPage() {
     const [showDiagnostics, setShowDiagnostics] = useState(false)
     const secretRef = useRef(secret)
     useEffect(() => { secretRef.current = secret }, [secret])
-
-    // Surface errors to thepersistent StatusLine UI
-    useEffect(() => {
-        const handleError = (e: any) => setLastError(e.detail)
-        const handleWarn = (e: any) => setLastError(e.detail)
-        window.addEventListener('omnipush_error', handleError)
-        window.addEventListener('omnipush_warn', handleWarn)
-        return () => {
-            window.removeEventListener('omnipush_error', handleError)
-            window.removeEventListener('omnipush_warn', handleWarn)
-        }
-    }, [])
 
     // Android Status Sync
     const updateAndroidStatus = useCallback((p: string, content?: string | null) => {
