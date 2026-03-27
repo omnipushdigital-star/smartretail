@@ -556,6 +556,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', init
                     preload="auto"
                     autoPlay={false}
                     disablePictureInPicture={true}
+                    loop={true}
                     poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
                     {...{
                         'webkit-playsinline': 'true',
@@ -580,16 +581,23 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', init
                         })
                     }}
                     onEnded={() => {
+                        // Fallback logic in case loop fails
                         if (i === activeSlot) {
-                            setIsReady(prev => {
-                                const up = [...prev] as [boolean, boolean]
-                                up[i] = false
-                                return up
-                            })
                             advanceBuffer()
                         }
                     }}
-                    onTimeUpdate={() => { if (i === activeSlot) triggerWatchdog(15000) }}
+                    onTimeUpdate={(e) => {
+                        if (i === activeSlot) {
+                            triggerWatchdog(15000);
+                            const v = e.target as HTMLVideoElement;
+                            if (v && v.duration > 0 && v.currentTime > 0) {
+                                // Trigger transition slightly before the video ends to eliminate gap
+                                if (v.duration - v.currentTime <= 0.45) {
+                                    advanceBuffer();
+                                }
+                            }
+                        }
+                    }}
                     onError={(e) => {
                         const err = (e.target as HTMLVideoElement).error?.message || 'Media Error'
                         console.error(`[Player] Loop Slot ${i} Error:`, err)

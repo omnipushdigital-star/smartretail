@@ -1,0 +1,637 @@
+﻿diff --git a/STABLE_BACKUP/PlayerPage.tsx.stable b/src/pages/PlayerPage.tsx
+index 8301eab..152cca6 100644
+--- a/STABLE_BACKUP/PlayerPage.tsx.stable
++++ b/src/pages/PlayerPage.tsx
+@@ -89,6 +89,102 @@ function LiveClock() {
+     )
+ }
+ 
++// ΓöÇΓöÇΓöÇ Status Overlay ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++
++function StatusLine({ dc, manifest, offline, sync, version, lastError }: any) {
++    const stats = React.useMemo(() => {
++        if (!manifest) return { items: 0, synced: 0, total: 0 }
++        let itemsCount = 0
++        if (manifest.region_playlists) {
++            Object.values(manifest.region_playlists).forEach((list: any) => {
++                if (Array.isArray(list)) itemsCount += list.length
++            })
++        }
++        const assets = manifest.assets || []
++        const blobCount = assets.filter((a: any) => a.url?.startsWith('blob:')).length || 0
++        // Total assets to sync (exclude web urls which are never cached as blobs)
++        const totalToSync = assets.filter((a: any) => a.type !== 'web_url').length
++        return { items: itemsCount, synced: blobCount, total: totalToSync }
++    }, [manifest])
++
++    if (!manifest) return null
++
++    return (
++        <div style={{
++            position: 'fixed', bottom: 12, left: 12, zIndex: 99999,
++            display: 'flex', alignItems: 'center', gap: '8px',
++            padding: '4px 12px', borderRadius: '100px',
++            background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(16px)',
++            border: '1px solid rgba(255,255,255,0.14)',
++            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
++            color: 'rgba(255,255,255,0.7)', fontSize: '10px', fontWeight: 600,
++            textTransform: 'uppercase', letterSpacing: '0.04em',
++            pointerEvents: 'none', transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
++            maxWidth: 'calc(100vw - 24px)', overflow: 'hidden'
++        }}>
++            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
++                <div style={{ width: 6, height: 6, borderRadius: '50%', background: offline ? '#fbbf24' : '#10b981', boxShadow: `0 0 10px ${offline ? '#fbbf24' : '#10b981'}` }} />
++                <span style={{ color: '#fff' }}>{dc}</span>
++            </div>
++
++            <span style={{ opacity: 0.2 }}>|</span>
++            <div style={{ display: 'flex', gap: '4px', alignItems: 'baseline' }}>
++                <span style={{ opacity: 0.5, fontSize: '8px' }}>PL</span>
++                <span style={{ color: '#fff' }}>{stats.items}</span>
++            </div>
++
++            <span style={{ opacity: 0.2 }}>|</span>
++            <div style={{ display: 'flex', gap: '4px', alignItems: 'baseline' }}>
++                <span style={{ opacity: 0.5, fontSize: '8px' }}>CACHE</span>
++                <span style={{ color: stats.synced >= stats.total && stats.total > 0 ? '#10b981' : '#f59e0b' }}>
++                    {stats.synced}/{stats.total}
++                </span>
++            </div>
++
++            {sync && sync.current < sync.total && (
++                <>
++                    <span style={{ opacity: 0.2 }}>|</span>
++                    <span style={{ color: '#3b82f6', animation: 'pulse 2s infinite' }}>SYNC {Math.round((sync.current / sync.total) * 100)}%</span>
++                </>
++            )}
++
++            {lastError && (
++                <>
++                    <span style={{ opacity: 0.2 }}>|</span>
++                    <span style={{
++                        color: '#f87171',
++                        whiteSpace: 'nowrap',
++                        overflow: 'hidden',
++                        textOverflow: 'ellipsis',
++                        maxWidth: '200px',
++                        background: 'rgba(239, 68, 68, 0.1)',
++                        padding: '2px 6px',
++                        borderRadius: '4px',
++                        border: '1px solid rgba(239, 68, 68, 0.2)'
++                    }}>
++                        ΓÜá {lastError}
++                    </span>
++                </>
++            )}
++
++            {manifest.resolved?.role && (
++                <>
++                    <span style={{ opacity: 0.2 }}>|</span>
++                    <span style={{ opacity: 0.8 }}>{manifest.resolved.role}</span>
++                </>
++            )}
++
++            {version && (
++                <>
++                    <span style={{ opacity: 0.2 }}>|</span>
++                    <span style={{ fontSize: '9px', opacity: 0.5 }}>V{version.split('-')[0]}</span>
++                </>
++            )}
++        </div>
++    )
++}
++
++
+ // ΓöÇΓöÇΓöÇ Styles ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+ 
+ // CSS to hide the default video "play/icon" flash in Android WebView
+@@ -180,11 +276,12 @@ interface VideoBufferProps {
+ 
+ type TransitionEffect = 'fade' | 'slide' | 'zoom' | 'none' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right'
+ 
+-function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
++function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', initialIdx = 0 }: {
+     items: ManifestItem[]
+     assets: ManifestAsset[]
+     onAdvance: () => void
+     effect?: TransitionEffect
++    initialIdx?: number
+ }) {
+     const [activeSlot, setActiveSlot] = useState<0 | 1>(0)
+     const [isTransitioning, setIsTransitioning] = useState(false)
+@@ -192,10 +289,12 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
+     const v2 = useRef<HTMLVideoElement>(null)
+     const videoRefs = [v1, v2]
+     const [slotUrls, setSlotUrls] = useState<[string, string]>(['', ''])
+-    const idxRef = useRef(0)
++    const idxRef = useRef(initialIdx)
+     const [debug, setDebug] = useState<string>('Init')
+     const watchdogRef = useRef<any>(null)
+     const initialSyncDone = useRef(false)
++    const lastMediaIdsRef = useRef<string>('')
++    const transitioningRef = useRef(false)
+ 
+     const sorted = React.useMemo(
+         () => [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
+@@ -210,11 +309,13 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
+ 
+     const advanceBufferRef = useRef<(force?: boolean) => void>(() => { })
+ 
+-    const triggerWatchdog = useCallback((delay = 10000) => {
++    const triggerWatchdog = useCallback((delay = 12000) => {
+         if (watchdogRef.current) clearTimeout(watchdogRef.current)
+         watchdogRef.current = setTimeout(() => {
+             if (sorted.length > 1) {
++                console.warn('[Player] DoubleBufferVideo: Watchdog skipping stalled video')
+                 setDebug("WD Skip")
++                transitioningRef.current = false // Reset re-entry guard
+                 advanceBufferRef.current(true)
+             }
+         }, delay)
+@@ -222,7 +323,9 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
+ 
+     const advanceBuffer = useCallback((forceNext = false) => {
+         if (sorted.length === 0) return
++        if (transitioningRef.current && !forceNext) return // Prevent overlapped transitions
+ 
++        // Case: Single item looping
+         if (sorted.length === 1) {
+             const v = videoRefs[activeSlot].current
+             if (v) {
+@@ -249,23 +352,29 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
+ 
+         const performSwitch = () => {
+             if (!nextVideo) return
++            if (transitioningRef.current && !forceNext) return
+ 
++            transitioningRef.current = true
+             setDebug(`${idxRef.current}ΓåÆ${nextIdx} | SAFE SWAP`)
+ 
+             const releaseOld = () => {
+                 if (!currentVideo) return;
+                 try {
+                     console.log('[Player] Releasing O-Slot decoder:', currentSlot);
+-                    // Crucial: hide old video instantly BEFORE mutating src so native play icon cannot render
++                    // Crucial: hide old video instantly to prevent native play icon from rendering.
++                    // DO NOT remove src or call load()! Doing so tears down the hardware decoder 
++                    // and crashes the new video on Amlogic S905W2 chips.
+                     currentVideo.style.opacity = '0';
+                     currentVideo.style.visibility = 'hidden';
+                     currentVideo.pause();
+-                    currentVideo.removeAttribute('src');
+-                    currentVideo.load();
+                 } catch (e) { /* ignore */ }
+             };
+ 
+-            // Start the next one FIRST, while it is still completely hidden!
++            // MUST clear any inline styles leftover from a previous releaseOld cycle!
++            nextVideo.style.opacity = '';
++            // Force it to be visible BEFORE play() to bypass Chromium's power-saving restriction
++            nextVideo.style.visibility = 'visible';
++
+             triggerWatchdog(15000)
+             nextVideo.muted = true
+             nextVideo.currentTime = 0
+@@ -277,7 +386,10 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
+                 console.log('[Player] Playing N-Slot:', nextIdx)
+                 setDebug(`${nextIdx} PLAYING`)
+ 
+-                // Now that it's confirmed playing, reveal it and trigger the transition CSS
++                // Now that it's confirmed playing, clear the inline override so React CSS takes over
++                nextVideo.style.visibility = '';
++
++                // Step sequence: Trigger CSS to animate the swap
+                 setIsTransitioning(true)
+                 setActiveSlot(nextSlot)
+                 idxRef.current = nextIdx
+@@ -286,9 +398,10 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
+                 // Release old video slightly after new one is successfully active and covering the screen
+                 setTimeout(releaseOld, 250);
+ 
+-                // Keep transition flag true slightly longer for hardware to visually stabilize
++                // Keep transition flag true slightly longer for CSS animations to finish
+                 setTimeout(() => {
+                     setIsTransitioning(false)
++                    transitioningRef.current = false
+ 
+                     // Queue next buffer
+                     const pIdx = (nextIdx + 1) % sorted.length
+@@ -305,7 +418,9 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
+             }).catch(e => {
+                 console.error('[Player] Play Error:', e.message)
+                 setDebug(`P.Err: ${e.message?.slice(0, 15)}`)
++                nextVideo.style.visibility = '';
+                 setIsTransitioning(false)
++                transitioningRef.current = false
+                 releaseOld();
+                 setTimeout(() => advanceBuffer(true), 1500)
+             })
+@@ -320,36 +435,48 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
+                 performSwitch()
+             }
+             nextVideo.addEventListener('canplay', onCanPlay)
++            // Trigger switch anyway if hardware stalls on the event
+             setTimeout(() => {
+                 nextVideo.removeEventListener('canplay', onCanPlay)
+-                if (activeSlot === currentSlot) performSwitch()
+-            }, 5000)
++                if (activeSlot === currentSlot && !transitioningRef.current) performSwitch()
++            }, 6000)
+         }
+     }, [activeSlot, sorted, getUrl, onAdvance, triggerWatchdog])
+ 
++
+     useEffect(() => {
+         advanceBufferRef.current = advanceBuffer
+     }, [advanceBuffer])
+ 
++    // ΓöÇΓöÇΓöÇ Initial Sync & Loopback ΓöÇΓöÇΓöÇ
+     useEffect(() => {
+         if (sorted.length > 0) {
+             const firstId = getUrl(sorted[0])
+             const nextId = sorted.length > 1 ? getUrl(sorted[1]) : ''
+-            if (initialSyncDone.current) {
+-                const stillExists = sorted.some(s => getUrl(s) === slotUrls[activeSlot])
+-                if (stillExists) return
++
++            // Only re-initialize if the Media IDs actually changed. 
++            // Comparing Blob URLs is volatile since they change every hydration.
++            const newMediaIds = JSON.stringify(sorted.map(i => i.media_id))
++
++            if (initialSyncDone.current && lastMediaIdsRef.current === newMediaIds) {
++                return
+             }
++
++            console.log('[DoubleBufferVideo] Content Changed or Initializing. Syncing Slots...')
++            lastMediaIdsRef.current = newMediaIds
+             setSlotUrls([firstId, nextId])
+             initialSyncDone.current = true
++
++            // Only force play on mount or true content change
+             setTimeout(() => {
+-                const v = activeSlot === 0 ? v1.current : v2.current
+-                if (v) {
++                const v = videoRefs[activeSlot].current
++                if (v && v.paused) {
+                     v.currentTime = 0
+                     v.play().catch(() => { })
+                 }
+-            }, 100)
++            }, 150)
+         }
+-    }, [sorted, getUrl])
++    }, [sorted, getUrl]) // We want to re-check if items changed, but the internal guard handles ref-identity issues
+ 
+     useEffect(() => {
+         const interval = setInterval(() => {
+@@ -362,7 +489,6 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
+     }, [activeSlot])
+ 
+     const [isReady, setIsReady] = useState<[boolean, boolean]>([false, false])
+-    const isReadyRef = useRef<boolean[]>([false, false])
+ 
+     const getTransitionStyle = (slot: number): React.CSSProperties => {
+         const isActive = activeSlot === slot
+@@ -374,12 +500,12 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
+             width: '100%', height: '100%',
+             objectFit: 'fill',
+             background: 'transparent', // Crucial: no black background hidden behind frames
+-            transition: 'transform 800ms cubic-bezier(0.4, 0, 0.2, 1), opacity 600ms ease, visibility 0s',
++            transition: 'transform 850ms cubic-bezier(0.4, 0, 0.2, 1), opacity 700ms ease',
+             zIndex: isActive ? 10 : 5,
+             pointerEvents: 'none',
+-            visibility: (isActive || isTransitioning) ? 'visible' : 'hidden',
++            visibility: 'visible', // Stay 'visible' so Chrome/WebView doesn't pause background video
+             transform: 'translate3d(0, 0, 0)',
+-            opacity: ready ? 1 : 0, // Keep invisible until first frame
++            opacity: isActive ? (ready ? 1 : 0) : 0,
+             willChange: 'transform, opacity'
+         }
+ 
+@@ -410,20 +536,6 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
+                     style.opacity = 0
+                     break
+             }
+-        } else if (!ready) {
+-            // Initial state for the ACTIVE item before it is "ready" (transitioning in)
+-            switch (e) {
+-                case 'slide':
+-                case 'slide-left':
+-                    style.transform = 'translate3d(100%, 0, 0)'
+-                    break
+-                case 'slide-right':
+-                    style.transform = 'translate3d(-100%, 0, 0)'
+-                    break
+-                case 'zoom':
+-                    style.transform = 'scale(1.05)'
+-                    break
+-            }
+         }
+         return style
+     }
+@@ -432,7 +544,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
+         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: '#000', overflow: 'hidden' }}>
+             {[0, 1].map(i => (
+                 <video
+-                    key={i}
++                    key={`${i}-${slotUrls[i]}`}
+                     ref={videoRefs[i]}
+                     src={slotUrls[i]}
+                     style={getTransitionStyle(i)}
+@@ -451,30 +563,44 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
+                         'controlsList': 'nodownload nofullscreen noremoteplayback'
+                     }}
+                     onPlaying={() => {
+-                        console.log(`[DoubleBufferVideo] Video Slot ${i} Playing, waiting ${READY_TIMING}ms buffer...`)
+-                        // Delay ready state slightly to ensure first frame hardware swap is stable
+-                        setTimeout(() => {
+-                            setIsReady(prev => {
+-                                const up = [...prev] as [boolean, boolean]
+-                                up[i] = true
+-                                return up
+-                            })
+-                        }, READY_TIMING)
++                        // Mark as ready immediately when actual playback starts
++                        setIsReady(prev => {
++                            const up = [...prev] as [boolean, boolean]
++                            up[i] = true
++                            return up
++                        })
+                     }}
+-                    onEnded={() => {
++                    onCanPlay={() => {
++                        // Preload readiness
+                         setIsReady(prev => {
++                            if (prev[i]) return prev
+                             const up = [...prev] as [boolean, boolean]
+-                            up[i] = false
++                            up[i] = true
+                             return up
+                         })
+-                        if (i === activeSlot) advanceBuffer()
+                     }}
+-                    onTimeUpdate={() => { if (i === activeSlot) triggerWatchdog(12000) }}
++                    onEnded={() => {
++                        if (i === activeSlot) {
++                            setIsReady(prev => {
++                                const up = [...prev] as [boolean, boolean]
++                                up[i] = false
++                                return up
++                            })
++                            advanceBuffer()
++                        }
++                    }}
++                    onTimeUpdate={() => { if (i === activeSlot) triggerWatchdog(15000) }}
++                    onError={(e) => {
++                        const err = (e.target as HTMLVideoElement).error?.message || 'Media Error'
++                        console.error(`[Player] Loop Slot ${i} Error:`, err)
++                    }}
+                 />
+             ))}
+-            <div style={{ position: 'absolute', bottom: 4, left: 4, fontSize: 9, color: 'rgba(255,255,255,0.2)', zIndex: 110 }}>
+-                {debug} | {activeSlot === 0 ? 'V1' : 'V2'} | {effect}
+-            </div>
++            {false && (
++                <div style={{ position: 'absolute', bottom: 4, left: 4, fontSize: 9, color: 'rgba(255,255,255,0.2)', zIndex: 110 }}>
++                    {debug} | {activeSlot === 0 ? 'V1' : 'V2'} | {effect}
++                </div>
++            )}
+         </div>
+     )
+ }
+@@ -754,6 +880,7 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
+                     assets={assets}
+                     onAdvance={advance}
+                     effect={(activeItems[idx] as any)?.settings?.transition || 'slide'}
++                    initialIdx={idx}
+                 />
+             ) : (
+                 <>
+@@ -1036,6 +1163,11 @@ console.error = (...args) => {
+     if (consoleLogs.length > MAX_LOGS) consoleLogs.shift()
+     originalError.apply(console, args)
+ 
++    // Bridge errors to UI
++    if (window.dispatchEvent) {
++        window.dispatchEvent(new CustomEvent('omnipush_error', { detail: msg }))
++    }
++
+     const win = window as any
+     if (win.AndroidHealth?.reportError) {
+         win.AndroidHealth.reportError(msg)
+@@ -1056,11 +1188,17 @@ console.warn = (...args) => {
+     originalWarn.apply(console, args)
+ 
+     const win = window as any
++    // Only surface prominent warnings to UI
++    if (window.dispatchEvent && (msg.includes('Connection dropped') || msg.includes('stalled'))) {
++        window.dispatchEvent(new CustomEvent('omnipush_warn', { detail: msg }))
++    }
++
+     if (win.AndroidHealth?.logLine) {
+         win.AndroidHealth.logLine(`ΓÜá∩╕Å WARN: ${msg}`)
+     }
+ }
+ 
++
+ export default function PlayerPage() {
+     const { device_code } = useParams<{ device_code: string }>()
+     const dc = (device_code || '').trim()
+@@ -1088,6 +1226,7 @@ export default function PlayerPage() {
+ 
+     const [phase, setPhase] = useState<Phase>('loading')
+     const [secret, setSecret] = useState<string>('')
++    const [lastError, setLastError] = useState<string | null>(null)
+     const [manifest, setManifest] = useState<Manifest | null>(null)
+     const [offline, setOffline] = useState(false)
+     const [errorMsg, setErrorMsg] = useState('')
+@@ -1106,6 +1245,18 @@ export default function PlayerPage() {
+     const secretRef = useRef(secret)
+     useEffect(() => { secretRef.current = secret }, [secret])
+ 
++    // Surface errors to thepersistent StatusLine UI
++    useEffect(() => {
++        const handleError = (e: any) => setLastError(e.detail)
++        const handleWarn = (e: any) => setLastError(e.detail)
++        window.addEventListener('omnipush_error', handleError)
++        window.addEventListener('omnipush_warn', handleWarn)
++        return () => {
++            window.removeEventListener('omnipush_error', handleError)
++            window.removeEventListener('omnipush_warn', handleWarn)
++        }
++    }, [])
++
+     // Android Status Sync
+     const updateAndroidStatus = useCallback((p: string, content?: string | null) => {
+         const win = window as any
+@@ -1271,7 +1422,14 @@ export default function PlayerPage() {
+                 }
+             }
+         } catch (err: any) {
+-            console.error('[Commands] Polling error:', err.message)
++            // Silence noise for connection drops in the overlay
++            if (err.message?.includes('Failed to fetch') || err.message?.includes('Network Error')) {
++                console.warn('[Commands] Connection dropped, awaiting retry...')
++                setLastError('Connection dropped')
++            } else {
++                console.error('[Commands] Polling error:', err.message)
++                setLastError(err.message)
++            }
+         }
+     }, [manifest?.device?.id, dc, captureBrowserScreenshot])
+ 
+@@ -1322,9 +1480,12 @@ export default function PlayerPage() {
+                     console.log(`[Cache] Downloaded ${asset.media_id} for offline redundancy, but using remote URL for rendering.`)
+                 }
+             } catch (err: any) {
+-                const errorStr = err?.message || JSON.stringify(err) || 'Unknown Error'
+-                console.error(`[Cache] Failed to sync ${asset.media_id}:`, errorStr)
+-                setErrorMsg(`[Cache] Sync failed: ${errorStr}`)
++                const errorStr = (typeof err === 'string' ? err : err?.message) || 'Sync Error'
++                console.warn(`[Cache] Sync failed for ${asset.media_id}:`, errorStr, { url: asset.url })
++                // We DON'T set a fatal error display on the dashboard if we have a remote source url available as a fallback
++                if (!asset.url) {
++                    setErrorMsg(`[Cache] Critical sync failed: ${asset.media_id} has no valid source URL`)
++                }
+             } finally {
+                 completed++
+                 setSyncProgress({ current: completed, total: updatedAssets.length })
+@@ -1361,35 +1522,40 @@ export default function PlayerPage() {
+ 
+             // ΓöÇΓöÇ Handling "Up to Date" response ΓöÇΓöÇ
+             if (data.up_to_date) {
+-                console.log(`[Player] Content ${data.version} is up to date. Keep loop playing.`)
++                console.log(`[Player] Content up to date. Ensuring hydration...`)
+                 setOffline(false)
++
++                // Even if the version is the same, we might have lost our session-local blob URLs (e.g. after a refresh/reboot).
++                // If the current state assets are server-side, re-hydrate them from cache.
++                if (manifest?.assets) {
++                    const needsHydration = manifest.assets.some(a =>
++                        a.url && !a.url.startsWith('blob:') &&
++                        a.type !== 'ppt' && a.type !== 'presentation' && a.type !== 'web_url'
++                    )
++                    if (needsHydration) {
++                        const hydrated = await hydrateAssetsFromCache(manifest.assets) as ManifestAsset[]
++                        setManifest(prev => prev ? { ...prev, assets: hydrated } : null)
++                    }
++                }
+                 return true
+             }
+ 
+             const newVersion = data.resolved?.version || null
+             const wasPlaying = phase === 'playing' || phase === 'standby'
+ 
+-            // ΓöÇΓöÇ Auto version-change detection (mid-playback) ΓöÇΓöÇ
+-            if (wasPlaying && newVersion && versionRef.current && newVersion !== versionRef.current) {
+-                console.log(`[Player] ≡ƒöä New version detected: ${versionRef.current} ΓåÆ ${newVersion}`)
+-                if (data.assets) syncAssets(data.assets)
+-                setManifest(data)
+-                setVersion(newVersion)
+-                versionRef.current = newVersion
+-                localStorage.setItem(manifestKey(dc), JSON.stringify(data))
+-                setOffline(false)
+-                return true
+-            }
++            // ΓöÇΓöÇ Regular Load or mid-playback version change ΓöÇΓöÇ
++            // Store original manifest in localStorage (without blob URLs which are session-local)
++            const mKey = manifestKey(dc)
++            localStorage.setItem(mKey, JSON.stringify(data))
+ 
+-            // ΓöÇΓöÇ Regular Load ΓöÇΓöÇ
+             setManifest(data)
+             setVersion(newVersion)
+             versionRef.current = newVersion
+-            localStorage.setItem(manifestKey(dc), JSON.stringify(data))
+             setOffline(false)
+ 
+             if (data.assets) syncAssets(data.assets)
+ 
++            // Telemetry/Health update
+             const win = window as any
+             if (win.AndroidHealth?.setStoreInfo) {
+                 win.AndroidHealth.setStoreInfo(data.device?.store_id || null, data.device?.store_name || null)
+@@ -1398,7 +1564,9 @@ export default function PlayerPage() {
+             return true
+         } catch (err: any) {
+             const msg: string = (err.message || '').toLowerCase()
++            console.warn('[Player] Fetch error (Checking offline cache):', msg)
+ 
++            // 1. Critical errors: Auth/Inactive (Stop playing/clear cache if needed)
+             if (msg.includes('invalid credentials') || msg.includes('inactive device')) {
+                 localStorage.removeItem(secretKey(dc))
+                 localStorage.removeItem(manifestKey(dc))
+@@ -1408,6 +1576,7 @@ export default function PlayerPage() {
+                 return false
+             }
+ 
++            // 2. Resource Errors (Try to handle standby or error phase)
+             if (msg.includes('no active publication') || msg.includes('no publication') || msg.includes('not found')) {
+                 setPhase('standby')
+                 if (err.data?.device) {
+@@ -1416,25 +1585,39 @@ export default function PlayerPage() {
+                 return true
+             }
+ 
+-            const cached = localStorage.getItem(manifestKey(dc))
+-            if (cached) {
++            // 3. Network Outage Fallback: Attempt offline playback from cache
++            const mKey = manifestKey(dc)
++            const cachedBody = localStorage.getItem(mKey)
++
++            if (cachedBody) {
+                 try {
+-                    const c = JSON.parse(cached)
+-                    setManifest(c)
+-                    if (c.resolved?.version) {
+-                        setVersion(c.resolved.version)
+-                        versionRef.current = c.resolved.version
++                    console.log('[Player] ≡ƒôí Offline mode: Hydrating from cache...')
++                    const cachedManifest: Manifest = JSON.parse(cachedBody)
++
++                    // Critical: Hydrate asset URLs from local IndexedDB cache
++                    const hydratedAssets = await hydrateAssetsFromCache(cachedManifest.assets || []) as ManifestAsset[]
++                    const offlineManifest = { ...cachedManifest, assets: hydratedAssets }
++
++                    setManifest(offlineManifest)
++                    if (cachedManifest.resolved?.version) {
++                        setVersion(cachedManifest.resolved.version)
++                        versionRef.current = cachedManifest.resolved.version
+                     }
++
+                     setOffline(true)
++                    setErrorMsg('') // Clear error since we are playing from cache
+                     return true
+-                } catch { /* ignore */ }
++                } catch (cacheErr) {
++                    console.error('[Player] Cache hydration failed:', cacheErr)
++                }
+             }
+ 
+-            setErrorMsg(err.message || 'Fetch failed')
+-            setPhase('error')
++            // Final fallback: Show error if no cache exists
++            setErrorMsg(`Connection error and no local cache available. [${err.message || 'Unknown'}]`)
++            if (phase !== 'playing') setPhase('error')
+             return false
+         }
+-    }, [dc, syncAssets, initPairing]) // REMOVED version, phase to stop re-triggering loops
++    }, [dc, syncAssets, initPairing, phase])
+ 
+     // ΓöÇΓöÇ Send heartbeat ΓöÇΓöÇ
+     const sendHeartbeat = useCallback(async (sec: string) => {
+@@ -2008,6 +2191,14 @@ export default function PlayerPage() {
+             {renderMain()}
+             {cornerTapZone}
+             <AdminPanel />
++            <StatusLine
++                dc={dc}
++                manifest={manifest}
++                offline={offline}
++                sync={syncProgress}
++                version={version}
++                lastError={lastError}
++            />
+         </div>
+     )
+ }
