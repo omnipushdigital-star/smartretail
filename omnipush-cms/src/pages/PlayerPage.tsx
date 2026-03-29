@@ -359,15 +359,23 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', init
 
             const releaseOld = () => {
                 if (!currentVideo) return;
-                try {
-                    console.log('[Player] Releasing O-Slot decoder:', currentSlot);
-                    // Crucial: hide old video instantly to prevent native play icon from rendering.
-                    // DO NOT remove src or call load()! Doing so tears down the hardware decoder 
-                    // and crashes the new video on Amlogic S905W2 chips.
-                    currentVideo.style.opacity = '0';
-                    currentVideo.style.visibility = 'hidden';
-                    currentVideo.pause();
-                } catch (e) { /* ignore */ }
+                // Delay the pause slightly to let the NEW video's decoder surface bind on Amlogic hardware.
+                // Calling pause() too quickly after nextVideo.play() causes the Chromium AbortError
+                // "play() interrupted by a call to pause()" on S905W2 chipsets.
+                setTimeout(() => {
+                    try {
+                        console.log('[Player] Releasing O-Slot decoder:', currentSlot);
+                        // Crucial: hide old video to prevent native play icon from rendering.
+                        // DO NOT remove src or call load()! Doing so tears down the hardware decoder
+                        // and crashes the new video on Amlogic S905W2 chips.
+                        currentVideo.style.opacity = '0';
+                        currentVideo.style.visibility = 'hidden';
+                        // Only pause if it's actually playing - prevents AbortError cascade
+                        if (!currentVideo.paused) {
+                            currentVideo.pause();
+                        }
+                    } catch (e) { /* ignore */ }
+                }, 150);
             };
 
             // MUST clear any inline styles leftover from a previous releaseOld cycle!
@@ -416,13 +424,25 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', init
                 }, 850)
 
             }).catch(e => {
+                if (e.name === 'AbortError') {
+                    // AbortError = "play() interrupted by pause()" - this is benign on Amlogic.
+                    // The browser is just serializing the play/pause internally. Do NOT retry,
+                    // as that triggers a spiral of skips that black-screens the device.
+                    console.warn('[Player] Play AbortError (benign, Amlogic HW race):', e.message)
+                    setDebug(`AbortOK: retrying...`)
+                    nextVideo.style.visibility = '';
+                    transitioningRef.current = false
+                    // Gentle retry after HW settle time
+                    setTimeout(() => advanceBufferRef.current(false), 800)
+                    return
+                }
+                // For all OTHER errors (network fail, decode error, etc.) - skip to next
                 console.error('[Player] Play Error:', e.message)
                 setDebug(`P.Err: ${e.message?.slice(0, 15)}`)
                 nextVideo.style.visibility = '';
                 setIsTransitioning(false)
                 transitioningRef.current = false
-                releaseOld();
-                setTimeout(() => advanceBuffer(true), 1500)
+                setTimeout(() => advanceBufferRef.current(true), 1500)
             })
         }
 
