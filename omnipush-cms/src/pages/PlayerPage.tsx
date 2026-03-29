@@ -1876,13 +1876,10 @@ export default function PlayerPage() {
             {/* Offline indicator overlay */}
             {offline && (
                 <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, zIndex: 999,
-                    background: 'rgba(239,68,68,0.85)', padding: '0.5rem',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    gap: '0.5rem', fontSize: '0.8125rem', fontWeight: 500, color: 'white',
-                    backdropFilter: 'blur(4px)',
+                    position: 'fixed', top: '2rem', right: '2rem', zIndex: 999,
+                    color: '#ef4444', background: 'transparent'
                 }}>
-                    <WifiOff size={14} /> Offline — playing cached content
+                    <WifiOff size={48} strokeWidth={2.5} />
                 </div>
             )}
 

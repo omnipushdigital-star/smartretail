@@ -273,6 +273,7 @@ Deno.serve(async (req: Request) => {
                     start_time: i.start_time,
                     end_time: i.end_time,
                     days_of_week: i.days_of_week,
+                    settings: i.settings,
                 }));
             regionPlaylists[rm.region_id] = regionItems;
         }

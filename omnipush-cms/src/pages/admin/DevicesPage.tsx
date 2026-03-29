@@ -958,6 +958,7 @@ function DeviceHealthModal({ device, heartbeat, onClose }: { device: Device, hea
                                 { label: 'Public IP', value: heartbeat?.ip_address || 'Unknown' },
                                 { label: 'Last Error', value: meta.last_error || 'None', color: meta.last_error ? '#ef4444' : undefined },
                                 { label: 'Active URL', value: meta.webview_url || 'N/A', wrap: true },
+                                { label: 'Currently Playing', value: meta.current_media?.title || 'Unknown', color: meta.current_media ? '#10b981' : '#64748b' },
                             ].map((row, i) => (
                                 <tr key={row.label} style={{ background: i % 2 === 0 ? 'rgba(0,0,0,0.1)' : 'transparent', borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
                                     <td style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600, width: '30%' }}>{row.label}</td>

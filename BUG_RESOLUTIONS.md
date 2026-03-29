@@ -210,4 +210,65 @@ Changed the update check logic to:
 
 ---
 
+## BUG-006 — Transition Effects Not Working (Static/Snap Swap)
+
+**Status:** ✅ Resolved  
+**File:** `omnipush-cms/src/pages/PlayerPage.tsx`  
+**Date Resolved:** 2026-03-29
+
+### Symptom
+After selecting transitions (Slide, Zoom, Fade) in the CMS, the player performed an instant "snap" transition without any animation, especially in the all-video `DoubleBufferVideo` mode.
+
+### Root Cause
+1. **Frame Coordination**: CSS transitions were applied in the same execution frame as the state update. The browser skipped the "Start" state (e.g., `opacity: 0`) and snapped directly to the "End" state (`opacity: 1`).
+2. **Inconsistent Logic**: Incoming and outgoing slots used their own transition settings independently, leading to uncoordinated movement if the items had different effects.
+3. **Missing showNext State**: `DoubleBufferVideo` lacked a timing mechanism to trigger transitions after a source swap.
+
+### Resolution
+1. **showNext Timing**: Implemented a `showNext` state with a 50ms `setTimeout` delay. This forces a re-render *after* the initial slot setup, allowing the browser to detect the property change and trigger the CSS `transition`.
+2. **Unified Transition Settings**: Both the incoming and outgoing slots now derive their transition type from the **incoming item's** settings (`activeItems[idx].settings`).
+3. **getSlotStyle Helper**: Refactored the styling into a robust derived function that handles all 4 transition types (Slide, Zoom, Fade, None) with precise Z-index management.
+
+---
+
+## BUG-007 — Limited Video Playback Speed Options
+
+**Status:** ✅ Resolved  
+**File:** `omnipush-cms/src/pages/admin/PlaylistsPage.tsx`  
+**Date Resolved:** 2026-03-29
+
+### Symptom
+CMS only supported playback speeds up to 1.5x. User required 2.0x and 3.0x for specific high-speed content loops.
+
+### Resolution
+Updated the `SortableItem` inline editor and the "Add Item" form to include `2.0x` and `3.0x` options. Verified that the `onPlay` event in the player correctly applies the higher `playbackRate`.
+
+---
+
+## BUG-008 — Videos Showing Black Screen on S905W2 (Tile Memory Limits Exceeded)
+
+**Status:** ✅ Resolved  
+**File:** `AndroidProjects/SmartRetailPlayer/.../WebViewManager.kt`  
+**Date Resolved:** 2026-03-30
+
+### Symptom
+When the Android app was updated, video files in the playlist suddenly started rendering as completely black screens, although images and web URLs continued to render properly without issues. Viewing the `logcat` from the TV box revealed a stream of Chromium WebView errors:
+`[ERROR:tile_manager.cc(793)] WARNING: tile memory limits exceeded, some content may not draw`
+
+### Root Cause
+During a previous attempt to get the hardware-accelerated `PixelCopy` screenshot method to work (which was later reverted due to decoder crashes), the WebView rendering mode was inadvertently forced into **Software Rendering**:
+`webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)`
+
+Android TV boxes (like the S905W2) rely entirely on their hardware video decoders. When the WebView is forced into Software mode, it drops hardware acceleration for video elements. The software renderer on the S905W2 becomes instantly overwhelmed by the video frames, leading to GPU tile memory limits being exceeded, and the WebView silently dropping the video content (rendering a black screen).
+
+### Resolution
+Reverted the `setLayerType` method back to `LAYER_TYPE_HARDWARE`.
+```kotlin
+// Restore HARDWARE rendering (Software rendering breaks video playback causing black screens on S905W2)
+webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+```
+After rebuilding the APK and pushing to the device, video elements regained access to the hardware decoder, restoring smooth playback and eliminating the tile memory limit errors.
+
+---
+
 *Add new entries above this line in the format: `## BUG-NNN — Title`*

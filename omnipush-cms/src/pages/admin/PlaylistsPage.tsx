@@ -29,53 +29,94 @@ function SortableItem({ item, onRemove, onUpdateSettings }: {
         <div ref={setNodeRef} style={{ ...style, display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.625rem 0.75rem', background: 'var(--color-surface-900)', borderRadius: 8, marginBottom: '0.5rem', border: '1px solid var(--color-surface-800)' }} className="sortable-item">
             <span {...attributes} {...listeners} className="drag-handle"><GripVertical size={14} /></span>
             {item.type === 'image' ? <ImageIcon size={14} color="#60a5fa" /> : item.type === 'video' ? <Film size={14} color="#a78bfa" /> : item.type === 'ppt' ? <Presentation size={14} color="#f59e0b" /> : <Globe size={14} color="#34d399" />}
-            <span style={{ flex: 1, fontSize: '0.875rem', color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {item.media?.name || item.web_url || 'Unknown'}
-            </span>
-            {item.type === 'video' && item.playback_speed && (
-                <span className="badge-speed" style={{ fontSize: '0.7rem', padding: '0.125rem 0.375rem', background: 'rgba(167, 139, 250, 0.1)', color: '#c4b5fd', borderRadius: 4, whiteSpace: 'nowrap' }}>
-                    {item.playback_speed}x
-                </span>
-            )}
-            {item.is_scheduled && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-end', flexShrink: 0 }}>
-                    <span className="badge-schedule" style={{ fontSize: '0.7rem', padding: '0.125rem 0.375rem', background: 'rgba(234,179,8,0.1)', color: '#fbbf24', borderRadius: 4, display: 'flex', alignItems: 'center', gap: '0.25rem', whiteSpace: 'nowrap' }}>
-                        ⏰ {item.start_time || item.end_time ? `${item.start_time || '00:00'} - ${item.end_time || '23:59'}` : 'Scheduled'}
-                    </span>
-                    {(item.start_date || item.end_date || daysStr) && (
-                        <span style={{ fontSize: '0.65rem', color: 'var(--color-surface-400)', whiteSpace: 'nowrap' }}>
-                            {item.start_date || item.end_date ? `${item.start_date || '∞'} to ${item.end_date || '∞'}` : ''}
-                            {item.start_date || item.end_date ? (daysStr ? ` | ${daysStr}` : '') : daysStr}
-                        </span>
-                    )}
-                </div>
-            )}
-            {item.duration_seconds && <span style={{ fontSize: '0.75rem', color: 'var(--color-surface-500)', flexShrink: 0 }}>{item.duration_seconds}s</span>}
 
-            <select
-                value={item.settings?.transition || 'slide'}
-                onChange={(e) => onUpdateSettings(item.id, { ...item.settings, transition: e.target.value })}
-                style={{
-                    fontSize: '0.7rem',
-                    padding: '0.125rem 0.25rem',
-                    background: 'var(--color-surface-800)',
-                    color: 'var(--color-text-secondary)',
-                    border: '1px solid var(--color-surface-700)',
-                    borderRadius: 4,
-                    cursor: 'pointer'
-                }}
-            >
-                <option value="slide">Slide</option>
-                <option value="zoom">Zoom</option>
-                <option value="fade">Fade</option>
-                <option value="none">None</option>
-            </select>
-            <button onClick={() => onRemove(item.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '0.25rem', display: 'flex' }}>
-                <X size={14} />
-            </button>
+            <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                <div style={{ fontSize: '0.875rem', color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {item.media?.name || item.web_url || 'Unknown'}
+                </div>
+                {item.is_scheduled && (
+                    <div style={{ fontSize: '0.65rem', color: '#fbbf24', marginTop: '2px' }}>
+                        ⏰ {item.start_time || item.end_time ? `${item.start_time || '00:00'}-${item.end_time || '23:59'}` : 'Scheduled'}
+                        {daysStr && ` | ${daysStr}`}
+                    </div>
+                )}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                {/* Duration Editor for non-videos */}
+                {item.type !== 'video' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <input
+                            type="number"
+                            value={item.duration_seconds || 15}
+                            onChange={(e) => onUpdateSettings(item.id, { duration_seconds: parseInt(e.target.value) || 1 })}
+                            style={{
+                                width: '35px',
+                                fontSize: '0.7rem',
+                                padding: '0.125rem 0.25rem',
+                                background: 'var(--color-surface-800)',
+                                color: 'var(--color-text-primary)',
+                                border: '1px solid var(--color-surface-700)',
+                                borderRadius: 4,
+                                textAlign: 'center'
+                            }}
+                        />
+                        <span style={{ fontSize: '0.65rem', color: 'var(--color-surface-500)' }}>s</span>
+                    </div>
+                )}
+
+                {/* Speed Editor for Videos */}
+                {item.type === 'video' && (
+                    <select
+                        value={item.playback_speed || 1.0}
+                        onChange={(e) => onUpdateSettings(item.id, { playback_speed: parseFloat(e.target.value) })}
+                        style={{
+                            fontSize: '0.7rem',
+                            padding: '0.125rem 0.25rem',
+                            background: 'rgba(167, 139, 250, 0.1)',
+                            color: '#c4b5fd',
+                            border: '1px solid rgba(167, 139, 250, 0.2)',
+                            borderRadius: 4,
+                        }}
+                    >
+                        <option value="0.5">0.5x</option>
+                        <option value="0.75">0.75x</option>
+                        <option value="1.0">1.0x</option>
+                        <option value="1.25">1.25x</option>
+                        <option value="1.5">1.5x</option>
+                        <option value="2.0">2.0x</option>
+                        <option value="3.0">3.0x</option>
+                    </select>
+                )}
+
+                {/* Transition Selector */}
+                <select
+                    value={item.settings?.transition || 'slide'}
+                    onChange={(e) => onUpdateSettings(item.id, { transition: e.target.value })}
+                    style={{
+                        fontSize: '0.7rem',
+                        padding: '0.125rem 0.25rem',
+                        background: 'var(--color-surface-800)',
+                        color: 'var(--color-text-secondary)',
+                        border: '1px solid var(--color-surface-700)',
+                        borderRadius: 4,
+                        cursor: 'pointer'
+                    }}
+                >
+                    <option value="slide">Slide</option>
+                    <option value="zoom">Zoom</option>
+                    <option value="fade">Fade</option>
+                    <option value="none">None</option>
+                </select>
+
+                <button onClick={() => onRemove(item.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '0.25rem', display: 'flex' }}>
+                    <X size={14} />
+                </button>
+            </div>
         </div>
     )
 }
+
 
 export default function PlaylistsPage() {
     const [playlists, setPlaylists] = useState<Playlist[]>([])
@@ -204,7 +245,6 @@ export default function PlaylistsPage() {
             if (addType === 'video') payload.playback_speed = parseFloat(addPlaybackSpeed) || 1.0
         } else {
             payload.web_url = addUrl
-            // For manual web URLs, we still need a default duration if they play in a sequence
             payload.duration_seconds = parseInt(addDuration) || 15
         }
 
@@ -217,45 +257,77 @@ export default function PlaylistsPage() {
             payload.days_of_week = addDaysOfWeek
         }
 
-        // Insert and then resolve the media manually to avoid ambiguity
         const { data: newItem, error } = await supabase.from('playlist_items')
             .insert(payload)
-            .select('id, playlist_id, type, sort_order, media_id, web_url, duration_seconds, playback_speed, settings')
+            .select('*')
             .single()
-        if (error) { toast.error(error.message); return }
 
+        if (error) {
+            toast.error(error.message)
+            return
+        }
+
+        // Resolve media for local state
         let resolvedItem = { ...newItem, media: null }
         if (newItem.media_id) {
             const { data: media } = await supabase.from('media_assets').select('*').eq('id', newItem.media_id).single()
             resolvedItem.media = media
         }
 
-        setPlaylistItems(items => [...items, resolvedItem as any])
+        setPlaylistItems(prev => [...prev, resolvedItem as any])
         setAddMediaId('')
         setAddUrl('')
         toast.success('Item added')
     }
 
+    const updateItemSettings = async (itemId: string, data: any) => {
+        // Optimistic update
+        setPlaylistItems(prev => prev.map(i => {
+            if (i.id !== itemId) return i
+            const updated = { ...i }
+            if (data.transition) updated.settings = { ...updated.settings, transition: data.transition }
+            if (data.duration_seconds !== undefined) updated.duration_seconds = data.duration_seconds
+            if (data.playback_speed !== undefined) updated.playback_speed = data.playback_speed
+            return updated
+        }))
+
+        const updates: any = {}
+        if (data.duration_seconds !== undefined) updates.duration_seconds = data.duration_seconds
+        if (data.playback_speed !== undefined) updates.playback_speed = data.playback_speed
+        if (data.transition) {
+            const item = playlistItems.find(i => i.id === itemId)
+            updates.settings = { ...(item?.settings || {}), transition: data.transition }
+        }
+
+        const { error } = await supabase.from('playlist_items').update(updates).eq('id', itemId)
+        if (error) toast.error('Failed to update item')
+        else toast.success('Updated', { duration: 1000 })
+    }
+
     const removeItem = async (itemId: string) => {
-        await supabase.from('playlist_items').delete().eq('id', itemId)
-        setPlaylistItems(items => items.filter(i => i.id !== itemId))
-        toast.success('Removed')
+        const { error } = await supabase.from('playlist_items').delete().eq('id', itemId)
+        if (error) {
+            toast.error('Failed to remove item')
+        } else {
+            setPlaylistItems(prev => prev.filter(i => i.id !== itemId))
+            toast.success('Removed')
+        }
     }
 
     const handleDragEnd = async (event: DragEndEvent) => {
         const { active, over } = event
         if (!over || active.id === over.id) return
+
         const oldIndex = playlistItems.findIndex(i => i.id === active.id)
         const newIndex = playlistItems.findIndex(i => i.id === over.id)
+
         const newItems = arrayMove(playlistItems, oldIndex, newIndex).map((item, idx) => ({ ...item, sort_order: idx }))
         setPlaylistItems(newItems)
-        await Promise.all(newItems.map(item => supabase.from('playlist_items').update({ sort_order: item.sort_order }).eq('id', item.id)))
-    }
 
-    const updateItemSettings = async (itemId: string, settings: any) => {
-        setPlaylistItems(items => items.map(i => i.id === itemId ? { ...i, settings } : i))
-        const { error } = await supabase.from('playlist_items').update({ settings }).eq('id', itemId)
-        if (error) toast.error('Failed to update settings')
+        // Bulk update sort order in DB
+        await Promise.all(newItems.map(item =>
+            supabase.from('playlist_items').update({ sort_order: item.sort_order }).eq('id', item.id)
+        ))
     }
 
     const filteredMedia = mediaAssets.filter(m => m.type === addType)
@@ -459,6 +531,8 @@ export default function PlaylistsPage() {
                                         <option value="1.0">1.0x (Normal)</option>
                                         <option value="1.25">1.25x</option>
                                         <option value="1.5">1.5x (Fast)</option>
+                                        <option value="2.0">2.0x (Very Fast)</option>
+                                        <option value="3.0">3.0x (Super Fast)</option>
                                     </select>
                                 </div>
                             )}
