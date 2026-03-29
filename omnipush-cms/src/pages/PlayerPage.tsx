@@ -322,7 +322,7 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
     if (sorted.length === 0) return null
 
     return (
-        <div style={{ position: 'absolute', inset: 0, background: '#000', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: '#000', overflow: 'hidden' }}>
             {[0, 1].map(i => (
                 <video
                     key={i}
@@ -461,7 +461,7 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
         const item = activeItems[idx]
         const asset = memoizedAssets.find(a => a.media_id === item.media_id)
         const url = asset?.url || item.web_url
-        const type = asset?.type || item.type || (item.media_id ? 'video' : 'image')
+        const type = asset?.type || item.type || (item.type?.includes('video') ? 'video' : 'image')
 
         if (!url) {
             if (activeItems.length > 1) advance()
@@ -495,14 +495,14 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
     const item = activeItems[idx]
     const asset = memoizedAssets.find(a => a.media_id === item.media_id)
     const url = asset?.url || item.web_url
-    const type = asset?.type || item.type || (item.media_id ? 'video' : 'image')
+    const type = asset?.type || item.type || (item.type?.includes('video') ? 'video' : 'image')
 
     // Use double buffer for videos to ensure smooth looping and better recovery
     const allVideos = useMemo(() => {
         if (activeItems.length === 0) return false
         return activeItems.every(item => {
             const asset = memoizedAssets.find(a => a.media_id === item.media_id)
-            const type = asset?.type || item.type || (item.media_id ? 'video' : 'image')
+            const type = asset?.type || item.type || (item.type?.includes('video') ? 'video' : 'image')
             return type === 'video'
         })
     }, [activeItems, memoizedAssets])
@@ -567,13 +567,12 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
             ) : (
                 /* Mixed content: use fade-based switching */
                 <div style={{
-                    position: 'absolute',
-                    top: 0, left: 0, right: 0, bottom: 0,
+                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
                     opacity: fade ? 1 : 0,
                     transition: 'none',
                 }}>
                     {type === 'image' && url && (
-                        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
+                        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
                             <img
                                 key={item.playlist_item_id}
                                 src={url}
@@ -754,7 +753,7 @@ function ErrorState({ device_code, msg, onRetry }: { device_code: string; msg: s
 // ─── Shared UI helpers ───────────────────────────────────────────────────────
 
 const bgStyle: React.CSSProperties = {
-    position: 'fixed', inset: 0,
+    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
     background: 'linear-gradient(135deg, #020617 0%, #0f172a 60%, #450a0a 100%)',
     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
     color: 'white', overflow: 'hidden',
@@ -1574,7 +1573,7 @@ export default function PlayerPage() {
             {/* PIN Prompt */}
             {showPinPrompt && (
                 <div style={{
-                    position: 'fixed', inset: 0, zIndex: 99999,
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999,
                     background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center'
                 }}>
@@ -1626,7 +1625,7 @@ export default function PlayerPage() {
             {/* Admin Panel */}
             {showAdminPanel && (
                 <div style={{
-                    position: 'fixed', inset: 0, zIndex: 99999,
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999,
                     background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(16px)',
                     display: 'flex', flexDirection: 'column',
                 }}>
@@ -1731,7 +1730,7 @@ export default function PlayerPage() {
     return (
         <div style={{
             position: 'fixed',
-            inset: 0,
+            top: 0, left: 0, right: 0, bottom: 0,
             width: '100vw',
             height: '100vh',
             background: '#000',
