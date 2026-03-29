@@ -1136,6 +1136,9 @@ export default function PlayerPage() {
     const checkCommands = useCallback(async () => {
         if (!manifest?.device?.id) return
         try {
+            // If we know we are offline, don't even try polling commands right now
+            if (!navigator.onLine) return;
+
             const { data: commands, error } = await supabase
                 .from('device_commands')
                 .select('*')
@@ -1143,7 +1146,12 @@ export default function PlayerPage() {
                 .eq('status', 'PENDING')
                 .order('created_at', { ascending: true })
 
-            if (error) throw error
+            if (error) {
+                // If it's a "Failed to fetch", it's just a network drop, don't spam error logs
+                if (error.message?.includes('Failed to fetch')) return;
+                console.error('[Commands] Fetch error:', error.message || error)
+                return
+            }
             if (!commands || commands.length === 0) return
 
             for (const cmd of commands) {
@@ -1175,6 +1183,9 @@ export default function PlayerPage() {
                 }
             }
         } catch (err: any) {
+            if (err.message === 'Failed to fetch' || !navigator.onLine) {
+                return; // Ignore network drops
+            }
             console.error('[Commands] Polling error:', err.message)
         }
     }, [manifest?.device?.id])
@@ -1314,6 +1325,14 @@ export default function PlayerPage() {
             if (cached) {
                 try {
                     const c = JSON.parse(cached)
+
+                    // --- HYDRATE BLOB URLS OFFLINE ---
+                    if (c.assets) {
+                        const hydrated = await hydrateAssetsFromCache(c.assets)
+                        c.assets = hydrated
+                    }
+                    // ---------------------------------
+
                     setManifest(c)
                     if (c.resolved?.version) {
                         setVersion(c.resolved.version)
