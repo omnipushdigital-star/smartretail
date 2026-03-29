@@ -461,7 +461,8 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
         const item = activeItems[idx]
         const asset = memoizedAssets.find(a => a.media_id === item.media_id)
         const url = asset?.url || item.web_url
-        const type = asset?.type || item.type || (item.type?.includes('video') ? 'video' : 'image')
+        const rawType = (asset?.type || item.type || '').toLowerCase()
+        const type = rawType.includes('video') ? 'video' : (rawType.includes('image') ? 'image' : rawType || 'image')
 
         if (!url) {
             if (activeItems.length > 1) advance()
@@ -495,14 +496,16 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
     const item = activeItems[idx]
     const asset = memoizedAssets.find(a => a.media_id === item.media_id)
     const url = asset?.url || item.web_url
-    const type = asset?.type || item.type || (item.type?.includes('video') ? 'video' : 'image')
+    const rawType = (asset?.type || item.type || '').toLowerCase()
+    const type = rawType.includes('video') ? 'video' : (rawType.includes('image') ? 'image' : rawType || 'image')
 
     // Use double buffer for videos to ensure smooth looping and better recovery
     const allVideos = useMemo(() => {
         if (activeItems.length === 0) return false
         return activeItems.every(item => {
             const asset = memoizedAssets.find(a => a.media_id === item.media_id)
-            const type = asset?.type || item.type || (item.type?.includes('video') ? 'video' : 'image')
+            const rawType = (asset?.type || item.type || '').toLowerCase()
+            const type = rawType.includes('video') ? 'video' : (rawType.includes('image') ? 'image' : rawType || 'image')
             return type === 'video'
         })
     }, [activeItems, memoizedAssets])
