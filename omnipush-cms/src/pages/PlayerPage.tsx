@@ -488,7 +488,6 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                     }}
                     muted
                     playsInline
-                    crossOrigin="anonymous"
                     loop={false}
                     webkit-playsinline="true"
                     preload="auto"
