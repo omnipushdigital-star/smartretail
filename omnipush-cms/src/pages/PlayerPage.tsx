@@ -30,6 +30,7 @@ interface ManifestItem {
     start_time?: string | null
     end_time?: string | null
     days_of_week?: number[]
+    settings?: { transition?: 'slide' | 'zoom' | 'fade' | 'none' }
 }
 
 interface Manifest {
@@ -162,11 +163,21 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
     const v2 = useRef<HTMLVideoElement>(null)
     const videoRefs = [v1, v2]
     const [slotUrls, setSlotUrls] = useState<[string, string]>(['', ''])
-    const [slotOpacity, setSlotOpacity] = useState<[number, number]>([1, 0])
+    const [isSwapping, setIsSwapping] = useState(false)
     const idxRef = useRef(0)
     const [debug, setDebug] = useState<string>('Init')
     const watchdogRef = useRef<any>(null)
     const initialSyncDone = useRef(false)
+    const [showNext, setShowNext] = useState(false)
+
+    useEffect(() => {
+        if (isSwapping) {
+            const t = setTimeout(() => setShowNext(true), 50)
+            return () => clearTimeout(t)
+        } else {
+            setShowNext(false)
+        }
+    }, [isSwapping])
 
     const sorted = React.useMemo(
         () => [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
@@ -223,10 +234,18 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
             setDebug(`${idxRef.current}→${nextIdx} | SWAP`)
             nextVideo.playbackRate = sorted[nextIdx].playback_speed || 1
 
-            setActiveSlot(nextSlot)
-            setSlotOpacity(nextSlot === 0 ? [1, 0] : [0, 1])
+            const transitionType = sorted[nextIdx].settings?.transition || 'fade';
+
+            setIsSwapping(true);
+            setShowNext(false);
+            setActiveSlot(nextSlot);
+
             idxRef.current = nextIdx
             onAdvance()
+
+            setTimeout(() => {
+                setIsSwapping(false);
+            }, 650);
 
             const attemptPlay = () => {
                 triggerWatchdog(12000)
@@ -321,6 +340,44 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
 
     if (sorted.length === 0) return null
 
+    // Determine derived styles for the 2 slots based on activeSlot vs showNext
+    const getSlotStyle = (slotIdx: number): React.CSSProperties => {
+        const item = sorted[idxRef.current];
+        const transitionType = item?.settings?.transition || 'fade';
+        const isActive = slotIdx === activeSlot;
+        const isPrev = !isActive;
+
+        const baseStyle: React.CSSProperties = {
+            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+            objectFit: 'fill', background: '#000', display: 'block',
+            pointerEvents: 'none',
+            zIndex: isActive ? 10 : 1,
+            transition: isSwapping ? 'all 0.6s ease-in-out' : 'none'
+        };
+
+        if (isSwapping) {
+            if (isPrev) {
+                // Outgoing slot
+                if (transitionType === 'slide') baseStyle.transform = showNext ? 'translateX(-100%)' : 'translateX(0%)';
+                else if (transitionType === 'zoom') { baseStyle.transform = showNext ? 'scale(1.2)' : 'scale(1)'; baseStyle.opacity = showNext ? 0 : 1; }
+                else if (transitionType === 'fade') baseStyle.opacity = showNext ? 0 : 1;
+                else if (transitionType === 'none') baseStyle.opacity = 0;
+            } else {
+                // Incoming slot
+                if (transitionType === 'slide') baseStyle.transform = showNext ? 'translateX(0%)' : 'translateX(100%)';
+                else if (transitionType === 'zoom') { baseStyle.transform = showNext ? 'scale(1)' : 'scale(0.8)'; baseStyle.opacity = showNext ? 1 : 0; }
+                else if (transitionType === 'fade') baseStyle.opacity = showNext ? 1 : 0;
+                else if (transitionType === 'none') { baseStyle.opacity = 1; baseStyle.transition = 'none'; }
+            }
+        } else {
+            baseStyle.opacity = isActive ? 1 : 0;
+            baseStyle.transform = 'scale(1) translateX(0%)';
+            baseStyle.visibility = isActive ? 'visible' : 'hidden';
+        }
+
+        return baseStyle;
+    };
+
     return (
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: '#000', overflow: 'hidden' }}>
             {[0, 1].map(i => (
@@ -328,13 +385,7 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                     key={i}
                     ref={videoRefs[i]}
                     src={slotUrls[i]}
-                    style={{
-                        position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-                        objectFit: 'fill', background: '#000', display: 'block',
-                        opacity: slotOpacity[i],
-                        zIndex: slotOpacity[i] > 0 ? 10 : 1,
-                        pointerEvents: 'none',
-                    }}
+                    style={getSlotStyle(i)}
                     muted playsInline crossOrigin="anonymous" preload="auto"
                     onTimeUpdate={() => { if (i === activeSlot) triggerWatchdog(12000) }}
                     onEnded={() => { if (i === activeSlot) advanceBuffer() }}
@@ -360,7 +411,6 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
 function PlaybackEngine({ items, assets, region }: PlaybackProps) {
     const [idx, setIdx] = useState(0)
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-    const [fade, setFade] = useState(true)
     const [currentTime, setCurrentTime] = useState(new Date())
 
     // Perodic re-evaluation for schedules
@@ -437,19 +487,36 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
         }
     }, [idx, activeItems])
 
+    const [prevIdx, setPrevIdx] = useState<number | null>(null)
+    const [isTransitioning, setIsTransitioning] = useState(false)
+    const [showNext, setShowNext] = useState(false)
+
+    useEffect(() => {
+        if (isTransitioning) {
+            const t = setTimeout(() => setShowNext(true), 50)
+            return () => clearTimeout(t)
+        } else {
+            setShowNext(false)
+        }
+    }, [isTransitioning])
+
     const advance = useCallback(() => {
-        // Critical: If only 1 item, NEVER advance/refresh (prevents reload flashes)
         if (activeItems.length <= 1) return
 
         const nextIdx = (idx + 1) % activeItems.length
-        // If we are about to switch to the SAME item, skip the fade cycle
         if (nextIdx === idx) return
 
-        setFade(false)
+        setPrevIdx(idx)
+        setIdx(nextIdx)
+        setIsTransitioning(true)
+        setShowNext(false)
+
+        // After transition delay, hide the old slot
         setTimeout(() => {
-            setIdx(nextIdx)
-            setFade(true)
-        }, 300)
+            setPrevIdx(null)
+            setIsTransitioning(false)
+            setShowNext(false)
+        }, 600)
     }, [idx, activeItems.length])
 
     const memoizedAssets = React.useMemo(() => assets, [JSON.stringify(assets)])
@@ -568,86 +635,104 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
                     onAdvance={advance}
                 />
             ) : (
-                /* Mixed content: use fade-based switching */
-                <div style={{
-                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                    opacity: fade ? 1 : 0,
-                    transition: 'none',
-                }}>
-                    {type === 'image' && url && (
-                        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
-                            <img
-                                key={item.playlist_item_id}
-                                src={url}
-                                alt="Playlist Content"
+                /* Mixed content: use two-slot cross-fade */
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+                    {[prevIdx, idx].map((displayIdx, slotPosition) => {
+                        if (displayIdx === null || displayIdx === undefined) return null;
+                        const dItem = activeItems[displayIdx];
+                        const dAsset = memoizedAssets.find(a => a.media_id === dItem.media_id);
+                        const dUrl = dAsset?.url || dItem.web_url;
+                        const dRawType = (dAsset?.type || dItem.type || '').toLowerCase();
+                        const dType = dRawType.includes('video') ? 'video' : (dRawType.includes('image') ? 'image' : dRawType || 'image');
+                        const isPrev = displayIdx === prevIdx;
+                        // Always use the incoming item's transition settings for both slots
+                        const transitionItem = activeItems[idx];
+                        const transitionType = transitionItem?.settings?.transition || 'fade';
+
+                        let transitionStyles: React.CSSProperties = {
+                            transition: isTransitioning ? 'all 0.6s ease-in-out' : 'none',
+                        };
+
+                        if (isTransitioning) {
+                            if (isPrev) {
+                                // Old item behavior
+                                if (transitionType === 'slide') {
+                                    transitionStyles.transform = showNext ? 'translateX(-100%)' : 'translateX(0%)';
+                                } else if (transitionType === 'zoom') {
+                                    transitionStyles.transform = showNext ? 'scale(1.2)' : 'scale(1)';
+                                    transitionStyles.opacity = showNext ? 0 : 1;
+                                } else if (transitionType === 'fade') {
+                                    transitionStyles.opacity = showNext ? 0 : 1;
+                                }
+                            } else {
+                                // New item behavior
+                                if (transitionType === 'slide') {
+                                    transitionStyles.transform = showNext ? 'translateX(0%)' : 'translateX(100%)';
+                                } else if (transitionType === 'zoom') {
+                                    transitionStyles.transform = showNext ? 'scale(1)' : 'scale(0.8)';
+                                    transitionStyles.opacity = showNext ? 1 : 0;
+                                } else if (transitionType === 'fade') {
+                                    transitionStyles.opacity = showNext ? 1 : 0;
+                                } else if (transitionType === 'none') {
+                                    transitionStyles.opacity = showNext ? 1 : 0;
+                                    transitionStyles.transition = 'none';
+                                }
+                            }
+                        } else {
+                            transitionStyles.opacity = 1;
+                            transitionStyles.transform = 'scale(1) translateX(0%)';
+                        }
+
+                        return (
+                            <div
+                                key={`${dItem.playlist_item_id}-${displayIdx}`}
                                 style={{
-                                    position: 'absolute', top: 0, left: 0,
-                                    width: '100%', height: '100%',
-                                    objectFit: 'fill', display: 'block',
+                                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                                    zIndex: isPrev ? 1 : 2,
+                                    visibility: (isPrev && !isTransitioning) ? 'hidden' : 'visible',
+                                    ...transitionStyles
                                 }}
-                                onError={(e) => {
-                                    console.error(`[PlaybackEngine] Image Load Failure: ${url}`)
-                                    const parent = e.currentTarget.parentElement
-                                    if (parent) {
-                                        parent.style.background = '#450a0a'
-                                        parent.innerHTML += `<div style="color: #ef4444; font-size: 10px; z-index: 10">⚠️ Image Load Error</div>`
-                                    }
-                                }}
-                            />
-                        </div>
-                    )}
-                    {type === 'video' && url && (
-                        <video
-                            key={item.playlist_item_id}
-                            ref={videoRef}
-                            src={url}
-                            style={{
-                                position: 'absolute', top: 0, left: 0,
-                                width: '100%', height: '100%',
-                                objectFit: 'fill', background: '#000', display: 'block',
-                            }}
-                            muted playsInline
-                            disableRemotePlayback
-                            webkit-playsinline="true"
-                            preload="auto"
-                            loop={activeItems.length === 1}
-                            onPlay={(e) => e.currentTarget.playbackRate = item.playback_speed || 1}
-                            onEnded={advance}
-                            onError={() => setTimeout(advance, 5000)}
-                        />
-                    )}
-                    {type === 'web_url' && url && (
-                        <iframe
-                            key={item.playlist_item_id}
-                            src={url}
-                            style={{
-                                position: 'absolute', top: 0, left: 0,
-                                width: '100%', height: '100%',
-                                border: 'none', display: 'block',
-                            }}
-                            sandbox="allow-scripts allow-same-origin"
-                            title="content"
-                        />
-                    )}
-                    {type === 'ppt' && url && (
-                        <iframe
-                            key={item.playlist_item_id}
-                            src={`https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`}
-                            style={{
-                                position: 'absolute', top: 0, left: 0,
-                                width: '100%', height: '100%',
-                                border: 'none', display: 'block',
-                                background: '#fff',
-                            }}
-                            title="ppt"
-                        />
-                    )}
+                            >
+                                {dType === 'image' && dUrl && (
+                                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <img
+                                            src={dUrl}
+                                            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'fill', display: 'block' }}
+                                        />
+                                    </div>
+                                )}
+                                {dType === 'video' && dUrl && (
+                                    <video
+                                        ref={!isPrev ? videoRef : null}
+                                        src={dUrl}
+                                        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'fill', display: 'block' }}
+                                        muted playsInline disableRemotePlayback preload="auto"
+                                        loop={activeItems.length === 1}
+                                        onPlay={(e) => e.currentTarget.playbackRate = dItem.playback_speed || 1}
+                                        onEnded={advance}
+                                        onError={() => setTimeout(advance, 5000)}
+                                    />
+                                )}
+                                {dType === 'web_url' && dUrl && (
+                                    <iframe src={dUrl} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none', display: 'block' }} sandbox="allow-scripts allow-same-origin" title="content" />
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             )}
-
-            {/* Preload next image in background */}
-            {!allVideos && nextType === 'image' && nextUrl && (
-                <img src={nextUrl} alt="" style={{ display: 'none' }} />
+            {type === 'ppt' && url && (
+                <iframe
+                    key={item.playlist_item_id}
+                    src={`https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`}
+                    style={{
+                        position: 'absolute', top: 0, left: 0,
+                        width: '100%', height: '100%',
+                        border: 'none', display: 'block',
+                        background: '#fff',
+                    }}
+                    title="ppt"
+                />
             )}
         </div>
     )
