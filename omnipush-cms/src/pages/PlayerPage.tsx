@@ -94,9 +94,9 @@ const globalStyle = `
     margin: 0 !important;
     padding: 0 !important;
     width: 100vw !important;
-    height: 100dvh !important;
-    min-height: 100dvh !important;
-    max-height: 100dvh !important;
+    height: 100vh !important;
+    min-height: 100vh !important;
+    max-height: 100vh !important;
     overflow: hidden !important;
     position: fixed !important;
     top: 0; left: 0; right: 0; bottom: 0;
@@ -926,8 +926,8 @@ export default function PlayerPage() {
             meta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no, viewport-fit=cover')
 
             // Force browser to visible area only
-            document.documentElement.style.height = '100dvh';
-            document.body.style.height = '100dvh';
+            document.documentElement.style.height = '100vh';
+            document.body.style.height = '100vh';
         }
 
         syncViewport()
@@ -1322,7 +1322,7 @@ export default function PlayerPage() {
                 }
             }
         } catch (err: any) {
-            console.error('[Player] Heartbeat Network Error:', err.message)
+            console.warn('[Player] Heartbeat non-fatal:', err.message)
             const msg = (err.message || '').toLowerCase()
             if (msg.includes('invalid credentials') || msg.includes('inactive device')) {
                 localStorage.removeItem(secretKey(dc))
@@ -1733,7 +1733,7 @@ export default function PlayerPage() {
             position: 'fixed',
             inset: 0,
             width: '100vw',
-            height: '100dvh',
+            height: '100vh',
             background: '#000',
             overflow: 'hidden',
             margin: 0, padding: 0,
