@@ -267,34 +267,21 @@ interface PlaybackProps {
 // This eliminates the browser's default "video icon" flash that appears
 // when a <video> element is destroyed and recreated (e.g., on loop restart).
 
-interface VideoBufferProps {
-    url: string
-    onEnded: () => void
-    onError: () => void
-    style?: React.CSSProperties
-}
-
-type TransitionEffect = 'fade' | 'slide' | 'zoom' | 'none' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right'
-
-function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', initialIdx = 0 }: {
+function DoubleBufferVideo({ items, assets, onAdvance }: {
     items: ManifestItem[]
     assets: ManifestAsset[]
     onAdvance: () => void
-    effect?: TransitionEffect
-    initialIdx?: number
 }) {
     const [activeSlot, setActiveSlot] = useState<0 | 1>(0)
-    const [isTransitioning, setIsTransitioning] = useState(false)
     const v1 = useRef<HTMLVideoElement>(null)
     const v2 = useRef<HTMLVideoElement>(null)
     const videoRefs = [v1, v2]
     const [slotUrls, setSlotUrls] = useState<[string, string]>(['', ''])
-    const idxRef = useRef(initialIdx)
+    const [slotOpacity, setSlotOpacity] = useState<[number, number]>([1, 0])
+    const idxRef = useRef(0)
     const [debug, setDebug] = useState<string>('Init')
     const watchdogRef = useRef<any>(null)
     const initialSyncDone = useRef(false)
-    const lastMediaIdsRef = useRef<string>('')
-    const transitioningRef = useRef(false)
 
     const sorted = React.useMemo(
         () => [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
@@ -308,14 +295,15 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', init
     }, [memoizedAssets])
 
     const advanceBufferRef = useRef<(force?: boolean) => void>(() => { })
+    const transitioningRef = useRef(false)
 
     const triggerWatchdog = useCallback((delay = 12000) => {
         if (watchdogRef.current) clearTimeout(watchdogRef.current)
         watchdogRef.current = setTimeout(() => {
             if (sorted.length > 1) {
-                console.warn('[Player] DoubleBufferVideo: Watchdog skipping stalled video')
+                console.warn('[Player] Watchdog: skipping stalled video')
                 setDebug("WD Skip")
-                transitioningRef.current = false // Reset re-entry guard
+                transitioningRef.current = false
                 advanceBufferRef.current(true)
             }
         }, delay)
@@ -323,7 +311,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', init
 
     const advanceBuffer = useCallback((forceNext = false) => {
         if (sorted.length === 0) return
-        if (transitioningRef.current && !forceNext) return // Prevent overlapped transitions
+        if (transitioningRef.current && !forceNext) return
 
         // Case: Single item looping
         if (sorted.length === 1) {
@@ -338,7 +326,6 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', init
 
         const currentSlot = activeSlot
         const nextSlot: 0 | 1 = activeSlot === 0 ? 1 : 0
-        const currentVideo = videoRefs[currentSlot].current
         const nextVideo = videoRefs[nextSlot].current
         const nextIdx = (idxRef.current + 1) % sorted.length
 
@@ -352,100 +339,51 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', init
 
         const performSwitch = () => {
             if (!nextVideo) return
-            if (transitioningRef.current && !forceNext) return
 
             transitioningRef.current = true
-            setDebug(`${idxRef.current}→${nextIdx} | SAFE SWAP`)
+            setDebug(`${idxRef.current}→${nextIdx} | SWAP`)
+            nextVideo.playbackRate = sorted[nextIdx].playback_speed || 1
 
-            const releaseOld = () => {
-                if (!currentVideo) return;
-                // Delay the pause slightly to let the NEW video's decoder surface bind on Amlogic hardware.
-                // Calling pause() too quickly after nextVideo.play() causes the Chromium AbortError
-                // "play() interrupted by a call to pause()" on S905W2 chipsets.
-                setTimeout(() => {
-                    try {
-                        console.log('[Player] Releasing O-Slot decoder:', currentSlot);
-                        // Crucial: hide old video to prevent native play icon from rendering.
-                        // DO NOT remove src or call load()! Doing so tears down the hardware decoder
-                        // and crashes the new video on Amlogic S905W2 chips.
-                        currentVideo.style.opacity = '0';
-                        currentVideo.style.visibility = 'hidden';
-                        // Only pause if it's actually playing - prevents AbortError cascade
-                        if (!currentVideo.paused) {
-                            currentVideo.pause();
-                        }
-                    } catch (e) { /* ignore */ }
-                }, 150);
-            };
+            // KEY FIX: Swap active slot and opacity BEFORE calling play().
+            // This makes the element 'active' in the browser's eyes FIRST,
+            // which satisfies the autoplay policy and avoids the AbortError
+            // race condition on Amlogic S905W2 hardware.
+            setActiveSlot(nextSlot)
+            setSlotOpacity(nextSlot === 0 ? [1, 0] : [0, 1])
+            idxRef.current = nextIdx
+            onAdvance()
 
-            // MUST clear any inline styles leftover from a previous releaseOld cycle!
-            nextVideo.style.opacity = '';
-            // Force it to be visible BEFORE play() to bypass Chromium's power-saving restriction
-            nextVideo.style.visibility = 'visible';
-
-            triggerWatchdog(15000)
-            nextVideo.muted = true
-            nextVideo.currentTime = 0
-            if (sorted[nextIdx]) {
-                nextVideo.playbackRate = sorted[nextIdx].playback_speed || 1
-            }
-
-            nextVideo.play().then(() => {
-                console.log('[Player] Playing N-Slot:', nextIdx)
-                setDebug(`${nextIdx} PLAYING`)
-
-                // Now that it's confirmed playing, clear the inline override so React CSS takes over
-                nextVideo.style.visibility = '';
-
-                // Step sequence: Trigger CSS to animate the swap
-                setIsTransitioning(true)
-                setActiveSlot(nextSlot)
-                idxRef.current = nextIdx
-                onAdvance()
-
-                // Release old video slightly after new one is successfully active and covering the screen
-                setTimeout(releaseOld, 250);
-
-                // Keep transition flag true slightly longer for CSS animations to finish
-                setTimeout(() => {
-                    setIsTransitioning(false)
+            // Small delay to let React update DOM visibility before calling play()
+            const attemptPlay = () => {
+                triggerWatchdog(15000)
+                nextVideo.currentTime = 0
+                nextVideo.play().then(() => {
+                    setDebug(`${nextIdx} Play OK`)
                     transitioningRef.current = false
 
-                    // Queue next buffer
-                    const pIdx = (nextIdx + 1) % sorted.length
-                    const pUrl = getUrl(sorted[pIdx])
+                    // Preload next-next URL into the old slot
+                    const preloadIdx = (nextIdx + 1) % sorted.length
+                    const preloadUrl = getUrl(sorted[preloadIdx])
                     setTimeout(() => {
                         setSlotUrls(prev => {
-                            const up: [string, string] = [...prev] as [string, string]
-                            up[currentSlot] = pUrl
-                            return up
+                            const updated: [string, string] = [...prev] as [string, string]
+                            updated[currentSlot] = preloadUrl
+                            return updated
                         })
-                    }, 300)
-                }, 850)
-
-            }).catch(e => {
-                if (e.name === 'AbortError') {
-                    // AbortError = "play() interrupted by pause()" - this is benign on Amlogic.
-                    // The browser is just serializing the play/pause internally. Do NOT retry,
-                    // as that triggers a spiral of skips that black-screens the device.
-                    console.warn('[Player] Play AbortError (benign, Amlogic HW race):', e.message)
-                    setDebug(`AbortOK: retrying...`)
-                    nextVideo.style.visibility = '';
+                    }, 500)
+                }).catch(e => {
                     transitioningRef.current = false
-                    // Gentle retry after HW settle time
-                    setTimeout(() => advanceBufferRef.current(false), 800)
-                    return
-                }
-                // For all OTHER errors (network fail, decode error, etc.) - skip to next
-                console.error('[Player] Play Error:', e.message)
-                setDebug(`P.Err: ${e.message?.slice(0, 15)}`)
-                nextVideo.style.visibility = '';
-                setIsTransitioning(false)
-                transitioningRef.current = false
-                setTimeout(() => advanceBufferRef.current(true), 1500)
-            })
+                    const msg = e.message || 'Unknown'
+                    setDebug(`P.Err: ${msg.slice(0, 15)}`)
+                    console.warn("[Video] Scripted play failed:", e)
+                    setTimeout(() => advanceBufferRef.current(true), 1000)
+                })
+            }
+
+            setTimeout(attemptPlay, 50)
         }
 
+        // Ready Check
         if (nextVideo && nextVideo.readyState >= 2) {
             performSwitch()
         } else if (nextVideo) {
@@ -455,36 +393,51 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', init
                 performSwitch()
             }
             nextVideo.addEventListener('canplay', onCanPlay)
-            // Trigger switch anyway if hardware stalls on the event
             setTimeout(() => {
                 nextVideo.removeEventListener('canplay', onCanPlay)
-                if (activeSlot === currentSlot && !transitioningRef.current) performSwitch()
-            }, 6000)
+                if (activeSlot === currentSlot) {
+                    setDebug(`Skip Wait R:${nextVideo.readyState}`)
+                    performSwitch()
+                }
+            }, 5000)
         }
     }, [activeSlot, sorted, getUrl, onAdvance, triggerWatchdog])
-
 
     useEffect(() => {
         advanceBufferRef.current = advanceBuffer
     }, [advanceBuffer])
 
-    // ─── Initial Sync & Loopback ───
+    // Effect to call .load() whenever a slot URL changes
     useEffect(() => {
-        if (sorted.length > 0) {
+        if (v1.current && slotUrls[0]) v1.current.load()
+    }, [slotUrls[0]])
+    useEffect(() => {
+        if (v2.current && slotUrls[1]) v2.current.load()
+    }, [slotUrls[1]])
+
+    // Browser priming: Mute and volume 0 explicitly via JS properties
+    useEffect(() => {
+        videoRefs.forEach(ref => {
+            if (ref.current) {
+                ref.current.muted = true
+                ref.current.volume = 0
+            }
+        })
+    }, [])
+
+    // Initialize: Set first video to Slot 0 and second video to Slot 1 (Preload)
+    useEffect(() => {
+        if (sorted.length > 0 && !initialSyncDone.current) {
             const firstId = getUrl(sorted[0])
             const nextId = sorted.length > 1 ? getUrl(sorted[1]) : ''
-
-            // Only re-initialize if the Media IDs actually changed. 
-            // Comparing Blob URLs is volatile since they change every hydration.
-            const newMediaIds = JSON.stringify(sorted.map(i => i.media_id))
-
-            if (initialSyncDone.current && lastMediaIdsRef.current === newMediaIds) {
-                return
-            }
-
-            console.log('[DoubleBufferVideo] Content Changed or Initializing. Syncing Slots...')
-            lastMediaIdsRef.current = newMediaIds
             setSlotUrls([firstId, nextId])
+
+            if (videoRefs[0].current) {
+                videoRefs[0].current.playbackRate = sorted[0].playback_speed || 1
+            }
+            if (videoRefs[1].current && sorted.length > 1) {
+                videoRefs[1].current.playbackRate = sorted[1].playback_speed || 1
+            }
             initialSyncDone.current = true
 
             // Only force play on mount or true content change
@@ -508,127 +461,59 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', init
         return () => clearInterval(interval)
     }, [activeSlot])
 
-    const [isReady, setIsReady] = useState<[boolean, boolean]>([false, false])
+    if (sorted.length === 0) return null
 
-    const getTransitionStyle = (slot: number): React.CSSProperties => {
-        const isActive = activeSlot === slot
-        const ready = isReady[slot]
-        const e: TransitionEffect = effect ?? 'slide-up'
-        const style: React.CSSProperties = {
-            position: 'absolute',
-            top: 0, left: 0,
-            width: '100%', height: '100%',
-            objectFit: 'fill',
-            background: 'transparent', // Crucial: no black background hidden behind frames
-            transition: 'transform 850ms cubic-bezier(0.4, 0, 0.2, 1), opacity 700ms ease',
-            zIndex: isActive ? 10 : 5,
-            pointerEvents: 'none',
-            visibility: 'visible', // Stay 'visible' so Chrome/WebView doesn't pause background video
-            transform: 'translate3d(0, 0, 0)',
-            opacity: isActive ? (ready ? 1 : 0) : 0,
-            willChange: 'transform, opacity'
-        }
-
-        if (!isActive) {
-            switch (e) {
-                case 'fade':
-                    style.opacity = 0
-                    break
-                case 'slide':
-                case 'slide-left':
-                    style.transform = 'translate3d(-100%, 0, 0)'
-                    break
-                case 'slide-right':
-                    style.transform = 'translate3d(100%, 0, 0)'
-                    break
-                case 'slide-up':
-                    style.transform = 'translate3d(0, -100%, 0)'
-                    break
-                case 'slide-down':
-                    style.transform = 'translate3d(0, 100%, 0)'
-                    break
-                case 'zoom':
-                    style.transform = 'scale(0.95)'
-                    style.opacity = 0
-                    break
-                case 'none':
-                    style.transition = 'none'
-                    style.opacity = 0
-                    break
-            }
-        }
-        return style
+    const videoStyle: React.CSSProperties = {
+        position: 'absolute',
+        top: 0, left: 0,
+        width: '100%', height: '100%',
+        objectFit: 'fill',
+        background: '#000',
+        display: 'block',
+        transition: 'none',
     }
 
     return (
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: '#000', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', inset: 0, background: '#000', overflow: 'hidden' }}>
             {[0, 1].map(i => (
                 <video
-                    key={`${i}-${slotUrls[i]}`}
+                    key={i}
                     ref={videoRefs[i]}
                     src={slotUrls[i]}
-                    style={getTransitionStyle(i)}
-                    controls={false}
-                    tabIndex={-1}
-                    disableRemotePlayback
+                    style={{
+                        ...videoStyle,
+                        opacity: slotOpacity[i],
+                        zIndex: slotOpacity[i] > 0 ? 10 : 1,
+                        pointerEvents: 'none',
+                    }}
                     muted
                     playsInline
+                    crossOrigin="anonymous"
+                    loop={false}
+                    webkit-playsinline="true"
                     preload="auto"
-                    autoPlay={false}
-                    disablePictureInPicture={true}
-                    loop={true}
-                    poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
-                    {...{
-                        'webkit-playsinline': 'true',
-                        'x-webkit-airplay': 'deny',
-                        'controlsList': 'nodownload nofullscreen noremoteplayback'
-                    }}
-                    onPlaying={() => {
-                        // Mark as ready immediately when actual playback starts
-                        setIsReady(prev => {
-                            const up = [...prev] as [boolean, boolean]
-                            up[i] = true
-                            return up
-                        })
-                    }}
-                    onCanPlay={() => {
-                        // Preload readiness
-                        setIsReady(prev => {
-                            if (prev[i]) return prev
-                            const up = [...prev] as [boolean, boolean]
-                            up[i] = true
-                            return up
-                        })
+                    onTimeUpdate={() => {
+                        if (i === activeSlot) triggerWatchdog(12000)
                     }}
                     onEnded={() => {
-                        // Fallback logic in case loop fails
-                        if (i === activeSlot) {
-                            advanceBuffer()
-                        }
+                        if (i === activeSlot) advanceBuffer()
                     }}
-                    onTimeUpdate={(e) => {
-                        if (i === activeSlot) {
-                            triggerWatchdog(15000);
-                            const v = e.target as HTMLVideoElement;
-                            if (v && v.duration > 0 && v.currentTime > 0) {
-                                // Trigger transition slightly before the video ends to eliminate gap
-                                if (v.duration - v.currentTime <= 0.45) {
-                                    advanceBuffer();
-                                }
-                            }
-                        }
-                    }}
-                    onError={(e) => {
-                        const err = (e.target as HTMLVideoElement).error?.message || 'Media Error'
-                        console.error(`[Player] Loop Slot ${i} Error:`, err)
+                    onError={() => {
+                        setDebug(`Err (S${i})`)
+                        if (i === activeSlot) setTimeout(() => advanceBuffer(true), 1500)
                     }}
                 />
             ))}
-            {false && (
-                <div style={{ position: 'absolute', bottom: 4, left: 4, fontSize: 9, color: 'rgba(255,255,255,0.2)', zIndex: 110 }}>
-                    {debug} | {activeSlot === 0 ? 'V1' : 'V2'} | {effect}
-                </div>
-            )}
+
+            {/* Debug Overlay */}
+            <div style={{
+                position: 'absolute', bottom: 5, right: 5, zIndex: 9999,
+                fontSize: '9px', color: 'rgba(255,255,255,0.7)', fontFamily: 'monospace',
+                background: 'rgba(0,0,0,0.6)', padding: '4px 8px', borderRadius: '4px',
+                pointerEvents: 'none', border: '1px solid rgba(255,255,255,0.1)'
+            }}>
+                ID:{idxRef.current}/{sorted.length} | {debug} | R0:{videoRefs[0].current?.readyState} R1:{videoRefs[1].current?.readyState}
+            </div>
         </div>
     )
 }
@@ -907,8 +792,6 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
                     items={activeItems}
                     assets={assets}
                     onAdvance={advance}
-                    effect={(activeItems[idx] as any)?.settings?.transition || 'slide'}
-                    initialIdx={idx}
                 />
             ) : (
                 <>
