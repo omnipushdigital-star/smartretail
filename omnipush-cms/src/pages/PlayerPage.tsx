@@ -1470,6 +1470,14 @@ export default function PlayerPage() {
         if (stored) {
             setSecret(stored)
             secretRef.current = stored
+
+            // --- SYNC TO NATIVE (Backwards compatibility / Auto-recovery) ---
+            const win = window as any
+            if (win.AndroidHealth?.syncSecret) {
+                win.AndroidHealth.syncSecret(stored)
+            }
+            // -------------------------------------------------------------
+
             setPhase('loading')
             fetchManifest(stored).then(ok => {
                 if (ok) setPhase(p => p === 'standby' ? 'standby' : 'playing')
@@ -1539,6 +1547,13 @@ export default function PlayerPage() {
         setSecret(s)
         secretRef.current = s
         localStorage.setItem(secretKey(dc), s)
+
+        // --- SYNC SECRET TO NATIVE SHRED PREFS ---
+        const win = window as any
+        if (win.AndroidHealth?.syncSecret) {
+            win.AndroidHealth.syncSecret(s)
+        }
+        // ----------------------------------------
         const ok = await fetchManifest(s)
         if (ok) {
             setPhase(p => p === 'standby' ? 'standby' : 'playing')
