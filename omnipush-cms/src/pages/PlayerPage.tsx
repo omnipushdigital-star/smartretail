@@ -166,6 +166,7 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
     const [isSwapping, setIsSwapping] = useState(false)
     const idxRef = useRef(0)
     const [debug, setDebug] = useState<string>('Init')
+    const addLog = (window as any).addRemoteLog || ((m: string) => console.log(m))
     const watchdogRef = useRef<any>(null)
     const initialSyncDone = useRef(false)
     const [showNext, setShowNext] = useState(false)
@@ -264,6 +265,7 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                     }, 500)
                 }).catch(e => {
                     setDebug(`P.Err`)
+                    addLog(`[V-Slot] Play Failed: ${e.message || 'Unknown'}`, 'error')
                 })
             }
             setTimeout(attemptPlay, 50)
@@ -318,14 +320,20 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
             if (v) {
                 const startPlay = () => {
                     v.currentTime = 0
-                    v.play().then(() => setDebug("Start OK")).catch(e => setDebug(`Start Err`))
+                    v.play().then(() => {
+                        setDebug("Start OK")
+                        addLog(`[V-Engine] Initial Play OK (${firstId.split('/').pop()})`)
+                    }).catch(e => {
+                        setDebug(`Start Err`)
+                        addLog(`[V-Engine] Play Error: ${e.message}`, 'error')
+                    })
                     triggerWatchdog(15000)
                 }
                 if (v.readyState >= 2) startPlay()
                 else v.addEventListener('canplay', startPlay, { once: true })
             }
         }
-    }, [sorted, getUrl, triggerWatchdog])
+    }, [sorted, getUrl, triggerWatchdog, addLog])
 
     // Autoplay heartbeat
     useEffect(() => {
@@ -389,7 +397,14 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                     muted playsInline crossOrigin="anonymous" preload="auto"
                     onTimeUpdate={() => { if (i === activeSlot) triggerWatchdog(12000) }}
                     onEnded={() => { if (i === activeSlot) advanceBuffer() }}
-                    onError={() => { if (i === activeSlot) setTimeout(() => advanceBuffer(true), 1500) }}
+                    onError={(e: any) => {
+                        if (i === activeSlot) {
+                            const err = e.currentTarget.error;
+                            const msg = err ? `CODE:${err.code} ${err.message}` : 'Unknown';
+                            addLog(`[Video Slot ${i}] Error: ${msg}`, 'error');
+                            setTimeout(() => advanceBuffer(true), 1500)
+                        }
+                    }}
                 />
             ))}
             {/* Debug Overlay */}
@@ -1033,6 +1048,19 @@ export default function PlayerPage() {
     const [secret, setSecret] = useState<string>('')
     const [manifest, setManifest] = useState<Manifest | null>(null)
     const [offline, setOffline] = useState(false)
+    const [remoteLogs, setRemoteLogs] = useState<{ msg: string, type: string, time: string }[]>([])
+
+    const addRemoteLog = useCallback((msg: string, type: 'info' | 'error' = 'info') => {
+        setRemoteLogs(prev => [{
+            msg,
+            type,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        }, ...prev].slice(0, 10))
+    }, [])
+
+    useEffect(() => {
+        (window as any).addRemoteLog = addRemoteLog
+    }, [addRemoteLog])
     const [errorMsg, setErrorMsg] = useState('')
     const [version, setVersion] = useState<string | null>(null)
     const [syncProgress, setSyncProgress] = useState<{ current: number; total: number } | null>(null)
@@ -1436,6 +1464,7 @@ export default function PlayerPage() {
                 versionRef.current = newVersion
                 localStorage.setItem(manifestKey(dc), JSON.stringify(data))
                 setOffline(false)
+                addRemoteLog(`Update Received (v${newVersion})`)
                 return true
             }
 
@@ -1452,7 +1481,7 @@ export default function PlayerPage() {
             if (win.AndroidHealth?.setStoreInfo) {
                 win.AndroidHealth.setStoreInfo(data.device?.store_id || null, data.device?.store_name || null)
             }
-
+            addRemoteLog(`Manifest Loaded (v${newVersion})`)
             return true
         } catch (err: any) {
             const msg: string = (err.message || '').toLowerCase()
@@ -1468,39 +1497,42 @@ export default function PlayerPage() {
 
             if (msg.includes('no active publication') || msg.includes('no publication') || msg.includes('not found')) {
                 setPhase('standby')
-                if (err.data?.device) {
-                    setManifest({ resolved: { role: err.data.device.role_name, scope: 'Standby' } } as any)
+                if (err.data?.device && !manifest) {
+                    setManifest({
+                        ...err.data,
+                        region_playlists: {},
+                        assets: [],
+                        resolved: { ...err.data.resolved, role: err.data.device.role_id }
+                    })
                 }
+                addRemoteLog(`Standby: No Active Publication`, 'info')
                 return true
             }
 
+            // --- OFFLINE FALLBACK ---
             const cached = localStorage.getItem(manifestKey(dc))
             if (cached) {
                 try {
                     const c = JSON.parse(cached)
-
-                    // --- HYDRATE BLOB URLS OFFLINE ---
-                    if (c.assets) {
-                        const hydrated = await hydrateAssetsFromCache(c.assets)
-                        c.assets = hydrated
-                    }
-                    // ---------------------------------
-
+                    const hydrated = await hydrateAssetsFromCache(c.assets)
+                    c.assets = hydrated
                     setManifest(c)
                     if (c.resolved?.version) {
                         setVersion(c.resolved.version)
                         versionRef.current = c.resolved.version
                     }
                     setOffline(true)
+                    addRemoteLog(`Network Fail - Loading Offline Cache`, 'error')
                     return true
-                } catch { /* ignore */ }
+                } catch { /* ignore cache fail */ }
             }
 
             setErrorMsg(err.message || 'Fetch failed')
             setPhase('error')
+            addRemoteLog(`Fetch Critical Error: ${err.message}`, 'error')
             return false
         }
-    }, [dc, version, phase, syncAssets, initPairing])
+    }, [dc, version, phase, syncAssets, initPairing, addRemoteLog])
 
     // ── Send heartbeat ──
     const sendHeartbeat = useCallback(async (sec: string) => {
@@ -1938,6 +1970,37 @@ export default function PlayerPage() {
                     <WifiOff size={48} strokeWidth={2.5} />
                 </div>
             )}
+
+            {/* Remote Console Overlay for Screenshot Support */}
+            <div style={{
+                position: 'fixed',
+                bottom: 25,
+                left: 10,
+                zIndex: 99999,
+                width: '35%',
+                maxWidth: '400px',
+                pointerEvents: 'none',
+                display: 'flex',
+                flexDirection: 'column-reverse',
+                gap: '4px'
+            }}>
+                {remoteLogs.map((log, i) => (
+                    <div key={i} style={{
+                        background: log.type === 'error' ? 'rgba(153, 27, 27, 0.85)' : 'rgba(15, 23, 42, 0.85)',
+                        color: log.type === 'error' ? '#fecaca' : '#cbd5e1',
+                        fontSize: '9px',
+                        padding: '4px 8px',
+                        borderRadius: '6px',
+                        fontFamily: 'monospace',
+                        borderLeft: `3px solid ${log.type === 'error' ? '#ef4444' : '#6366f1'}`,
+                        boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
+                        backdropFilter: 'blur(4px)',
+                        animation: 'slideIn 0.3s ease-out'
+                    }}>
+                        <span style={{ opacity: 0.5 }}>[{log.time}]</span> {log.msg}
+                    </div>
+                ))}
+            </div>
 
             {/* Bottom bar on top of content - hidden by default unless diagnostics active */}
             {showDiagnostics && <BottomBar device_code={dc} version={version} offline={offline} />}
