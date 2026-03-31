@@ -1067,6 +1067,7 @@ export default function PlayerPage() {
     const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const [showPinPrompt, setShowPinPrompt] = useState(false)
     const [showAdminPanel, setShowAdminPanel] = useState(false)
+    const [showManifestJSON, setShowManifestJSON] = useState(false)
     const [pinInput, setPinInput] = useState('')
     const [pinError, setPinError] = useState(false)
 
@@ -1102,6 +1103,151 @@ export default function PlayerPage() {
         window.addEventListener('keydown', handleKeys)
         return () => window.removeEventListener('keydown', handleKeys)
     }, [])
+
+    // ── Admin panel button style helper ──
+    const btnStyle = (bg: string, color = '#f1f5f9'): React.CSSProperties => ({
+        padding: '0.875rem 1.25rem', borderRadius: 12, fontSize: '0.9rem',
+        fontWeight: 600, background: bg, border: '1px solid rgba(255,255,255,0.08)',
+        color, cursor: 'pointer', textAlign: 'center' as const,
+    })
+
+    // ── Hidden Admin Panel overlay ──
+    const AdminPanel = () => (
+        <>
+            {/* PIN Prompt */}
+            {showPinPrompt && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999,
+                    background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                    <div style={{
+                        background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 20, padding: '2rem', width: 280, textAlign: 'center'
+                    }}>
+                        <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>🔐</div>
+                        <div style={{ fontWeight: 700, color: '#f1f5f9', marginBottom: '0.25rem' }}>Admin Access</div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '1.25rem' }}>Enter PIN to continue</div>
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                            {[0, 1, 2, 3].map(i => (
+                                <div key={i} style={{
+                                    width: 14, height: 14, borderRadius: '50%',
+                                    background: pinInput.length > i ? '#ef4444' : '#1e293b',
+                                    border: '2px solid ' + (pinError ? '#ef4444' : '#334155'),
+                                    transition: 'all 0.2s'
+                                }} />
+                            ))}
+                        </div>
+                        {pinError && <div style={{ fontSize: '0.75rem', color: '#ef4444', marginBottom: '0.75rem' }}>Incorrect PIN</div>}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+                            {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].map((k, i) => (
+                                <button key={i} onClick={() => {
+                                    if (!k) return
+                                    if (k === '⌫') { setPinInput(p => p.slice(0, -1)); setPinError(false); return }
+                                    const next = pinInput + k
+                                    setPinInput(next)
+                                    if (next.length === 4) handlePinSubmit(next)
+                                }} style={{
+                                    padding: '0.85rem', borderRadius: 10, fontSize: '1.1rem', fontWeight: 600,
+                                    background: k ? '#1e293b' : 'transparent',
+                                    border: '1px solid ' + (k ? '#334155' : 'transparent'),
+                                    color: '#f1f5f9', cursor: k ? 'pointer' : 'default'
+                                }}>{k}</button>
+                            ))}
+                        </div>
+                        <button onClick={() => { setShowPinPrompt(false); setPinInput('') }}
+                            style={{ marginTop: '1rem', width: '100%', padding: '0.5rem', background: 'transparent', border: '1px solid #334155', borderRadius: 8, color: '#64748b', cursor: 'pointer', fontSize: '0.875rem' }}>
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {showAdminPanel && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999,
+                    background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(16px)',
+                    display: 'flex', flexDirection: 'column',
+                }}>
+                    <div style={{ padding: '1.5rem 2rem', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div>
+                            <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#f1f5f9' }}>⚙️ Admin Panel</div>
+                            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.2rem' }}>Device: {dc} · v{version || 'unknown'}</div>
+                        </div>
+                        <button onClick={() => setShowAdminPanel(false)}
+                            style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#94a3b8', padding: '0.5rem 1rem', cursor: 'pointer', fontSize: '0.875rem' }}>
+                            ✕ Close
+                        </button>
+                    </div>
+
+                    <div style={{ padding: '1.5rem 2rem', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+                        {[
+                            { label: 'Device Code', value: dc },
+                            { label: 'Connection', value: offline ? '🔴 Offline' : '🟢 Online' },
+                            { label: 'Content Version', value: version || '—' },
+                            { label: 'Assets Cached', value: String(manifest?.assets?.length || 0) },
+                            { label: 'Regions', value: manifest?.layout?.regions?.map((r: any) => r.id).join(', ') || '—' },
+                            { label: 'Pub Scope', value: manifest?.resolved?.scope || 'Global' },
+                        ].map(({ label, value }) => (
+                            <div key={label} style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: '0.875rem 1rem' }}>
+                                <div style={{ fontSize: '0.65rem', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>{label}</div>
+                                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#f1f5f9', wordBreak: 'break-all' }}>{value}</div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div style={{ padding: '0 2rem', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
+                        <button onClick={() => { setShowAdminPanel(false); window.location.reload() }} style={btnStyle('#1e293b')}>
+                            🔄 Force Reload
+                        </button>
+                        <button onClick={() => {
+                            localStorage.removeItem(manifestKey(dc))
+                            setShowAdminPanel(false)
+                            window.location.reload()
+                        }} style={btnStyle('#1e293b')}>
+                            🗑️ Clear Cache &amp; Reload
+                        </button>
+                        <button onClick={() => {
+                            localStorage.removeItem(secretKey(dc))
+                            localStorage.removeItem(manifestKey(dc))
+                            setShowAdminPanel(false)
+                            window.location.reload()
+                        }} style={btnStyle('#7f1d1d', '#fca5a5')}>
+                            ⚠️ Unpair Device
+                        </button>
+                        <button onClick={() => setShowManifestJSON(true)} style={btnStyle('#1e293b')}>
+                            📄 View Raw Manifest
+                        </button>
+                        <button onClick={() => {
+                            window.dispatchEvent(new CustomEvent('omnipush_force_play'))
+                            setShowAdminPanel(false)
+                        }} style={btnStyle('#14532d', '#86efac')}>
+                            ▶ Force Play
+                        </button>
+                    </div>
+                    <div style={{ padding: '1.5rem 2rem', fontSize: '0.7rem', color: '#334155', textAlign: 'center' }}>
+                        OmniPush Admin · Tap anywhere outside or press Close to exit
+                    </div>
+                </div>
+            )}
+
+            {showManifestJSON && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 100000,
+                    background: '#0a0a1f', padding: '1rem', overflow: 'auto'
+                }}>
+                    <button onClick={() => setShowManifestJSON(false)}
+                        style={{ position: 'sticky', top: 0, right: 0, background: '#ef4444', border: 'none', color: '#fff', padding: '0.5rem 1rem', borderRadius: 6, cursor: 'pointer', zIndex: 100001, float: 'right' }}>
+                        ✕ Close
+                    </button>
+                    <pre style={{ color: '#94a3b8', fontSize: '0.7rem', margin: 0, fontFamily: 'monospace' }}>
+                        {JSON.stringify(manifest, null, 2)}
+                    </pre>
+                </div>
+            )}
+        </>
+    )
+
 
     // ── Command Processing ──
     const processIncomingCommands = useCallback(async (commands: any[]) => {
@@ -1689,145 +1835,7 @@ export default function PlayerPage() {
         )
     }
 
-    // ── Admin panel button style helper ──
-    const btnStyle = (bg: string, color = '#f1f5f9'): React.CSSProperties => ({
-        padding: '0.875rem 1.25rem', borderRadius: 12, fontSize: '0.9rem',
-        fontWeight: 600, background: bg, border: '1px solid rgba(255,255,255,0.08)',
-        color, cursor: 'pointer', textAlign: 'center' as const,
-    })
 
-    // ── Hidden Admin Panel overlay ──
-    const AdminPanel = () => (
-        <>
-            {/* PIN Prompt */}
-            {showPinPrompt && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999,
-                    background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center'
-                }}>
-                    <div style={{
-                        background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)',
-                        borderRadius: 20, padding: '2rem', width: 280, textAlign: 'center'
-                    }}>
-                        <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>🔐</div>
-                        <div style={{ fontWeight: 700, color: '#f1f5f9', marginBottom: '0.25rem' }}>Admin Access</div>
-                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '1.25rem' }}>Enter PIN to continue</div>
-                        {/* PIN dots display */}
-                        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-                            {[0, 1, 2, 3].map(i => (
-                                <div key={i} style={{
-                                    width: 14, height: 14, borderRadius: '50%',
-                                    background: pinInput.length > i ? '#ef4444' : '#1e293b',
-                                    border: '2px solid ' + (pinError ? '#ef4444' : '#334155'),
-                                    transition: 'all 0.2s'
-                                }} />
-                            ))}
-                        </div>
-                        {pinError && <div style={{ fontSize: '0.75rem', color: '#ef4444', marginBottom: '0.75rem' }}>Incorrect PIN</div>}
-                        {/* Numpad */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
-                            {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].map((k, i) => (
-                                <button key={i} onClick={() => {
-                                    if (!k) return
-                                    if (k === '⌫') { setPinInput(p => p.slice(0, -1)); setPinError(false); return }
-                                    const next = pinInput + k
-                                    setPinInput(next)
-                                    if (next.length === 4) handlePinSubmit(next)
-                                }} style={{
-                                    padding: '0.85rem', borderRadius: 10, fontSize: '1.1rem', fontWeight: 600,
-                                    background: k ? '#1e293b' : 'transparent',
-                                    border: '1px solid ' + (k ? '#334155' : 'transparent'),
-                                    color: '#f1f5f9', cursor: k ? 'pointer' : 'default',
-                                    transition: 'background 0.15s'
-                                }}>{k}</button>
-                            ))}
-                        </div>
-                        <button onClick={() => { setShowPinPrompt(false); setPinInput('') }}
-                            style={{ marginTop: '1rem', width: '100%', padding: '0.5rem', background: 'transparent', border: '1px solid #334155', borderRadius: 8, color: '#64748b', cursor: 'pointer', fontSize: '0.875rem' }}>
-                            Cancel
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* Admin Panel */}
-            {showAdminPanel && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999,
-                    background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(16px)',
-                    display: 'flex', flexDirection: 'column',
-                }}>
-                    {/* Header */}
-                    <div style={{ padding: '1.5rem 2rem', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <div>
-                            <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#f1f5f9' }}>⚙️ Admin Panel</div>
-                            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.2rem' }}>Device: {dc} · v{version || 'unknown'}</div>
-                        </div>
-                        <button onClick={() => setShowAdminPanel(false)}
-                            style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#94a3b8', padding: '0.5rem 1rem', cursor: 'pointer', fontSize: '0.875rem' }}>
-                            ✕ Close
-                        </button>
-                    </div>
-
-                    {/* Info grid */}
-                    <div style={{ padding: '1.5rem 2rem', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
-                        {[
-                            { label: 'Device Code', value: dc },
-                            { label: 'Connection', value: offline ? '🔴 Offline' : '🟢 Online' },
-                            { label: 'Content Version', value: version || '—' },
-                            { label: 'Assets Cached', value: String(manifest?.assets?.length || 0) },
-                            { label: 'Regions', value: Object.keys(manifest?.region_playlists || {}).join(', ') || '—' },
-                            { label: 'Pub Scope', value: manifest?.resolved?.scope || 'Global' },
-                        ].map(({ label, value }) => (
-                            <div key={label} style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: '0.875rem 1rem' }}>
-                                <div style={{ fontSize: '0.65rem', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>{label}</div>
-                                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#f1f5f9', wordBreak: 'break-all' }}>{value}</div>
-                            </div>
-                        ))}
-                    </div>
-
-                    {/* Actions */}
-                    <div style={{ padding: '0 2rem', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
-                        <button onClick={() => { setShowAdminPanel(false); window.location.reload() }} style={btnStyle('#1e293b')}>
-                            🔄 Force Reload
-                        </button>
-                        <button onClick={() => {
-                            localStorage.removeItem(manifestKey(dc))
-                            setShowAdminPanel(false)
-                            window.location.reload()
-                        }} style={btnStyle('#1e293b')}>
-                            🗑️ Clear Cache &amp; Reload
-                        </button>
-                        <button onClick={() => {
-                            localStorage.removeItem(secretKey(dc))
-                            localStorage.removeItem(manifestKey(dc))
-                            setShowAdminPanel(false)
-                            window.location.reload()
-                        }} style={btnStyle('#7f1d1d', '#fca5a5')}>
-                            ⚠️ Unpair Device
-                        </button>
-                        <button onClick={() => {
-                            const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' })
-                            const url = URL.createObjectURL(blob)
-                            window.open(url, '_blank')
-                        }} style={btnStyle('#1e293b')}>
-                            📄 View Raw Manifest
-                        </button>
-                        <button onClick={() => {
-                            window.dispatchEvent(new CustomEvent('omnipush_force_play'))
-                            setShowAdminPanel(false)
-                        }} style={btnStyle('#14532d', '#86efac')}>
-                            ▶ Force Play
-                        </button>
-                    </div>
-                    <div style={{ padding: '1.5rem 2rem', fontSize: '0.7rem', color: '#334155', textAlign: 'center' }}>
-                        OmniPush Admin · Tap anywhere outside or press Close to exit
-                    </div>
-                </div>
-            )}
-        </>
-    )
 
     // Multi-Region Rendering
     if (!manifest) return <LoadingState device_code={dc} />
