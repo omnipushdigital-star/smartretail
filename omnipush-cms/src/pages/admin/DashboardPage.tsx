@@ -150,8 +150,8 @@ export default function DashboardPage() {
             {/* ── Header ─────────────────────────────────────────────── */}
             <div className="flex justify-between items-start mb-8">
                 <div>
-                    <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: tk.textPrimary, display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
-                        <Monitor style={{ color: 'var(--color-brand-500)' }} size={26} />
+                    <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: tk.textPrimary, display: 'flex', alignItems: 'center', gap: '0.75rem', margin: 0, letterSpacing: '-0.02em' }}>
+                        <Monitor style={{ color: '#00daf3' }} size={28} />
                         Network Dashboard
                     </h1>
                     <p style={{ color: tk.textMuted, marginTop: '0.375rem', fontSize: '0.875rem' }}>
@@ -169,9 +169,27 @@ export default function DashboardPage() {
                     </button>
                     <button
                         onClick={() => navigate('/admin/publish')}
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1.25rem', background: 'linear-gradient(135deg, var(--color-brand-500), var(--color-brand-600))', border: 'none', borderRadius: 10, color: '#fff', fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer', boxShadow: '0 4px 14px rgba(14,165,233,0.3)', transition: 'all 0.15s' }}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: '0.625rem',
+                            padding: '0.625rem 1.5rem',
+                            background: 'linear-gradient(135deg, #ff3d00, #d32f2f)',
+                            border: 'none', borderRadius: 12, color: '#fff',
+                            fontWeight: 800, fontSize: '0.875rem', cursor: 'pointer',
+                            boxShadow: '0 8px 20px rgba(255,61,0,0.3)',
+                            transition: 'all 0.2s',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.05em'
+                        }}
+                        onMouseEnter={e => {
+                            e.currentTarget.style.transform = 'translateY(-2px)'
+                            e.currentTarget.style.boxShadow = '0 12px 24px rgba(255,61,0,0.4)'
+                        }}
+                        onMouseLeave={e => {
+                            e.currentTarget.style.transform = 'translateY(0)'
+                            e.currentTarget.style.boxShadow = '0 8px 20px rgba(255,61,0,0.3)'
+                        }}
                     >
-                        <Send size={16} /> Push All
+                        <Send size={18} /> Push All
                     </button>
                 </div>
             </div>

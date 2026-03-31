@@ -65,18 +65,19 @@ export default function AdminLayout() {
                 <style dangerouslySetInnerHTML={{
                     __html: `
                     :root {
-                        --color-brand-500: ${tenant.primary_color};
-                        --color-brand-500-rgb: ${hexToRgb(tenant.primary_color)};
-                        --color-brand-600: ${tenant.secondary_color};
-                        --color-brand-400: ${tenant.primary_color}dd;
-                        --color-brand-300: ${tenant.primary_color}aa;
+                        --color-brand-500: #00daf3;
+                        --color-brand-500-rgb: 0, 218, 243;
+                        --color-brand-600: #007e8c;
+                        --color-brand-400: #00daf3dd;
+                        --color-brand-300: #00daf3aa;
+                        --color-error-500: #ff3d00;
                         
-                        /* Automatically tinted backgrounds based on theme */
+                        /* Permanently OmniPush themed backgrounds */
                         --color-surface-900: ${theme === 'dark'
-                            ? `color-mix(in srgb, ${tenant.primary_color} 5%, #131b2e)`
+                            ? `rgba(15, 23, 42, 0.4)`
                             : `#ffffff`};
                         --color-surface-950: ${theme === 'dark'
-                            ? `color-mix(in srgb, ${tenant.primary_color} 7%, #0a0f1d)`
+                            ? `#04070a`
                             : `#f8fafc`};
                     }
                     
@@ -131,10 +132,8 @@ export default function AdminLayout() {
                             fontWeight: 900,
                             letterSpacing: '0.2em',
                             textTransform: 'uppercase',
-                            background: `linear-gradient(to right, ${tenant?.primary_color || '#00daf3'}, ${tenant?.secondary_color || '#007e8c'})`,
-                            WebkitBackgroundClip: 'text',
-                            WebkitTextFillColor: 'transparent',
-                            filter: theme === 'dark' ? `drop-shadow(0 0 8px ${tenant?.primary_color || '#00daf3'}44)` : 'none'
+                            color: '#00daf3',
+                            filter: theme === 'dark' ? `drop-shadow(0 0 8px rgba(0, 218, 243, 0.4))` : 'none'
                         }}>
                             SMART RETAIL DISPLAY
                         </span>
@@ -296,8 +295,8 @@ export default function AdminLayout() {
                             <Bell size={18} />
                             <span style={{
                                 position: 'absolute', top: -3, right: -3, width: 8, height: 8,
-                                borderRadius: '50%', background: tenant?.primary_color || '#00daf3',
-                                boxShadow: `0 0 10px ${tenant?.primary_color || '#00daf3'}88`,
+                                borderRadius: '50%', background: '#00daf3',
+                                boxShadow: `0 0 10px rgba(0, 218, 243, 0.5)`,
                                 border: `2px solid ${theme === 'dark' ? '#0a0f1d' : '#fff'}`
                             }} />
                         </button>
