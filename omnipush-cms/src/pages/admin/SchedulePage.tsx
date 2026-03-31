@@ -31,92 +31,92 @@ export default function SchedulePage() {
 
     return (
         <div className="p-6">
-            <div className="flex justify-between items-start mb-8">
+            <div className="flex flex-col md:flex-row justify-between items-start gap-6 mb-10">
                 <div>
-                    <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-                        <Calendar className="text-brand-500" size={28} />
+                    <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white flex items-center gap-3 tracking-tight">
+                        <Calendar className="text-brand-500" size={32} />
                         Schedule Manager
                     </h1>
-                    <p className="text-surface-400 mt-1">Set dayparting rules and automated content rotation</p>
+                    <p className="text-slate-500 dark:text-surface-400 mt-2 text-lg">Set dayparting rules and automated content rotation</p>
                 </div>
-                <div className="flex gap-3">
-                    <button className="flex items-center gap-2 px-4 py-2 bg-surface-800 border border-surface-700 text-white rounded-lg hover:bg-surface-700 transition-all">
+                <div className="flex gap-4">
+                    <button className="btn-secondary">
                         <Plus size={18} /> Add Screen
                     </button>
-                    <button onClick={() => toast.success('Schedule deployed to 12 screens!')} className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-lg transition-all shadow-lg shadow-brand-500/20">
+                    <button onClick={() => toast.success('Schedule deployed to 12 screens!')} className="btn-primary shadow-xl shadow-brand-500/20">
                         Push Content
                     </button>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-                <div className="stat-card border border-white/5 bg-surface-900/50">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+                <div className="stat-card border border-slate-200 dark:border-white/5 bg-white dark:bg-surface-900/50 shadow-sm">
                     <div className="stat-icon bg-brand-500/10 text-brand-500"><Clock size={20} /></div>
                     <div>
-                        <div className="text-2xl font-bold text-white">4 Slots</div>
-                        <div className="stat-label">Daily Dayparts</div>
+                        <div className="text-2xl font-bold text-slate-900 dark:text-white">4 Slots</div>
+                        <div className="text-sm font-medium text-slate-500 dark:text-surface-400">Daily Dayparts</div>
                     </div>
                 </div>
-                <div className="stat-card border border-white/5 bg-surface-900/50">
+                <div className="stat-card border border-slate-200 dark:border-white/5 bg-white dark:bg-surface-900/50 shadow-sm">
                     <div className="stat-icon bg-green-500/10 text-green-500"><CheckCircle2 size={20} /></div>
                     <div>
-                        <div className="text-2xl font-bold text-white">Active</div>
-                        <div className="stat-label">Scheduling Engine</div>
+                        <div className="text-2xl font-bold text-slate-900 dark:text-white">Active</div>
+                        <div className="text-sm font-medium text-slate-500 dark:text-surface-400">Scheduling Engine</div>
                     </div>
                 </div>
-                <div className="stat-card border border-white/5 bg-surface-900/50">
+                <div className="stat-card border border-slate-200 dark:border-white/5 bg-white dark:bg-surface-900/50 shadow-sm">
                     <div className="stat-icon bg-blue-500/10 text-blue-500"><AlertCircle size={20} /></div>
                     <div>
-                        <div className="text-2xl font-bold text-white">2 Conflicts</div>
-                        <div className="stat-label">Automation Errors</div>
+                        <div className="text-2xl font-bold text-slate-900 dark:text-white">2 Conflicts</div>
+                        <div className="text-sm font-medium text-slate-500 dark:text-surface-400">Automation Errors</div>
                     </div>
                 </div>
             </div>
 
             {/* Weekly Schedule Row View */}
-            <div className="card-glass border border-white/5 rounded-2xl p-6 bg-surface-900/50 backdrop-blur-xl">
-                <div className="flex items-center justify-between mb-8">
-                    <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                        <Calendar size={20} className="text-brand-400" />
-                        Weekly Schedule — {selectedLocation}
+            <div className="card-glass border border-slate-200 dark:border-white/5 rounded-3xl p-8 bg-white/70 dark:bg-surface-900/50 backdrop-blur-xl shadow-xl">
+                <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-10">
+                    <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-3">
+                        <Calendar size={24} className="text-brand-500" />
+                        Weekly Schedule — <span className="text-brand-500">{selectedLocation}</span>
                     </h3>
-                    <button className="btn-primary text-xs py-1.5 px-3">
+                    <button className="btn-primary text-xs py-2 px-4 rounded-full">
                         <Plus size={14} /> Add Rule
                     </button>
                 </div>
 
                 <div className="relative overflow-x-auto">
                     {/* Header: Days */}
-                    <div className="grid grid-cols-[100px_repeat(7,1fr)] gap-4 mb-4">
+                    <div className="grid grid-cols-[120px_repeat(7,1fr)] gap-4 mb-6">
                         <div />
                         {DAYS.map(day => (
-                            <div key={day} className="text-center text-xs font-bold uppercase tracking-widest text-surface-500">
+                            <div key={day} className="text-center text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-surface-500">
                                 {day}
                             </div>
                         ))}
                     </div>
 
                     {/* Timeline Rows */}
-                    <div className="space-y-4">
+                    <div className="space-y-6">
                         {slots.map(slot => (
-                            <div key={slot.id} className="grid grid-cols-[100px_repeat(7,1fr)] gap-4 items-center group">
-                                <div className="text-xs font-bold text-surface-400 bg-surface-950/50 py-2 rounded-lg text-center border border-white/5">
+                            <div key={slot.id} className="grid grid-cols-[120px_repeat(7,1fr)] gap-4 items-center group">
+                                <div className="text-xs font-black text-slate-500 dark:text-surface-400 bg-slate-100 dark:bg-surface-950/50 py-3 rounded-2xl text-center border border-slate-200 dark:border-white/5 shadow-sm">
                                     {slot.time}
                                 </div>
                                 <div
-                                    className={`col-span-5 relative py-3 px-4 rounded-xl border transition-all cursor-pointer flex items-center justify-between font-medium text-sm group-hover:scale-[1.01] ${colors[slot.color]}`}
+                                    className={`col-span-5 relative py-4 px-6 rounded-2xl border-2 transition-all cursor-pointer flex items-center justify-between font-bold text-sm group-hover:scale-[1.02] group-hover:shadow-lg ${colors[slot.color]}`}
                                 >
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-2 h-2 rounded-full bg-current opacity-60" />
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-3 h-3 rounded-full bg-current opacity-80" />
                                         {slot.content}
                                     </div>
                                     <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button className="p-1 hover:bg-current/10 rounded"><Edit2 size={14} /></button>
-                                        <button className="p-1 hover:bg-current/10 rounded"><MoreVertical size={14} /></button>
+                                        <button className="p-2 hover:bg-current/10 rounded-lg"><Edit2 size={16} /></button>
+                                        <button className="p-2 hover:bg-current/10 rounded-lg"><MoreVertical size={16} /></button>
                                     </div>
                                 </div>
                                 <div
-                                    className={`col-span-2 relative py-3 px-4 rounded-xl border transition-all cursor-pointer flex items-center justify-between font-medium text-sm group-hover:scale-[1.01] ${slot.time === '6-11am' ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' : colors[slot.color]}`}
+                                    className={`col-span-2 relative py-4 px-6 rounded-2xl border-2 transition-all cursor-pointer flex items-center justify-between font-bold text-sm group-hover:scale-[1.02] group-hover:shadow-lg ${slot.time === '6-11am' ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20' : colors[slot.color]}`}
                                 >
                                     <div className="flex items-center gap-3">
                                         {slot.time === '6-11am' ? 'Weekend Special' : slot.content}
@@ -127,30 +127,30 @@ export default function SchedulePage() {
                     </div>
                 </div>
 
-                <div className="mt-8 pt-8 border-t border-white/5 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="p-4 rounded-xl bg-surface-950/50 border border-white/5 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center text-orange-400">
-                                <Play size={20} />
+                <div className="mt-12 pt-10 border-t border-slate-200 dark:border-white/5 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="p-6 rounded-2xl bg-slate-50 dark:bg-surface-950/50 border border-slate-200 dark:border-white/5 flex items-center justify-between hover:border-brand-500/50 transition-colors">
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-500">
+                                <Play size={24} />
                             </div>
                             <div>
-                                <div className="text-sm font-semibold text-white">Current Rule</div>
-                                <div className="text-xs text-surface-500">Lunch Menu active across 8 displays</div>
+                                <div className="text-base font-bold text-slate-800 dark:text-white">Current Rule</div>
+                                <div className="text-sm text-slate-500 dark:text-surface-500">Lunch Menu active across 8 displays</div>
                             </div>
                         </div>
-                        <span className="badge badge-green">Running</span>
+                        <span className="bg-green-500/10 text-green-600 dark:text-green-400 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Running</span>
                     </div>
-                    <div className="p-4 rounded-xl bg-surface-950/50 border border-white/5 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-brand-500/10 flex items-center justify-center text-brand-400">
-                                <Clock size={20} />
+                    <div className="p-6 rounded-2xl bg-slate-50 dark:bg-surface-950/50 border border-slate-200 dark:border-white/5 flex items-center justify-between hover:border-brand-500/50 transition-colors">
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-xl bg-brand-500/10 flex items-center justify-center text-brand-500">
+                                <Clock size={24} />
                             </div>
                             <div>
-                                <div className="text-sm font-semibold text-white">Next Transition</div>
-                                <div className="text-xs text-surface-500">Snacks & Happy Hours at 4:00 PM</div>
+                                <div className="text-base font-bold text-slate-800 dark:text-white">Next Transition</div>
+                                <div className="text-sm text-slate-500 dark:text-surface-500">Snacks & Happy Hours at 4:00 PM</div>
                             </div>
                         </div>
-                        <span className="text-xs font-bold text-surface-500 tracking-wider">T-MINUS 12M</span>
+                        <span className="text-xs font-black text-slate-400 dark:text-surface-500 tracking-widest">T-MINUS 12M</span>
                     </div>
                 </div>
             </div>

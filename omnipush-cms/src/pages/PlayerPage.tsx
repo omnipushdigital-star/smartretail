@@ -1923,7 +1923,7 @@ export default function PlayerPage() {
             <div
                 onClick={handleCornerTap}
                 style={{
-                    position: 'fixed', top: 0, right: 0,
+                    position: 'fixed', top: 0, left: 0,
                     width: 60, height: 60, zIndex: 99998,
                     cursor: 'default',
                 }}

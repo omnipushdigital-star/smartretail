@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Plus, Edit2, Trash2, CalendarRange, Search, ToggleLeft, ToggleRight, Loader2, Eye } from 'lucide-react'
+import { Plus, Edit2, Trash2, CalendarRange, Search, ToggleLeft, ToggleRight, Loader2, Eye, CheckCircle2, AlertCircle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { Rule, RuleSchedule, Layout, Store, Role, Device } from '../../types'
 import { useTenant } from '../../contexts/TenantContext'
@@ -191,26 +191,28 @@ export default function RulesPage() {
 
     return (
         <div>
-            <div className="page-header">
+            <div className="flex flex-col md:flex-row justify-between items-start gap-6 mb-10">
                 <div>
-                    <h1 className="page-title">Rules & Scheduling</h1>
-                    <p className="page-subtitle">Define display layout rules with targeting and scheduling</p>
+                    <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white flex items-center gap-3 tracking-tight">
+                        Rules &amp; Scheduling
+                    </h1>
+                    <p className="text-slate-500 dark:text-surface-400 mt-2 text-lg">Define display layout rules with targeting and scheduling</p>
                 </div>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <div className="flex gap-4">
                     <button className="btn-secondary" onClick={() => setShowPreview(true)}>
-                        <Eye size={14} /> Preview Device
+                        <Eye size={18} /> Preview Device
                     </button>
-                    <button id="create-rule-btn" className="btn-primary" onClick={openCreate}>
-                        <Plus size={16} /> New Rule
+                    <button id="create-rule-btn" className="btn-primary shadow-xl shadow-brand-500/20" onClick={openCreate}>
+                        <Plus size={18} /> New Rule
                     </button>
                 </div>
             </div>
 
-            <div className="card" style={{ marginBottom: '1rem', padding: '1rem' }}>
-                <div style={{ position: 'relative', maxWidth: 360 }}>
-                    <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
-                    <input type="text" className="input-field" placeholder="Search rules..." value={search}
-                        onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ paddingLeft: '2rem' }} />
+            <div className="card-glass border border-slate-200 dark:border-white/5 bg-white/70 dark:bg-surface-900/50 mb-6 p-4">
+                <div className="relative maxWidth-360">
+                    <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input type="text" className="input-field pl-12" placeholder="Search rules..." value={search}
+                        onChange={e => { setSearch(e.target.value); setPage(1) }} />
                 </div>
             </div>
 
@@ -244,28 +246,28 @@ export default function RulesPage() {
                                         return (
                                             <tr key={r.id}>
                                                 <td>
-                                                    <button onClick={() => toggleEnabled(r)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: r.enabled ? '#22c55e' : '#475569', display: 'flex' }}>
-                                                        {r.enabled ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
+                                                    <button onClick={() => toggleEnabled(r)} className={`bg-transparent border-none cursor-pointer flex items-center transition-colors ${r.enabled ? 'text-green-500' : 'text-slate-400'}`}>
+                                                        {r.enabled ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
                                                     </button>
                                                 </td>
-                                                <td style={{ color: '#f1f5f9', fontWeight: 500 }}>{r.name}</td>
+                                                <td className="font-bold text-slate-900 dark:text-white">{r.name}</td>
                                                 <td>
                                                     <span className={`badge ${r.target_type === 'GLOBAL' ? 'badge-yellow' : r.target_type === 'DEVICE' ? 'badge-blue' : 'badge-gray'}`}>
                                                         {r.target_type}
                                                     </span>
                                                 </td>
-                                                <td style={{ color: '#94a3b8' }}>{r.priority}</td>
-                                                <td style={{ color: '#94a3b8', fontSize: '0.8125rem' }}>{(r as any).layout?.name || '—'}</td>
-                                                <td style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                                                <td className="text-slate-500 dark:text-surface-400 font-medium">{r.priority}</td>
+                                                <td className="text-slate-500 dark:text-surface-400 text-sm italic font-medium">{(r as any).layout?.name || '—'}</td>
+                                                <td className="text-xs font-bold tracking-tight text-slate-400 dark:text-surface-500">
                                                     {sched ? (
-                                                        <div>
-                                                            <div>{maskToDays(sched.days_mask)}</div>
-                                                            {sched.start_time && <div>{sched.start_time}–{sched.end_time || '∞'}</div>}
+                                                        <div className="space-y-0.5">
+                                                            <div className="uppercase tracking-widest">{maskToDays(sched.days_mask)}</div>
+                                                            {sched.start_time && <div className="text-brand-500">{sched.start_time}–{sched.end_time || '∞'}</div>}
                                                         </div>
-                                                    ) : 'Always'}
+                                                    ) : <span className="text-green-500">Always Active</span>}
                                                 </td>
                                                 <td>
-                                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                    <div className="flex gap-2">
                                                         <button onClick={() => openEdit(r)} className="btn-secondary" style={{ padding: '0.375rem 0.625rem' }}>
                                                             <Edit2 size={13} />
                                                         </button>
@@ -344,18 +346,13 @@ export default function RulesPage() {
                                     {DAYS.map((day, i) => (
                                         <button key={day} type="button"
                                             onClick={() => setDayToggles(t => t.map((v, j) => j === i ? !v : v))}
-                                            style={{
-                                                padding: '0.25rem 0.625rem', borderRadius: 6, border: '1px solid', fontSize: '0.8125rem', cursor: 'pointer', transition: 'all 0.15s',
-                                                background: dayToggles[i] ? 'var(--color-brand-500)' : 'transparent',
-                                                borderColor: dayToggles[i] ? 'var(--color-brand-500)' : '#334155',
-                                                color: dayToggles[i] ? 'white' : '#64748b'
-                                            }}>
-                                            {day}
+                                            className={`p-2 rounded-xl border-2 text-xs font-black tracking-widest transition-all cursor-pointer ${dayToggles[i] ? 'bg-brand-500 border-brand-500 text-white' : 'bg-transparent border-slate-200 dark:border-white/10 text-slate-400 dark:text-surface-400 hover:border-brand-500/50'}`}>
+                                            {day.toUpperCase()}
                                         </button>
                                     ))}
                                 </div>
                             </div>
-                            <div className="flex gap-4 mb-4">
+                            <div className="flex gap-6 mb-6">
                                 <div className="flex-1">
                                     <label className="label">Start Time</label>
                                     <input type="time" className="input-field" value={schedule.start_time} onChange={e => setSchedule(s => ({ ...s, start_time: e.target.value }))} />
@@ -404,26 +401,47 @@ export default function RulesPage() {
                     <button className="btn-primary" onClick={runPreview} style={{ marginBottom: '1rem' }}>Run Preview</button>
 
                     {previewResult !== undefined && (
-                        <div style={{ background: '#0f172a', borderRadius: 8, padding: '1rem', border: '1px solid #1e293b' }}>
+                        <div className="mt-8 rounded-2xl p-6 bg-slate-900 border border-white/10 shadow-2xl">
                             {previewResult ? (
                                 <>
-                                    <div style={{ color: '#22c55e', fontWeight: 600, marginBottom: '0.5rem' }}>✓ Matching Rule Found</div>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.875rem' }}>
-                                        <div><span style={{ color: '#64748b' }}>Rule: </span><span style={{ color: '#f1f5f9', fontWeight: 500 }}>{previewResult.name}</span></div>
-                                        <div><span style={{ color: '#64748b' }}>Target: </span><span className={`badge ${previewResult.target_type === 'GLOBAL' ? 'badge-yellow' : 'badge-blue'}`}>{previewResult.target_type}</span></div>
-                                        <div><span style={{ color: '#64748b' }}>Priority: </span><span style={{ color: '#f1f5f9' }}>{previewResult.priority}</span></div>
-                                        <div><span style={{ color: '#64748b' }}>Layout: </span><span style={{ color: '#f1f5f9' }}>{(previewResult as any).layout?.name || '—'}</span></div>
-                                        {(() => {
-                                            const sched: any = (previewResult as any).schedules?.[0]
-                                            if (!sched) return <div><span style={{ color: '#64748b' }}>Schedule: </span><span style={{ color: '#94a3b8' }}>Always active</span></div>
-                                            return (
-                                                <div><span style={{ color: '#64748b' }}>Schedule: </span><span style={{ color: '#94a3b8' }}>{maskToDays(sched.days_mask)}{sched.start_time ? `, ${sched.start_time}–${sched.end_time || '∞'}` : ''}</span></div>
-                                            )
-                                        })()}
+                                    <div className="text-green-400 font-bold mb-4 flex items-center gap-2">
+                                        <CheckCircle2 size={18} /> Match Found
+                                    </div>
+                                    <div className="flex flex-col gap-4">
+                                        <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                                            <span className="text-slate-400 text-sm">Rule</span>
+                                            <span className="text-white font-bold">{previewResult.name}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                                            <span className="text-slate-400 text-sm">Target</span>
+                                            <span className={`badge ${previewResult.target_type === 'GLOBAL' ? 'badge-yellow' : 'badge-blue'}`}>{previewResult.target_type}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                                            <span className="text-slate-400 text-sm">Priority</span>
+                                            <span className="text-white font-bold">{previewResult.priority}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                                            <span className="text-slate-400 text-sm">Layout</span>
+                                            <span className="text-brand-400 font-bold italic">{(previewResult as any).layout?.name || '—'}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-slate-400 text-sm">Schedule</span>
+                                            {(() => {
+                                                const sched: any = (previewResult as any).schedules?.[0]
+                                                if (!sched) return <span className="text-green-500 font-bold uppercase tracking-widest text-[10px]">Always active</span>
+                                                return (
+                                                    <span className="text-brand-500 font-bold text-[10px] uppercase tracking-widest">
+                                                        {maskToDays(sched.days_mask)}{sched.start_time ? `, ${sched.start_time}–${sched.end_time || '∞'}` : ''}
+                                                    </span>
+                                                )
+                                            })()}
+                                        </div>
                                     </div>
                                 </>
                             ) : (
-                                <div style={{ color: '#f59e0b' }}>⚠ No matching enabled rule found for this device at current time.</div>
+                                <div className="text-orange-400 font-medium flex items-center gap-2">
+                                    <AlertCircle size={18} /> No matching rule for this device at current time.
+                                </div>
                             )}
                         </div>
                     )}
