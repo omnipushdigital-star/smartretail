@@ -436,7 +436,7 @@ export default function PlaylistsPage() {
                                     <option value="image">Image</option>
                                     <option value="video">Video</option>
                                     <option value="ppt">PowerPoint</option>
-                                    <option value="web_url">Web URL</option>
+                                    <option value="web_url">Web URL / Menu Builder</option>
                                 </select>
                             </div>
                             <div className="form-group">

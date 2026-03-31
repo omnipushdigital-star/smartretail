@@ -714,7 +714,14 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
                                     />
                                 )}
                                 {dType === 'web_url' && dUrl && (
-                                    <iframe src={dUrl} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none', display: 'block' }} sandbox="allow-scripts allow-same-origin" title="content" />
+                                    <iframe
+                                        src={dUrl}
+                                        style={{
+                                            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+                                            border: 'none', display: 'block', background: '#0a0a1f'
+                                        }}
+                                        title="content"
+                                    />
                                 )}
                             </div>
                         );
@@ -1799,6 +1806,13 @@ export default function PlayerPage() {
                             window.location.reload()
                         }} style={btnStyle('#7f1d1d', '#fca5a5')}>
                             ⚠️ Unpair Device
+                        </button>
+                        <button onClick={() => {
+                            const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' })
+                            const url = URL.createObjectURL(blob)
+                            window.open(url, '_blank')
+                        }} style={btnStyle('#1e293b')}>
+                            📄 View Raw Manifest
                         </button>
                         <button onClick={() => {
                             window.dispatchEvent(new CustomEvent('omnipush_force_play'))
