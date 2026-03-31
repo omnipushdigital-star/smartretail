@@ -60,6 +60,7 @@ export default function DevicesPage() {
     const [heartbeats, setHeartbeats] = useState<Record<string, DeviceHeartbeat>>({})
     const [loading, setLoading] = useState(true)
     const [search, setSearch] = useState('')
+    const [selectedIds, setSelectedIds] = useState<string[]>([])
     const [filterStore, setFilterStore] = useState('')
     const [filterRole, setFilterRole] = useState('')
     const [page, setPage] = useState(1)
@@ -213,6 +214,56 @@ export default function DevicesPage() {
         return matchSearch && matchStore && matchRole
     })
     const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
+    useEffect(() => {
+        setSelectedIds([])
+    }, [viewMode])
+
+    const toggleSelectAll = () => {
+        if (selectedIds.length === paginated.length) {
+            setSelectedIds([])
+        } else {
+            setSelectedIds(paginated.map(d => d.id))
+        }
+    }
+
+    const toggleSelect = (id: string) => {
+        setSelectedIds(prev =>
+            prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+        )
+    }
+
+    const handleBulkDelete = async () => {
+        if (!selectedIds.length) return
+        const count = selectedIds.length
+        if (!confirm(`Permanently delete ${count} selected devices? This cannot be undone.`)) return
+
+        setLoading(true)
+        try {
+            const { error } = await supabase.from('devices').delete().in('id', selectedIds)
+            if (error) throw error
+            toast.success(`${count} devices deleted permanently`)
+            setSelectedIds([])
+            loadData()
+        } catch (err: any) {
+            toast.error(err.message)
+        }
+        setLoading(false)
+    }
+
+    const handleBulkRestore = async () => {
+        if (!selectedIds.length) return
+        const count = selectedIds.length
+        try {
+            const { error } = await supabase.from('devices').update({ deleted_at: null }).in('id', selectedIds)
+            if (error) throw error
+            toast.success(`${count} devices restored`)
+            setSelectedIds([])
+            loadData()
+        } catch (err: any) {
+            toast.error(err.message)
+        }
+    }
 
     const openCreate = () => { setEditing(null); setForm(emptyForm); setAutoSyncCode(true); setShowModal(true) }
     const openEdit = (d: Device) => {
@@ -475,6 +526,19 @@ export default function DevicesPage() {
                             </select>
                         </>
                     )}
+
+                    {viewMode === 'bin' && selectedIds.length > 0 && (
+                        <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 px-4 py-2 rounded-xl animate-in fade-in slide-in-from-left-4">
+                            <span className="text-red-400 font-bold text-sm">{selectedIds.length} Selected</span>
+                            <div className="h-4 w-px bg-red-500/20" />
+                            <button onClick={handleBulkRestore} className="text-emerald-400 hover:text-emerald-300 text-sm font-bold flex items-center gap-1.5 transition-colors">
+                                <RotateCcw size={14} /> Restore
+                            </button>
+                            <button onClick={handleBulkDelete} className="text-red-400 hover:text-red-300 text-sm font-bold flex items-center gap-1.5 transition-colors">
+                                <Trash2 size={14} /> Delete Permanently
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -493,6 +557,16 @@ export default function DevicesPage() {
                             <table>
                                 <thead>
                                     <tr>
+                                        {viewMode === 'bin' && (
+                                            <th style={{ width: 40 }}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedIds.length > 0 && selectedIds.length === paginated.length}
+                                                    onChange={toggleSelectAll}
+                                                    className="w-4 h-4 rounded border-slate-700 bg-slate-900"
+                                                />
+                                            </th>
+                                        )}
                                         <th>Device Code</th>
                                         <th>Display Name</th>
                                         <th>Store</th>
@@ -509,9 +583,20 @@ export default function DevicesPage() {
                                     {paginated.map(d => {
                                         const hb = heartbeats[d.device_code]
                                         const online = isOnline(hb?.last_seen_at)
+                                        const isSelected = selectedIds.includes(d.id)
                                         return (
-                                            <tr key={d.id}>
-                                                <td><span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-text-primary)', letterSpacing: '0.05em' }}>{d.device_code}</span></td>
+                                            <tr key={d.id} className={isSelected ? 'bg-brand-500/5' : ''}>
+                                                {viewMode === 'bin' && (
+                                                    <td>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isSelected}
+                                                            onChange={() => toggleSelect(d.id)}
+                                                            className="w-4 h-4 rounded border-slate-700 bg-slate-900"
+                                                        />
+                                                    </td>
+                                                )}
+                                                <td><span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.875rem', color: isSelected ? 'var(--color-brand-500)' : 'var(--color-text-primary)', letterSpacing: '0.05em' }}>{d.device_code}</span></td>
                                                 <td style={{ color: 'var(--color-text-primary)' }}>{d.display_name || '—'}</td>
                                                 <td style={{ color: '#64748b', fontSize: '0.8125rem' }}>{(d as any).store?.name || '—'}</td>
                                                 <td>
