@@ -513,20 +513,20 @@ export default function DevicesPage() {
                                             <tr key={d.id}>
                                                 <td><span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-text-primary)', letterSpacing: '0.05em' }}>{d.device_code}</span></td>
                                                 <td style={{ color: 'var(--color-text-primary)' }}>{d.display_name || '—'}</td>
-                                                <td style={{ color: 'var(--color-surface-400)', fontSize: '0.8125rem' }}>{(d as any).store?.name || '—'}</td>
+                                                <td style={{ color: '#64748b', fontSize: '0.8125rem' }}>{(d as any).store?.name || '—'}</td>
                                                 <td>
                                                     {(d as any).role?.key
                                                         ? <span className="badge badge-blue" style={{ fontFamily: 'monospace' }}>{(d as any).role.key}</span>
-                                                        : <span style={{ color: 'var(--color-surface-600)' }}>—</span>
+                                                        : <span style={{ color: '#cbd5e1' }}>—</span>
                                                     }
                                                 </td>
-                                                <td style={{ color: 'var(--color-surface-500)', fontSize: '0.8125rem' }}>{d.orientation}</td>
+                                                <td style={{ color: '#64748b', fontSize: '0.8125rem', textTransform: 'capitalize' }}>{d.orientation}</td>
                                                 {/* ── Device Secret cell ── */}
                                                 <td>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
                                                         <span style={{
                                                             fontFamily: 'monospace', fontSize: '0.7rem',
-                                                            color: revealedId === d.id ? 'var(--color-brand-400)' : 'var(--color-surface-600)',
+                                                            color: revealedId === d.id ? 'var(--color-brand-500)' : '#94a3b8',
                                                             maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                                             letterSpacing: revealedId === d.id ? undefined : '0.1em',
                                                         }}>
@@ -553,13 +553,13 @@ export default function DevicesPage() {
                                                         {online ? '● Online' : hb ? '● Offline' : '○ Never'}
                                                     </span>
                                                 </td>
-                                                <td style={{ fontSize: '0.8125rem', color: 'var(--color-surface-500)' }}>
+                                                <td style={{ fontSize: '0.8125rem', color: '#64748b' }}>
                                                     {hb ? formatDistanceToNow(new Date(hb.last_seen_at), { addSuffix: true }) : '—'}
                                                 </td>
                                                 <td>
                                                     {hb?.current_version
                                                         ? <span className="badge badge-blue">{hb.current_version}</span>
-                                                        : <span style={{ color: 'var(--color-surface-600)' }}>—</span>
+                                                        : <span style={{ color: '#cbd5e1' }}>—</span>
                                                     }
                                                 </td>
                                                 <td>

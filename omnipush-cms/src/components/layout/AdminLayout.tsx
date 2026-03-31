@@ -85,8 +85,15 @@ export default function AdminLayout() {
                         transition: background-color 0.3s ease;
                     }
 
-                    .main-content, .sidebar, .topbar {
+                    .main-content, .topbar {
                         background-color: var(--color-surface-950);
+                    }
+                    
+                    .sidebar {
+                        background-color: ${theme === 'dark' ? '#0f172a' : '#ffffff'};
+                        border-right: 1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'};
+                        min-height: 100vh;
+                        height: 100%;
                     }
 
                     .card, .modal-box, .stat-card {
@@ -102,7 +109,15 @@ export default function AdminLayout() {
             )}
 
             <Sidebar />
-            <div className="main-content" style={{ flex: 1, minWidth: 0, overflow: 'auto' }}>
+            <div className="main-content" style={{
+                flex: 1,
+                minWidth: 0,
+                overflow: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+                minHeight: '100vh',
+                background: theme === 'dark' ? 'var(--color-surface-950)' : '#f4f6fb'
+            }}>
                 {/* Top bar */}
                 <header className="topbar">
                     <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
