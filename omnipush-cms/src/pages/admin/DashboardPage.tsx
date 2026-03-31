@@ -117,27 +117,32 @@ export default function DashboardPage() {
         return () => clearInterval(interval)
     }, [currentTenantId])
 
-    // ── Theme-aware tokens ───────────────────────────────────────────────
+    // ── Theme-aware tokens (Digital Atelier) ──────────────────────────────────
+    const isDark = !isLight
     const tk = {
-        canvas: isLight ? '#f7f9fd' : 'transparent',
-        cardBg: isLight ? '#ffffff' : 'var(--color-surface-500)',
-        cardBorder: isLight ? 'rgba(190,200,210,0.2)' : 'rgba(255,255,255,0.04)',
-        cardShadow: isLight ? '0 2px 16px rgba(0,55,81,0.05)' : '0 4px 20px rgba(0,0,0,0.2)',
-        rowBg: isLight ? '#f7f9fd' : 'rgba(255,255,255,0.03)',
-        rowHover: isLight ? '#f0f2f7' : 'rgba(255,255,255,0.06)',
-        rowBorder: isLight ? 'rgba(190,200,210,0.2)' : 'rgba(255,255,255,0.06)',
-        headerBg: isLight ? '#f7f9fd' : 'rgba(255,255,255,0.03)',
-        headerBorder: isLight ? 'rgba(190,200,210,0.15)' : 'rgba(255,255,255,0.05)',
-        textPrimary: isLight ? '#191c1f' : '#e2e8f0',
-        textMuted: isLight ? '#6e7881' : '#94a3b8',
-        actionBg: isLight ? '#f2f4f8' : 'rgba(255,255,255,0.05)',
-        actionHover: isLight ? '#e6e8ec' : 'rgba(255,255,255,0.09)',
-        actionBorder: isLight ? 'rgba(190,200,210,0.25)' : 'rgba(255,255,255,0.06)',
-        actionIconBg: isLight ? 'rgba(14,165,233,0.08)' : 'rgba(255,255,255,0.06)',
-        btnSecBg: isLight ? '#f2f4f8' : '#1e293b',
+        canvas: isLight ? '#f4f6fb' : '#0a0c10',
+        cardBg: isLight ? 'rgba(255,255,255,0.8)' : 'rgba(30,41,59,0.5)',
+        cardBorder: isLight ? 'rgba(190,200,210,0.3)' : 'rgba(255,255,255,0.08)',
+        cardShadow: isLight ? '0 8px 32px rgba(0,55,81,0.06)' : '0 12px 48px rgba(0,0,0,0.3)',
+        glassFilter: 'blur(20px)',
+
+        rowBg: isLight ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.02)',
+        rowHover: isLight ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.05)',
+        rowBorder: isLight ? 'rgba(190,200,210,0.2)' : 'rgba(255,255,255,0.05)',
+
+        textPrimary: isLight ? '#0f172a' : '#f8fafc',
+        textMuted: isLight ? '#64748b' : '#94a3b8',
+        brand: '#10b981', // Emerald
+        accent: '#3b82f6', // Pearl Blue
+
+        actionBg: isLight ? '#ffffff' : 'rgba(255,255,255,0.04)',
+        actionHover: isLight ? '#f8fafc' : 'rgba(255,255,255,0.08)',
+        actionIconBg: 'rgba(16,185,129,0.1)',
+
+        btnSecBg: isLight ? '#ffffff' : '#1e293b',
         btnSecText: isLight ? '#334155' : '#f1f5f9',
-        btnSecBorder: isLight ? 'transparent' : '#334155',
-        arrowColor: isLight ? '#6e7881' : '#334155',
+        btnSecBorder: isLight ? 'rgba(190,200,210,0.4)' : '#334155',
+        arrowColor: isLight ? '#64748b' : '#475569',
     }
 
     return (
@@ -191,33 +196,39 @@ export default function DashboardPage() {
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem' }}>
 
                 {/* Live Network Status */}
-                <div style={{ background: tk.cardBg, border: `1px solid ${tk.cardBorder}`, borderRadius: 16, boxShadow: tk.cardShadow, overflow: 'hidden' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.25rem 1.5rem', borderBottom: `1px solid ${tk.headerBorder}`, background: tk.headerBg }}>
-                        <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: tk.textPrimary, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <Wifi size={18} style={{ color: 'var(--color-brand-500)' }} />
-                            Live Network Status
+                <div style={{ background: tk.cardBg, border: `1px solid ${tk.cardBorder}`, borderRadius: 24, boxShadow: tk.cardShadow, backdropFilter: tk.glassFilter, overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.5rem', borderBottom: `1px solid ${tk.rowBorder}` }}>
+                        <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 800, color: tk.textPrimary, display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(16,185,129,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <Wifi size={18} style={{ color: tk.brand }} />
+                            </div>
+                            Live Displays
                         </h3>
-                        <div style={{ display: 'flex', gap: '0.375rem' }}>
+                        <div style={{ display: 'flex', gap: '0.375rem', background: isLight ? '#f1f5f9' : 'rgba(255,255,255,0.05)', padding: '0.25rem', borderRadius: 10 }}>
                             {['All', 'Online', 'Issues'].map((label, i) => (
                                 <button
                                     key={label}
-                                    style={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '0.25rem 0.75rem', borderRadius: 6, border: 'none', cursor: 'pointer', background: i === 0 ? 'var(--color-brand-500)' : 'transparent', color: i === 0 ? '#fff' : tk.textMuted, transition: 'all 0.15s' }}
+                                    style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.375rem 0.875rem', borderRadius: 8, border: 'none', cursor: 'pointer', background: i === 0 ? tk.brand : 'transparent', color: i === 0 ? '#fff' : tk.textMuted, transition: 'all 0.15s' }}
                                 >{label}</button>
                             ))}
                         </div>
                     </div>
 
-                    <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.625rem', maxHeight: 420, overflowY: 'auto' }}>
+                    <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', maxHeight: 500, overflowY: 'auto' }}>
                         {loading ? (
                             <div style={{ textAlign: 'center', padding: '3rem', color: tk.textMuted, fontSize: '0.875rem' }}>Loading devices…</div>
                         ) : heartbeats.length === 0 ? (
                             <div style={{ textAlign: 'center', padding: '3rem', color: tk.textMuted, fontSize: '0.875rem' }}>No devices active yet.</div>
-                        ) : heartbeats.map(hb => {
-                            const online = isOnline(hb.last_seen_at)
-                            return (
-                                <DeviceRow key={hb.id} hb={hb} online={online} tk={tk} onEdit={() => navigate('/admin/devices')} />
-                            )
-                        })}
+                        ) : (
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                {heartbeats.map(hb => {
+                                    const online = isOnline(hb.last_seen_at)
+                                    return (
+                                        <DeviceGridItem key={hb.id} hb={hb} online={online} tk={tk} onEdit={() => navigate('/admin/devices')} />
+                                    )
+                                })}
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -275,6 +286,77 @@ export default function DashboardPage() {
 }
 
 // ── Sub-components ───────────────────────────────────────────────────────
+
+function DeviceGridItem({ hb, online, tk, onEdit }: { hb: ProjectHeartbeat, online: boolean, tk: any, onEdit: () => void }) {
+    const [hovered, setHovered] = useState(false)
+    const screenshotUrl = `https://qxialnmorewjgpmpcswr.supabase.co/storage/v1/object/public/device-screenshots/screenshots/${hb.device_code}_latest.jpg`
+
+    return (
+        <div
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            style={{
+                position: 'relative',
+                background: hovered ? tk.rowHover : tk.rowBg,
+                border: `1px solid ${hovered ? tk.brand + '40' : tk.rowBorder}`,
+                borderRadius: 16,
+                padding: '0.75rem',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                cursor: 'default',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.75rem'
+            }}
+        >
+            {/* Live Thumbnail / Placeholder */}
+            <div style={{
+                width: '100%',
+                paddingTop: '56.25%', // 16:9 Aspect Ratio
+                position: 'relative',
+                borderRadius: 10,
+                background: '#0a0c10',
+                overflow: 'hidden',
+                border: '1px solid rgba(255,255,255,0.05)'
+            }}>
+                {online ? (
+                    <img
+                        src={`${screenshotUrl}?t=${Date.now()}`}
+                        onError={(e) => {
+                            (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&q=60&w=400';
+                            (e.target as HTMLImageElement).style.opacity = '0.3';
+                        }}
+                        style={{
+                            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+                            objectFit: 'cover', transition: 'transform 0.5s ease'
+                        }}
+                    />
+                ) : (
+                    <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(239,68,68,0.05)' }}>
+                        <WifiOff size={24} style={{ color: '#ef4444', opacity: 0.5 }} />
+                    </div>
+                )}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: '0.8125rem', fontWeight: 800, color: tk.textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {hb.device_code}
+                    </div>
+                    <div style={{ fontSize: '0.6875rem', color: tk.textMuted, display: 'flex', alignItems: 'center', gap: '0.375rem', marginTop: '0.125rem' }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: online ? tk.brand : '#ef4444', boxShadow: online ? `0 0 8px ${tk.brand}` : 'none' }} />
+                        {hb.device?.store?.name || 'Main Office'}
+                    </div>
+                </div>
+                <button
+                    onClick={onEdit}
+                    style={{ padding: '0.35rem', borderRadius: 8, background: tk.actionBg, border: `1px solid ${tk.rowBorder}`, color: tk.textMuted, display: 'flex' }}
+                >
+                    <ArrowUpRight size={14} />
+                </button>
+            </div>
+        </div>
+    )
+}
 
 function DeviceRow({ hb, online, tk, onEdit }: { hb: ProjectHeartbeat, online: boolean, tk: any, onEdit: () => void }) {
     const [hovered, setHovered] = useState(false)
