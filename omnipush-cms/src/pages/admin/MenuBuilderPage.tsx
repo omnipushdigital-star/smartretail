@@ -307,6 +307,18 @@ export default function MenuBuilderPage() {
                     <button onClick={async () => { await handleSave(); toast.success('Menu ready! Redirecting to Publish...'); setTimeout(() => navigate('/admin/publish'), 1500) }} className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-lg transition-all shadow-lg shadow-brand-500/20">
                         <Send size={18} /> Push Content
                     </button>
+                    {menuId && (
+                        <button
+                            onClick={() => {
+                                const url = `${window.location.origin}/display/menu/${menuId}?mode=side`
+                                navigator.clipboard.writeText(url)
+                                toast.success('Sidebar URL copied to clipboard!')
+                            }}
+                            className="flex items-center gap-2 px-4 py-2 bg-emerald-600/10 border border-emerald-500/20 text-emerald-400 rounded-lg hover:bg-emerald-600/20 transition-all"
+                        >
+                            <Layout size={18} /> Copy Sidebar URL
+                        </button>
+                    )}
                 </div>
             </div>
 

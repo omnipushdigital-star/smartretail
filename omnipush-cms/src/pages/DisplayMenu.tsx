@@ -10,6 +10,12 @@ export default function DisplayMenu() {
     const [categories, setCategories] = useState<any[]>([])
     const [tenant, setTenant] = useState<any>(null)
     const [loading, setLoading] = useState(true)
+    const [isSidebarMode, setIsSidebarMode] = useState(false)
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search)
+        setIsSidebarMode(params.get('mode') === 'side')
+    }, [])
 
     useEffect(() => {
         const fetchMenuData = async () => {
@@ -72,12 +78,12 @@ export default function DisplayMenu() {
     }, [menuId])
 
     if (loading) return <div className="h-screen w-screen bg-black flex items-center justify-center text-white/20">Loading Menu...</div>
-    if (!menu) return <div className="h-screen w-screen bg-black flex items-center justify-center text-red-500/50">Menu Not Found</div>
+    if (!menu) return <div className="h-full w-full bg-black flex items-center justify-center text-red-500/50">Menu Not Found</div>
 
     const config = menu.config || {}
-    const aspectRatio = config.aspect_ratio || '16:9'
+    const aspectRatio = isSidebarMode ? '9:16' : (config.aspect_ratio || '16:9')
     const logoPlacement = config.logo_placement || 'center'
-    const showPromo = config.show_promo || false
+    const showPromo = isSidebarMode ? false : (config.show_promo || false)
     const promoPosition = config.promo_position || 'right'
     const themeStyles = {
         dark: {
@@ -103,10 +109,10 @@ export default function DisplayMenu() {
         }
     };
     const style = themeStyles[config.theme as keyof typeof themeStyles] || themeStyles.dark;
-    const columns = config.columns || 2
+    const columns = isSidebarMode ? 1 : (config.columns || 2)
 
     return (
-        <div className="h-screen w-screen bg-black overflow-hidden font-sans">
+        <div className="h-full w-full bg-black overflow-hidden font-sans">
             <div
                 className={`h-full w-full ${style.bg} relative overflow-hidden flex`}
                 style={{ flexDirection: showPromo ? (promoPosition === 'left' ? 'row-reverse' : 'row') : 'column' }}
