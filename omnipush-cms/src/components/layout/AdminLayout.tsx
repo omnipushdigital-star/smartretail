@@ -119,16 +119,22 @@ export default function AdminLayout() {
                 background: theme === 'dark' ? 'var(--color-surface-950)' : '#f4f6fb'
             }}>
                 {/* Top bar */}
-                <header className="topbar">
+                <header className="topbar" style={{
+                    position: 'sticky', top: 0, zIndex: 100,
+                    backdropFilter: 'blur(12px)',
+                    backgroundColor: theme === 'dark' ? 'rgba(10, 15, 29, 0.8)' : 'rgba(255, 255, 255, 0.8)',
+                    borderBottom: `1px solid ${theme === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)'}`
+                }}>
                     <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
                         <span style={{
-                            fontSize: '1.25rem',
+                            fontSize: '1rem',
                             fontWeight: 900,
-                            color: tenant?.primary_color || '#00daf3',
-                            letterSpacing: '0.05em',
+                            letterSpacing: '0.2em',
                             textTransform: 'uppercase',
-                            display: 'inline-block',
-                            textShadow: theme === 'dark' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none'
+                            background: `linear-gradient(to right, ${tenant?.primary_color || '#00daf3'}, ${tenant?.secondary_color || '#007e8c'})`,
+                            WebkitBackgroundClip: 'text',
+                            WebkitTextFillColor: 'transparent',
+                            filter: theme === 'dark' ? `drop-shadow(0 0 8px ${tenant?.primary_color || '#00daf3'}44)` : 'none'
                         }}>
                             SMART RETAIL DISPLAY
                         </span>
@@ -168,11 +174,11 @@ export default function AdminLayout() {
                                 }}
                             >
                                 <div style={{
-                                    width: 36, height: 36, borderRadius: '10px',
-                                    background: 'white', border: '2px solid #1e293b',
+                                    width: 38, height: 38, borderRadius: '12px',
+                                    background: 'white', border: `1.5px solid ${theme === 'dark' ? 'rgba(255,255,255,0.05)' : '#e2e8f0'}`,
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    padding: '5px', overflow: 'hidden',
-                                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                                    padding: '6px', overflow: 'hidden',
+                                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
                                 }}>
                                     <img
                                         src={tenant?.logo_url || "https://i.ibb.co/vzB7K8N/apache-pizza-logo.png"}
@@ -248,17 +254,52 @@ export default function AdminLayout() {
                         <button
                             onClick={toggleTheme}
                             title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-                            style={{ background: 'none', border: '1px solid currentColor', borderRadius: 8, padding: '0.375rem 0.625rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                            style={{
+                                background: theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+                                border: `1.5px solid ${theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'}`,
+                                borderRadius: 10, padding: '0.5rem',
+                                cursor: 'pointer', display: 'flex', alignItems: 'center',
+                                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                                color: theme === 'dark' ? '#94a3b8' : '#64748b'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.transform = 'translateY(-2px)'
+                                e.currentTarget.style.backgroundColor = theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.transform = 'translateY(0)'
+                                e.currentTarget.style.backgroundColor = theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)'
+                            }}
                         >
-                            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+                            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
                         </button>
 
                         <button
                             title="Notifications"
-                            style={{ background: 'none', border: '1px solid currentColor', borderRadius: 8, padding: '0.375rem 0.625rem', cursor: 'pointer', display: 'flex', alignItems: 'center', position: 'relative' }}
+                            style={{
+                                background: theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+                                border: `1.5px solid ${theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'}`,
+                                borderRadius: 10, padding: '0.5rem',
+                                cursor: 'pointer', display: 'flex', alignItems: 'center', position: 'relative',
+                                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                                color: theme === 'dark' ? '#94a3b8' : '#64748b'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.transform = 'translateY(-2px)'
+                                e.currentTarget.style.backgroundColor = theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.transform = 'translateY(0)'
+                                e.currentTarget.style.backgroundColor = theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)'
+                            }}
                         >
-                            <Bell size={16} />
-                            <span style={{ position: 'absolute', top: 3, right: 3, width: 6, height: 6, borderRadius: '50%', background: tenant?.primary_color || '#00daf3' }} />
+                            <Bell size={18} />
+                            <span style={{
+                                position: 'absolute', top: -3, right: -3, width: 8, height: 8,
+                                borderRadius: '50%', background: tenant?.primary_color || '#00daf3',
+                                boxShadow: `0 0 10px ${tenant?.primary_color || '#00daf3'}88`,
+                                border: `2px solid ${theme === 'dark' ? '#0a0f1d' : '#fff'}`
+                            }} />
                         </button>
 
                         <div style={{ position: 'relative' }}>
