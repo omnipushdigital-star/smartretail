@@ -19,8 +19,8 @@ export default function WorkflowBanner() {
     const activeIndex = STAGES.findIndex(s => currentPath.startsWith(s.path))
 
     return (
-        <div className="w-full bg-[color:var(--color-surface-950)] border-b border-[color:var(--color-surface-300)] backdrop-blur-sm overflow-x-auto no-scrollbar">
-            <div className="flex items-center justify-center min-w-max px-6 py-3 gap-2">
+        <div className="w-full bg-surface-950/80 border-b border-white/5 backdrop-blur-xl overflow-x-auto no-scrollbar" style={{ position: 'sticky', top: '72px', zIndex: 90 }}>
+            <div className="flex items-center justify-center min-w-max px-8 py-4 gap-4">
                 {STAGES.map((stage, idx) => {
                     const Icon = stage.icon
                     const isCompleted = idx < activeIndex
@@ -31,28 +31,33 @@ export default function WorkflowBanner() {
                         <React.Fragment key={stage.id}>
                             <Link
                                 to={stage.path}
-                                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all ${isActive
-                                    ? 'bg-brand-600/10 text-brand-600 ring-1 ring-brand-500/50 shadow-lg shadow-brand-500/10'
+                                className={`flex items-center gap-3 px-4 py-2 rounded-xl transition-all duration-300 group ${isActive
+                                    ? 'bg-brand-500/10 text-white ring-1 ring-brand-500/50 shadow-[0_0_15px_rgba(var(--color-brand-500-rgb),0.15)]'
                                     : isCompleted
-                                        ? 'text-green-600 hover:text-green-500 dark:text-green-500'
-                                        : 'text-[color:var(--color-surface-100)] hover:text-[color:var(--color-text-primary)]'
+                                        ? 'text-emerald-500 hover:text-emerald-400'
+                                        : 'text-surface-500 hover:text-surface-300'
                                     }`}
                             >
-                                <div className={`flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-black border ${isActive
-                                    ? 'bg-brand-600 border-brand-500 text-white'
+                                <div className={`flex items-center justify-center w-7 h-7 rounded-lg text-[11px] font-black border transition-all duration-300 ${isActive
+                                    ? 'bg-brand-500 border-brand-400 text-white shadow-[0_0_10px_rgba(var(--color-brand-500-rgb),0.5)]'
                                     : isCompleted
-                                        ? 'bg-green-500/10 border-green-500/50 text-green-600 dark:text-green-500'
-                                        : 'bg-[color:var(--color-surface-700)] border-[color:var(--color-surface-300)] text-[color:var(--color-surface-100)]'
+                                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500'
+                                        : 'bg-surface-900 border-white/5 text-surface-500 group-hover:border-white/10'
                                     }`}>
                                     {isCompleted ? '✓' : idx + 1}
                                 </div>
-                                <span className={`text-xs font-bold uppercase tracking-widest ${isActive ? 'opacity-100' : 'opacity-70'}`}>
-                                    {stage.name}
-                                </span>
+                                <div className="flex flex-col">
+                                    <span className={`text-[9px] font-black uppercase tracking-[0.2em] opacity-40 leading-none mb-1 ${isActive ? 'text-brand-400' : ''}`}>
+                                        Stage 0{idx + 1}
+                                    </span>
+                                    <span className={`text-[11px] font-bold uppercase tracking-[0.1em] ${isActive ? 'opacity-100' : 'opacity-70'}`}>
+                                        {stage.name}
+                                    </span>
+                                </div>
                             </Link>
 
                             {idx < STAGES.length - 1 && (
-                                <ChevronRight size={14} className="text-[color:var(--color-surface-200)] mx-1" />
+                                <div className="w-4 h-px bg-white/5 mx-1 opacity-50" />
                             )}
                         </React.Fragment>
                     )

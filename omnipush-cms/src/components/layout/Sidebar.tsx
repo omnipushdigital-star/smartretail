@@ -51,11 +51,11 @@ export default function Sidebar() {
 
     return (
         <aside className="sidebar">
-            <div className="flex items-center justify-center p-2 mb-4 bg-white/5 border-b border-white/5">
+            <div className="flex items-center justify-center p-4 mb-4 border-b border-white/5" style={{ minHeight: '72px' }}>
                 <img
                     src="/assets/omnipush-logo.png"
                     alt="OmniPush Logo"
-                    className="h-16 w-full object-contain px-2"
+                    className="h-10 w-auto object-contain px-2 opacity-80"
                 />
             </div>
             <div className="p-4 pt-2">
@@ -81,12 +81,25 @@ export default function Sidebar() {
                                 key={item.path || `nav-${idx}`}
                                 to={item.path || '#'}
                                 className={`nav-item ${isActive ? 'active' : ''}`}
+                                style={{
+                                    position: 'relative',
+                                    background: isActive ? 'rgba(var(--color-brand-500-rgb), 0.1)' : 'transparent',
+                                    borderLeft: `3px solid ${isActive ? 'var(--color-brand-500)' : 'transparent'}`,
+                                    paddingLeft: isActive ? '1.5rem' : '1rem',
+                                    borderRadius: '0 8px 8px 0',
+                                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                                    color: isActive ? 'var(--color-brand-500)' : 'rgba(255,255,255,0.6)',
+                                    boxShadow: isActive ? 'inset 10px 0 20px -10px rgba(var(--color-brand-500-rgb), 0.2)' : 'none'
+                                }}
                             >
-                                <span className="nav-icon">
+                                <span className="nav-icon" style={{
+                                    color: isActive ? 'var(--color-brand-500)' : 'inherit',
+                                    filter: isActive ? 'drop-shadow(0 0 5px rgba(var(--color-brand-500-rgb), 0.5))' : 'none'
+                                }}>
                                     {item.icon}
                                 </span>
                                 {item.label}
-                                {isActive && <ChevronRight size={14} className="ml-auto" />}
+                                {isActive && <ChevronRight size={14} className="ml-auto" style={{ opacity: 0.5 }} />}
                             </Link>
                         )
                     })}

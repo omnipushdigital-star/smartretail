@@ -120,28 +120,28 @@ export default function DashboardPage() {
     // ── Theme-aware tokens (Digital Atelier) ──────────────────────────────────
     const isDark = !isLight
     const tk = {
-        canvas: isLight ? '#f4f6fb' : '#0a0c10',
-        cardBg: isLight ? 'rgba(255,255,255,0.8)' : 'rgba(30,41,59,0.5)',
-        cardBorder: isLight ? 'rgba(190,200,210,0.3)' : 'rgba(255,255,255,0.08)',
-        cardShadow: isLight ? '0 8px 32px rgba(0,55,81,0.06)' : '0 12px 48px rgba(0,0,0,0.3)',
-        glassFilter: 'blur(20px)',
+        canvas: isLight ? '#f4f6fb' : '#04070a',
+        cardBg: isLight ? 'rgba(255,255,255,0.8)' : 'rgba(15, 23, 42, 0.4)',
+        cardBorder: isLight ? 'rgba(190,200,210,0.3)' : 'rgba(255,255,255,0.04)',
+        cardShadow: isLight ? '0 8px 32px rgba(0,55,81,0.06)' : '0 20px 40px rgba(0,0,0,0.4)',
+        glassFilter: 'blur(16px)',
 
-        rowBg: isLight ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.02)',
-        rowHover: isLight ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.05)',
-        rowBorder: isLight ? 'rgba(190,200,210,0.2)' : 'rgba(255,255,255,0.05)',
+        rowBg: isLight ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.01)',
+        rowHover: isLight ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.03)',
+        rowBorder: isLight ? 'rgba(190,200,210,0.2)' : 'rgba(255,255,255,0.03)',
 
         textPrimary: isLight ? '#0f172a' : '#f8fafc',
-        textMuted: isLight ? '#64748b' : '#94a3b8',
-        brand: '#10b981', // Emerald
-        accent: '#3b82f6', // Pearl Blue
+        textMuted: isLight ? '#64748b' : '#64748b',
+        brand: '#10b981',
+        accent: '#3b82f6',
 
-        actionBg: isLight ? '#ffffff' : 'rgba(255,255,255,0.04)',
-        actionHover: isLight ? '#f8fafc' : 'rgba(255,255,255,0.08)',
+        actionBg: isLight ? '#ffffff' : 'rgba(255,255,255,0.03)',
+        actionHover: isLight ? '#f8fafc' : 'rgba(255,255,255,0.06)',
         actionIconBg: 'rgba(16,185,129,0.1)',
 
-        btnSecBg: isLight ? '#ffffff' : '#1e293b',
-        btnSecText: isLight ? '#334155' : '#f1f5f9',
-        btnSecBorder: isLight ? 'rgba(190,200,210,0.4)' : '#334155',
+        btnSecBg: isLight ? '#ffffff' : 'rgba(255,255,255,0.02)',
+        btnSecText: isLight ? '#334155' : '#94a3b8',
+        btnSecBorder: isLight ? 'rgba(190,200,210,0.4)' : 'rgba(255,255,255,0.05)',
         arrowColor: isLight ? '#64748b' : '#475569',
     }
 
@@ -299,13 +299,15 @@ function DeviceGridItem({ hb, online, tk, onEdit }: { hb: ProjectHeartbeat, onli
                 position: 'relative',
                 background: hovered ? tk.rowHover : tk.rowBg,
                 border: `1px solid ${hovered ? tk.brand + '40' : tk.rowBorder}`,
-                borderRadius: 16,
-                padding: '0.75rem',
-                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                borderRadius: 20,
+                padding: '1rem',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                 cursor: 'default',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '0.75rem'
+                gap: '1rem',
+                transform: hovered ? 'translateY(-4px)' : 'translateY(0)',
+                boxShadow: hovered ? '0 12px 30px rgba(0,0,0,0.4)' : 'none'
             }}
         >
             {/* Live Thumbnail / Placeholder */}
@@ -434,18 +436,48 @@ function MetricTile({ title, value, trend, icon, color, to, isLight }: any) {
             onClick={() => to && navigate(to)}
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
-            style={{ padding: '1.25rem', borderRadius: 16, background: bg, border: `1px solid ${border}`, boxShadow: shadow, cursor: to ? 'pointer' : 'default', transform: hovered ? 'translateY(-3px)' : 'translateY(0)', transition: 'transform 0.18s ease, box-shadow 0.18s ease' }}
+            style={{
+                padding: '1.5rem',
+                borderRadius: 20,
+                background: bg,
+                border: `1px solid ${border}`,
+                backdropFilter: 'blur(8px)',
+                boxShadow: hovered ? `0 15px 35px ${p.darkBg}` : shadow,
+                cursor: to ? 'pointer' : 'default',
+                transform: hovered ? 'translateY(-5px)' : 'translateY(0)',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+            }}
         >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                <div style={{ padding: '0.5rem', background: isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.07)', borderRadius: 10, color: text, display: 'flex' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
+                <div style={{
+                    padding: '0.625rem',
+                    background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.05)',
+                    borderRadius: 12,
+                    color: text,
+                    display: 'flex',
+                    boxShadow: hovered ? `0 0 10px ${text}33` : 'none',
+                    transition: 'all 0.3s'
+                }}>
                     {icon}
                 </div>
-                <TrendingUp size={14} style={{ color: text, opacity: 0.5 }} />
+                <TrendingUp size={16} style={{ color: text, opacity: 0.3 }} />
             </div>
-            <div style={{ fontSize: '1.625rem', fontWeight: 800, color: text, lineHeight: 1.1, marginBottom: '0.25rem' }}>{value}</div>
-            <div style={{ fontSize: '0.6875rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: text, opacity: 0.65, marginBottom: '0.5rem' }}>{title}</div>
-            <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: text, opacity: 0.7, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                <ArrowUpRight size={10} /> {trend}
+            <div style={{ fontSize: '1.75rem', fontWeight: 900, color: text, lineHeight: 1, marginBottom: '0.5rem', letterSpacing: '-0.02em' }}>{value}</div>
+            <div style={{ fontSize: '0.65rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.2em', color: text, opacity: 0.5, marginBottom: '0.75rem' }}>{title}</div>
+            <div style={{
+                fontSize: '0.6875rem',
+                fontWeight: 700,
+                color: text,
+                opacity: 0.8,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.375rem',
+                background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.05)',
+                padding: '4px 8px',
+                borderRadius: 6,
+                width: 'fit-content'
+            }}>
+                <ArrowUpRight size={12} /> {trend}
             </div>
         </div>
     )
@@ -466,29 +498,56 @@ function StatCard({ icon, label, value, subValue, color, to, tk }: {
             onMouseLeave={() => setHovered(false)}
             style={{
                 cursor: to ? 'pointer' : 'default',
-                transform: hovered && to ? 'translateY(-3px)' : 'translateY(0)',
-                boxShadow: hovered && to ? `0 8px 24px ${color}30` : undefined,
-                transition: 'transform 0.18s ease, box-shadow 0.18s ease',
+                transform: hovered && to ? 'translateY(-5px)' : 'translateY(0)',
+                boxShadow: hovered && to ? `0 20px 40px ${color}15` : tk.cardShadow,
+                background: tk.cardBg,
+                border: `1px solid ${hovered ? color + '44' : tk.cardBorder}`,
+                borderRadius: 24,
+                backdropFilter: tk.glassFilter,
+                padding: '1.5rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '1.125rem',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                 position: 'relative',
             }}
         >
-            <div className="stat-icon" style={{ background: `${color}18` }}>
-                <span style={{ color }}>{icon}</span>
+            <div className="stat-icon" style={{
+                background: hovered ? color : `${color}15`,
+                color: hovered ? '#fff' : color,
+                width: 48, height: 48, borderRadius: 14,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: hovered ? `0 0 20px ${color}66` : 'none',
+                transition: 'all 0.3s'
+            }}>
+                {icon}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <div className="stat-value">{value}</div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 900, color: tk.textPrimary, letterSpacing: '-0.02em', lineHeight: 1 }}>{value}</div>
                     {subValue && (
-                        <div style={{ fontSize: '0.6875rem', fontWeight: 700, color, background: `${color}15`, padding: '2px 7px', borderRadius: 6, letterSpacing: '0.02em', whiteSpace: 'nowrap' }}>
+                        <div style={{
+                            fontSize: '0.65rem', fontWeight: 900, color,
+                            background: `${color}10`, padding: '3px 8px', borderRadius: 6,
+                            letterSpacing: '0.1em', whiteSpace: 'nowrap',
+                            border: `1px solid ${color}20`
+                        }}>
                             {subValue.toUpperCase()}
                         </div>
                     )}
                 </div>
-                <div className="stat-label">{label}</div>
+                <div style={{ fontSize: '0.7rem', fontWeight: 800, color: tk.textMuted, textTransform: 'uppercase', letterSpacing: '0.15em', marginTop: '0.5rem', opacity: 0.5 }}>{label}</div>
             </div>
             {to && (
-                <div style={{ position: 'absolute', top: '0.875rem', right: '0.875rem', color: hovered ? color : tk.arrowColor, transition: 'color 0.18s, transform 0.18s', transform: hovered ? 'translate(1px,-1px)' : 'translate(0,0)', display: 'flex' }}>
-                    <ArrowUpRight size={14} />
+                <div style={{
+                    position: 'absolute', top: '1.125rem', right: '1.125rem',
+                    color: hovered ? color : tk.arrowColor,
+                    transition: 'all 0.3s',
+                    transform: hovered ? 'translate(2px,-2px) scale(1.1)' : 'translate(0,0)',
+                    display: 'flex',
+                    opacity: hovered ? 1 : 0.3
+                }}>
+                    <ArrowUpRight size={18} />
                 </div>
             )}
         </div>
