@@ -1,6 +1,7 @@
 import React from 'react'
 import { useLocation, Link } from 'react-router-dom'
-import { MapPin, Users, Film, Layout, Send, ChevronRight } from 'lucide-react'
+import { MapPin, Users, Film, Layout, Send, CheckCircle2 } from 'lucide-react'
+import { useTheme } from '../../contexts/ThemeContext'
 
 const STAGES = [
     { id: 'stores', name: 'Stores', path: '/admin/stores', icon: MapPin },
@@ -13,51 +14,146 @@ const STAGES = [
 
 export default function WorkflowBanner() {
     const location = useLocation()
+    const { theme } = useTheme()
+    const isDark = theme === 'dark'
+    const activeIndex = STAGES.findIndex(s => location.pathname.startsWith(s.path))
 
-    // Find the current stage index
-    const currentPath = location.pathname
-    const activeIndex = STAGES.findIndex(s => currentPath.startsWith(s.path))
+    const bannerBg = isDark ? 'rgba(8,12,20,0.9)' : 'rgba(255,255,255,0.95)'
+    const borderColor = isDark ? 'rgba(0,218,243,0.08)' : 'rgba(0,218,243,0.12)'
+    const connectorBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'
 
     return (
-        <div className="w-full bg-surface-950/80 border-b border-white/5 backdrop-blur-xl overflow-x-auto no-scrollbar" style={{ position: 'sticky', top: '72px', zIndex: 90 }}>
-            <div className="flex items-center justify-center min-w-max px-8 py-4 gap-4">
+        <div style={{
+            position: 'sticky',
+            top: 72,
+            zIndex: 90,
+            width: '100%',
+            background: bannerBg,
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            borderBottom: `1px solid ${borderColor}`,
+            overflowX: 'auto',
+        }}>
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 4,
+                padding: '10px 24px',
+                minWidth: 'max-content',
+            }}>
                 {STAGES.map((stage, idx) => {
-                    const Icon = stage.icon
                     const isCompleted = idx < activeIndex
                     const isActive = idx === activeIndex
-                    const isPending = idx > activeIndex
+                    const Icon = stage.icon
+
+                    // Per-stage tokens
+                    const linkBg = isActive
+                        ? 'rgba(0,218,243,0.08)'
+                        : 'transparent'
+                    const linkBorder = isActive
+                        ? '1px solid rgba(0,218,243,0.3)'
+                        : '1px solid transparent'
+                    const linkShadow = isActive
+                        ? '0 0 16px rgba(0,218,243,0.12)'
+                        : 'none'
+
+                    const dotBg = isActive
+                        ? '#00daf3'
+                        : isCompleted
+                            ? 'rgba(34,197,94,0.15)'
+                            : isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'
+                    const dotBorder = isActive
+                        ? '1.5px solid #00daf3'
+                        : isCompleted
+                            ? '1.5px solid rgba(34,197,94,0.5)'
+                            : isDark ? '1.5px solid rgba(255,255,255,0.08)' : '1.5px solid rgba(0,0,0,0.1)'
+                    const dotColor = isActive
+                        ? '#fff'
+                        : isCompleted
+                            ? '#22c55e'
+                            : isDark ? 'rgba(255,255,255,0.25)' : '#94a3b8'
+
+                    const labelColor = isActive
+                        ? '#00daf3'
+                        : isCompleted
+                            ? '#22c55e'
+                            : isDark ? 'rgba(255,255,255,0.35)' : '#94a3b8'
+                    const nameColor = isActive
+                        ? isDark ? '#f1f5f9' : '#0f172a'
+                        : isCompleted
+                            ? '#22c55e'
+                            : isDark ? 'rgba(255,255,255,0.45)' : '#64748b'
 
                     return (
                         <React.Fragment key={stage.id}>
                             <Link
                                 to={stage.path}
-                                className={`flex items-center gap-3 px-4 py-2 rounded-xl transition-all duration-300 group ${isActive
-                                    ? 'bg-brand-500/10 text-white ring-1 ring-brand-500/50 shadow-[0_0_15px_rgba(var(--color-brand-500-rgb),0.15)]'
-                                    : isCompleted
-                                        ? 'text-emerald-500 hover:text-emerald-400'
-                                        : 'text-surface-500 hover:text-surface-300'
-                                    }`}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 10,
+                                    padding: '7px 14px',
+                                    borderRadius: 10,
+                                    textDecoration: 'none',
+                                    background: linkBg,
+                                    border: linkBorder,
+                                    boxShadow: linkShadow,
+                                    transition: 'all 0.2s ease',
+                                    cursor: 'pointer',
+                                }}
                             >
-                                <div className={`flex items-center justify-center w-7 h-7 rounded-lg text-[11px] font-black border transition-all duration-300 ${isActive
-                                    ? 'bg-brand-500 border-brand-400 text-white shadow-[0_0_10px_rgba(var(--color-brand-500-rgb),0.5)]'
-                                    : isCompleted
-                                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500'
-                                        : 'bg-surface-900 border-white/5 text-surface-500 group-hover:border-white/10'
-                                    }`}>
-                                    {isCompleted ? '✓' : idx + 1}
+                                {/* Stage dot */}
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    width: 26,
+                                    height: 26,
+                                    borderRadius: 7,
+                                    background: dotBg,
+                                    border: dotBorder,
+                                    color: dotColor,
+                                    fontSize: 11,
+                                    fontWeight: 800,
+                                    flexShrink: 0,
+                                    transition: 'all 0.2s',
+                                }}>
+                                    {isCompleted ? <CheckCircle2 size={14} /> : idx + 1}
                                 </div>
-                                <div className="flex flex-col">
-                                    <span className={`text-[9px] font-black uppercase tracking-[0.2em] opacity-40 leading-none mb-1 ${isActive ? 'text-brand-400' : ''}`}>
-                                        Stage 0{idx + 1}
+
+                                {/* Labels */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                    <span style={{
+                                        fontSize: '0.6rem',
+                                        fontWeight: 800,
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.15em',
+                                        color: labelColor,
+                                        lineHeight: 1,
+                                    }}>
+                                        Stage {String(idx + 1).padStart(2, '0')}
                                     </span>
-                                    <span className={`text-[11px] font-bold uppercase tracking-[0.1em] ${isActive ? 'opacity-100' : 'opacity-70'}`}>
+                                    <span style={{
+                                        fontSize: '0.7rem',
+                                        fontWeight: 700,
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.06em',
+                                        color: nameColor,
+                                        lineHeight: 1.2,
+                                    }}>
                                         {stage.name}
                                     </span>
                                 </div>
                             </Link>
 
                             {idx < STAGES.length - 1 && (
-                                <div className="w-4 h-px bg-white/5 mx-1 opacity-50" />
+                                <div style={{
+                                    width: 20,
+                                    height: 1,
+                                    background: connectorBg,
+                                    flexShrink: 0,
+                                }} />
                             )}
                         </React.Fragment>
                     )

@@ -59,8 +59,7 @@ export default function AdminLayout() {
 
 
     return (
-        <div style={{ display: 'flex', minHeight: '100vh', overflow: 'hidden' }}>
-
+        <div style={{ display: 'flex', minHeight: '100vh', background: theme === 'dark' ? '#080c14' : '#f4f7fb' }}>
 
             <Sidebar />
             <div className="main-content" style={{
@@ -70,7 +69,7 @@ export default function AdminLayout() {
                 display: 'flex',
                 flexDirection: 'column',
                 minHeight: '100vh',
-                background: theme === 'dark' ? 'var(--color-surface-950)' : '#f4f6fb'
+                background: theme === 'dark' ? '#080c14' : '#f4f7fb'
             }}>
                 {/* Top bar — styled entirely via .topbar CSS class in index.css */}
                 <header className="topbar">
