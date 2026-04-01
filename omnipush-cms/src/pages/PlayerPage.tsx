@@ -287,13 +287,7 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
         }
     }
 
-    // Effect to call .load() whenever a slot URL changes
-    useEffect(() => {
-        if (v1.current && slotUrls[0]) v1.current.load()
-    }, [slotUrls[0]])
-    useEffect(() => {
-        if (v2.current && slotUrls[1]) v2.current.load()
-    }, [slotUrls[1]])
+    // Reliance on native browser preload for src swaps
 
     // Browser priming
     useEffect(() => {
@@ -394,7 +388,7 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                     ref={videoRefs[i]}
                     src={slotUrls[i]}
                     style={getSlotStyle(i)}
-                    muted playsInline crossOrigin="anonymous" preload="auto"
+                    muted playsInline preload="auto"
                     onTimeUpdate={() => { if (i === activeSlot) triggerWatchdog(12000) }}
                     onEnded={() => { if (i === activeSlot) advanceBuffer() }}
                     onError={(e: any) => {
