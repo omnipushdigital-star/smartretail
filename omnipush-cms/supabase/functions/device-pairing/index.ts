@@ -13,7 +13,7 @@ serve(async (req: Request) => {
     if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
     try {
-        const { action, device_code: raw_dc, pairing_pin } = await req.json();
+        const { action, device_code: raw_dc, pairing_pin, tenant_id } = await req.json();
         const device_code = (raw_dc || "").trim();
 
         const supabase = createClient(
@@ -105,7 +105,7 @@ serve(async (req: Request) => {
             const { data: updated, error: updateErr } = await supabase
                 .from("devices")
                 .update({
-                    tenant_id: DEFAULT_TENANT_ID,
+                    tenant_id: tenant_id || DEFAULT_TENANT_ID,
                     device_secret: secret,
                     active: true,
                     pairing_pin: null, // Clear PIN triggers success in poll

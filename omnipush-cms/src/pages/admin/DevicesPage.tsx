@@ -183,7 +183,7 @@ export default function DevicesPage() {
         if (claimPin.length !== 6) return toast.error('Please enter a 6-digit PIN')
         setClaiming(true)
         try {
-            const res = await callEdgeFn('device-pairing', { action: 'CLAIM', pairing_pin: claimPin })
+            const res = await callEdgeFn('device-pairing', { action: 'CLAIM', pairing_pin: claimPin, tenant_id: currentTenantId })
             if (res.error) throw new Error(res.error)
 
             toast.success(`Device "${res.device.display_name}" paired!`)
@@ -240,6 +240,24 @@ export default function DevicesPage() {
 
         setLoading(true)
         try {
+            // Explicitly cascade delete from related tables first
+            await supabase.from('device_commands').delete().in('device_id', selectedIds)
+            await supabase.from('device_heartbeats').delete().in('device_id', selectedIds)
+            await supabase.from('layout_publications').delete().in('device_id', selectedIds)
+
+            // Look up device codes for the items being deleted to clear storage
+            const deletingDevices = devices.filter(d => selectedIds.includes(d.id))
+            for (const d of deletingDevices) {
+                try {
+                    const { data: files } = await supabase.storage.from('device-screenshots').list('screenshots', { search: d.device_code })
+                    if (files && files.length > 0) {
+                        const paths = files.map(f => `screenshots/${f.name}`)
+                        await supabase.storage.from('device-screenshots').remove(paths)
+                    }
+                } catch (e) { console.error('Screenshot cleanup failed', e) }
+            }
+
+            // Then delete the main device records
             const { error } = await supabase.from('devices').delete().in('id', selectedIds)
             if (error) throw error
             toast.success(`${count} devices deleted permanently`)
@@ -303,6 +321,9 @@ export default function DevicesPage() {
                 const device_secret = generateSecret()
                 const { error } = await supabase.from('devices').insert({
                     ...form,
+                    display_name: form.display_name || null,
+                    store_id: form.store_id || null,
+                    role_id: form.role_id || null,
                     device_code: device_code,
                     device_secret: device_secret,
                     tenant_id: currentTenantId,
@@ -344,6 +365,15 @@ export default function DevicesPage() {
                 await supabase.from('device_commands').delete().eq('device_id', id)
                 await supabase.from('device_heartbeats').delete().eq('device_id', id)
                 await supabase.from('layout_publications').delete().eq('device_id', id)
+
+                // Clear associated screenshots from storage
+                try {
+                    const { data: files } = await supabase.storage.from('device-screenshots').list('screenshots', { search: code })
+                    if (files && files.length > 0) {
+                        const paths = files.map(f => `screenshots/${f.name}`)
+                        await supabase.storage.from('device-screenshots').remove(paths)
+                    }
+                } catch (e) { console.error('Screenshot cleanup failed', e) }
 
                 const { error } = await supabase.from('devices').delete().eq('id', id)
                 if (error) throw error

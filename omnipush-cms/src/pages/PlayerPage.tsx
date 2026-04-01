@@ -762,28 +762,25 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
 
 // ─── UI States ────────────────────────────────────────────────────────────────
 
-function LoadingState({ device_code }: { device_code: string }) {
+function LoadingState({ device_code, tenantId }: { device_code: string; tenantId?: string }) {
     return (
         <div style={bgStyle}>
-            <AmbientOrbs />
             <div style={{ textAlign: 'center', zIndex: 1, position: 'relative' }}>
-                <Logo />
-                <div style={{ width: 40, height: 40, borderRadius: '50%', border: '3px solid #1e293b', borderTopColor: 'var(--color-brand-500)', animation: 'spin 0.8s linear infinite', margin: '2rem auto 1rem' }} />
-                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>Connecting to network…</div>
-                <div style={{ fontFamily: 'monospace', color: '#f87171', fontSize: '0.8rem', marginTop: '0.5rem' }}>{device_code}</div>
+                <Logo tenantId={tenantId} />
+                <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.1)', borderTopColor: '#00daf3', animation: 'spin 0.8s linear infinite', margin: '2.5rem auto 1rem' }} />
+                <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.8rem', letterSpacing: '0.05em' }}>Connecting…</div>
+                <div style={{ fontFamily: 'monospace', color: 'rgba(255,255,255,0.2)', fontSize: '0.7rem', marginTop: '0.5rem' }}>{device_code}</div>
             </div>
-            <BottomBar device_code={device_code} />
         </div>
     )
 }
 
-function SecretPrompt({ device_code, onSubmit }: { device_code: string; onSubmit: (s: string) => void }) {
+function SecretPrompt({ device_code, tenantId, onSubmit }: { device_code: string; tenantId?: string; onSubmit: (s: string) => void }) {
     const [val, setVal] = useState('')
     return (
         <div style={bgStyle}>
-            <AmbientOrbs />
             <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem', maxWidth: 420 }}>
-                <Logo />
+                <Logo tenantId={tenantId} />
                 <div style={{ marginTop: '2.5rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 16, padding: '2rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '1rem', color: '#f87171' }}>
                         <Lock size={18} />
@@ -830,12 +827,11 @@ function SecretPrompt({ device_code, onSubmit }: { device_code: string; onSubmit
     )
 }
 
-function ErrorState({ device_code, msg, onRetry }: { device_code: string; msg: string; onRetry: () => void }) {
+function ErrorState({ device_code, tenantId, msg, onRetry }: { device_code: string; tenantId?: string; msg: string; onRetry: () => void }) {
     return (
         <div style={bgStyle}>
-            <AmbientOrbs />
             <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem' }}>
-                <Logo />
+                <Logo tenantId={tenantId} />
                 <div style={{ marginTop: '2.5rem', background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 16, padding: '1.5rem 2rem', maxWidth: 380 }}>
                     <WifiOff size={28} color="#ef4444" style={{ margin: '0 auto 0.75rem' }} />
                     <div style={{ fontWeight: 600, color: '#ef4444', marginBottom: '0.5rem' }}>Connection Failed</div>
@@ -878,53 +874,45 @@ function AmbientOrbs() {
     )
 }
 
-function Logo() {
+// Props now include tenantId so we always query the RIGHT tenant, not a hardcoded default.
+function Logo({ tenantId }: { tenantId?: string }) {
     const [logoUrl, setLogoUrl] = useState<string | null>(null)
+    const [primaryColor, setPrimaryColor] = useState<string>('#00daf3')
 
     useEffect(() => {
+        const id = tenantId || DEFAULT_TENANT_ID
         supabase
             .from('tenants')
-            .select('settings')
-            .eq('id', DEFAULT_TENANT_ID)
+            .select('settings, primary_color')
+            .eq('id', id)
             .single()
             .then(({ data }) => {
-                if (data?.settings?.logo_url) {
-                    setLogoUrl(data.settings.logo_url)
-                }
+                if (data?.settings?.logo_url) setLogoUrl(data.settings.logo_url)
+                if (data?.primary_color) setPrimaryColor(data.primary_color)
             })
-    }, [])
+    }, [tenantId])
 
-    if (logoUrl) {
-        return (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' }}>
-                <div style={{
-                    height: 52,
-                    padding: '8px',
-                    background: 'white',
-                    borderRadius: 12,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
-                }}>
-                    <img src={logoUrl} alt="Logo" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
-                </div>
-            </div>
-        )
-    }
+    // If no tenant logo configured — show empty (nothing, no OmniPush branding on client screens)
+    if (!logoUrl) return (
+        <div style={{ width: 120, height: 40 }} />
+    )
 
     return (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' }}>
-            <div style={{ width: 48, height: 48, borderRadius: 14, background: 'linear-gradient(135deg, var(--color-brand-500), var(--color-brand-600))', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 32px rgba(239, 68, 68, 0.5)' }}>
-                <Tv2 size={24} color="white" />
-            </div>
-            <div style={{ textAlign: 'left' }}>
-                <div style={{ fontWeight: 800, fontSize: '1.25rem', color: '#f1f5f9' }}>OmniPush</div>
-                <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>Retail Display System</div>
-            </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <img
+                src={logoUrl}
+                alt="Logo"
+                style={{
+                    maxHeight: 80,
+                    maxWidth: 280,
+                    objectFit: 'contain',
+                    filter: 'drop-shadow(0 4px 24px rgba(0,0,0,0.5))'
+                }}
+            />
         </div>
     )
 }
+
 
 function BottomBar({ device_code, version, offline }: { device_code: string; version?: string | null; offline?: boolean }) {
     return (
