@@ -1077,7 +1077,7 @@ function DeviceHealthModal({ device, heartbeat, onClose }: { device: Device, hea
                             ].map((row, i) => (
                                 <tr key={row.label} style={{ background: i % 2 === 0 ? 'rgba(0,0,0,0.1)' : 'transparent', borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
                                     <td style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600, width: '30%' }}>{row.label}</td>
-                                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: row.color || '#f1f5f9', wordBreak: row.wrap ? 'break-all' : undefined }}>{row.value}</td>
+                                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: row.color, wordBreak: row.wrap ? 'break-all' : undefined }}>{row.value}</td>
                                 </tr>
                             ))}
                         </tbody>

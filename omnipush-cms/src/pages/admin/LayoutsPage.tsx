@@ -173,8 +173,8 @@ export default function LayoutsPage() {
                                 <tbody>
                                     {paginated.map(l => (
                                         <tr key={l.id}>
-                                            <td style={{ color: '#f1f5f9', fontWeight: 500 }}>{l.name}</td>
-                                            <td style={{ color: '#94a3b8', fontSize: '0.8125rem' }}>{(l as any).template?.name || '—'}</td>
+                                            <td>{l.name}</td>
+                                            <td>{(l as any).template?.name || '—'}</td>
                                             <td>
                                                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                                                     <button onClick={() => openDetail(l)} className="btn-secondary" style={{ fontSize: '0.8125rem', padding: '0.375rem 0.75rem' }}>

@@ -66,7 +66,7 @@ export default function LayoutTemplatesPage() {
             <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', background: 'rgba(90,100,246,0.08)', border: '1px solid rgba(90,100,246,0.2)', borderRadius: 10, padding: '0.875rem 1rem', marginBottom: '1.5rem' }}>
                 <Info size={16} color="#7a8aff" style={{ flexShrink: 0, marginTop: 2 }} />
                 <div style={{ fontSize: '0.875rem', color: '#94a3b8' }}>
-                    <strong style={{ color: '#f1f5f9' }}>MVP: Full Screen only.</strong> Split-screen templates (30:70 pattern) will be added in a future release. The data model already supports multiple regions per template.
+                    <strong>MVP: Full Screen only.</strong> Split-screen templates (30:70 pattern) will be added in a future release. The data model already supports multiple regions per template.
                 </div>
             </div>
 
@@ -78,7 +78,7 @@ export default function LayoutTemplatesPage() {
                         <div key={t.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                                 <div>
-                                    <div style={{ fontWeight: 600, color: '#f1f5f9', fontSize: '1rem' }}>{t.name}</div>
+                                    <div style={{ fontWeight: 600, fontSize: '1rem' }}>{t.name}</div>
                                     {t.is_default && <span className="badge badge-blue" style={{ marginTop: '0.25rem' }}>Default</span>}
                                 </div>
                                 <div style={{ width: 48, height: 48, background: '#0f172a', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #334155' }}>
@@ -87,7 +87,7 @@ export default function LayoutTemplatesPage() {
                             </div>
                             {t.description && <p style={{ fontSize: '0.8125rem', color: '#64748b', margin: 0 }}>{t.description}</p>}
                             <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                                <strong style={{ color: '#94a3b8' }}>{Array.isArray(t.regions) ? t.regions.length : 1}</strong> region{Array.isArray(t.regions) && t.regions.length > 1 ? 's' : ''}
+                                <strong>{Array.isArray(t.regions) ? t.regions.length : 1}</strong> region{Array.isArray(t.regions) && t.regions.length > 1 ? 's' : ''}
                             </div>
                             <button className="btn-secondary" onClick={() => setPreview(t)} style={{ justifyContent: 'center', marginTop: 'auto' }}>
                                 <Eye size={14} /> View Regions JSON

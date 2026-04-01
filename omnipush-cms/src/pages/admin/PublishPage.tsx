@@ -299,7 +299,7 @@ export default function PublishPage() {
                                             ) : '—'}
                                         </td>
                                         <td>{scopeTarget(p)}</td>
-                                        <td style={{ color: '#f1f5f9', fontWeight: 500 }}>{p.layout?.name || '—'}</td>
+                                        <td style={{ fontWeight: 500 }}>{p.layout?.name || '—'}</td>
                                         <td><span className="badge badge-green">{p.bundle?.version || '—'}</span></td>
                                         <td style={{ color: '#64748b', fontSize: '0.8125rem' }}>
                                             {p.published_at ? formatDistanceToNow(new Date(p.published_at), { addSuffix: true }) : '—'}
