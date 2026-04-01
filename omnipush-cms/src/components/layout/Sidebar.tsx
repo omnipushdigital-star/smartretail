@@ -64,11 +64,11 @@ export default function Sidebar() {
                         if (item.type === 'header') {
                             return (
                                 <div key={`header-${idx}`} style={{
-                                    fontSize: '0.65rem',
+                                    fontSize: '0.62rem',
                                     fontWeight: 800,
                                     textTransform: 'uppercase',
-                                    letterSpacing: '0.1em',
-                                    color: 'rgba(255,255,255,0.3)',
+                                    letterSpacing: '0.12em',
+                                    color: 'var(--color-surface-200)',
                                     padding: '1.25rem 0.75rem 0.5rem 0.75rem'
                                 }}>
                                     {item.label}
@@ -82,24 +82,16 @@ export default function Sidebar() {
                                 to={item.path || '#'}
                                 className={`nav-item ${isActive ? 'active' : ''}`}
                                 style={{
-                                    position: 'relative',
-                                    background: isActive ? 'rgba(var(--color-brand-500-rgb), 0.1)' : 'transparent',
                                     borderLeft: `3px solid ${isActive ? 'var(--color-brand-500)' : 'transparent'}`,
-                                    paddingLeft: isActive ? '1.5rem' : '1rem',
                                     borderRadius: '0 8px 8px 0',
                                     transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                                    color: isActive ? 'var(--color-brand-500)' : 'rgba(255,255,255,0.6)',
-                                    boxShadow: isActive ? 'inset 10px 0 20px -10px rgba(var(--color-brand-500-rgb), 0.2)' : 'none'
                                 }}
                             >
-                                <span className="nav-icon" style={{
-                                    color: isActive ? 'var(--color-brand-500)' : 'inherit',
-                                    filter: isActive ? 'drop-shadow(0 0 5px rgba(var(--color-brand-500-rgb), 0.5))' : 'none'
-                                }}>
+                                <span className="nav-icon">
                                     {item.icon}
                                 </span>
                                 {item.label}
-                                {isActive && <ChevronRight size={14} className="ml-auto" style={{ opacity: 0.5 }} />}
+                                {isActive && <ChevronRight size={14} className="ml-auto" style={{ opacity: 0.4 }} />}
                             </Link>
                         )
                     })}

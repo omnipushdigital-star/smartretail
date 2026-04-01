@@ -662,39 +662,44 @@ body.light .page-subtitle {
   color: #ef4444;
 }
 
-/* Light mode nav — Digital Atelier */
+/* Light mode nav — OmniPush Brand */
 body.light .nav-item {
-  color: #3e4850;
+  color: #334155;
   font-weight: 500;
 }
 
 body.light .nav-item:hover {
-  background: #f2f4f8;
-  color: #191c1f;
+  background: rgba(0, 218, 243, 0.06);
+  color: #0f172a;
 }
 
 body.light .nav-icon {
-  color: #6e7881;
+  color: #64748b;
 }
 
 body.light .nav-item:hover .nav-icon {
-  color: #0ea5e9;
+  color: #00daf3;
 }
 
 body.light .nav-item.active {
-  background: rgba(14, 165, 233, 0.08);
-  color: #006591;
-  font-weight: 600;
-  box-shadow: inset 3px 0 0 #0ea5e9;
+  background: rgba(0, 218, 243, 0.1);
+  color: #007e8c;
+  font-weight: 700;
+  box-shadow: inset 3px 0 0 #00daf3;
 }
 
 body.light .nav-item.active .nav-icon {
-  color: #0ea5e9;
+  color: #00daf3;
 }
 
 body.light .nav-item-logout {
-  color: #6e7881;
+  color: #64748b;
   font-weight: 500;
+}
+
+body.light .nav-item-logout:hover {
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
 }
 
 .stat-card {
