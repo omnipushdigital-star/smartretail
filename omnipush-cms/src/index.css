@@ -97,16 +97,13 @@ body.light {
   --color-surface-950: #f7f9fd;
   /* Canvas / root background         */
 
-  --color-brand-500: #0ea5e9;
-  /* Sky-blue primary                 */
-  --color-brand-500-rgb: 14, 165, 233;
-  --color-brand-600: #006591;
-  /* Deep primary for gradients       */
-  --color-brand-400: #38bdf8;
-  /* Light accent hover               */
-  --color-brand-300: #7dd3fc;
-  /* Tint backgrounds                 */
-  --color-error-500: #ef4444;
+  /* OmniPush brand — locked, never overridden by tenant */
+  --color-brand-500: #00daf3;
+  --color-brand-500-rgb: 0, 218, 243;
+  --color-brand-600: #007e8c;
+  --color-brand-400: #00daf3cc;
+  --color-brand-300: #00daf399;
+  --color-error-500: #ff3d00;
   --color-success-500: #22c55e;
 }
 
@@ -544,23 +541,27 @@ body.light .main-content {
 }
 
 .topbar {
-  height: 64px;
-  border-bottom: none;
-  padding: 0 1.5rem;
+  height: 72px;
+  padding: 0 1.75rem;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 1rem;
-  background: var(--color-surface-800);
+  background: rgba(10, 15, 29, 0.8);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   position: sticky;
   top: 0;
-  z-index: 30;
+  z-index: 100;
 }
 
 body.light .topbar {
-  background: #ffffff;
-  border-bottom: none;
-  box-shadow: 0 1px 0 rgba(0, 55, 81, 0.06);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(0, 218, 243, 0.08);
+  box-shadow: 0 1px 24px rgba(0, 55, 81, 0.06);
 }
 
 .page-content {

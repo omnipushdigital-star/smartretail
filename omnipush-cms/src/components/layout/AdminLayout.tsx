@@ -60,54 +60,7 @@ export default function AdminLayout() {
 
     return (
         <div style={{ display: 'flex', minHeight: '100vh', overflow: 'hidden' }}>
-            {/* Dynamic CSS Overrides for Tenant Branding with Theme Awareness */}
-            {tenant && (
-                <style dangerouslySetInnerHTML={{
-                    __html: `
-                    :root {
-                        --color-brand-500: #00daf3;
-                        --color-brand-500-rgb: 0, 218, 243;
-                        --color-brand-600: #007e8c;
-                        --color-brand-400: #00daf3dd;
-                        --color-brand-300: #00daf3aa;
-                        --color-error-500: #ff3d00;
-                        
-                        /* Permanently OmniPush themed backgrounds */
-                        --color-surface-900: ${theme === 'dark'
-                            ? `rgba(15, 23, 42, 0.4)`
-                            : `#ffffff`};
-                        --color-surface-950: ${theme === 'dark'
-                            ? `#04070a`
-                            : `#f8fafc`};
-                    }
-                    
-                    body {
-                        background-color: var(--color-surface-950);
-                        transition: background-color 0.3s ease;
-                    }
 
-                    .main-content, .topbar {
-                        background-color: var(--color-surface-950);
-                    }
-                    
-                    .sidebar {
-                        background-color: ${theme === 'dark' ? '#0f172a' : '#ffffff'};
-                        border-right: 1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'};
-                        min-height: 100vh;
-                        height: 100%;
-                    }
-
-                    .card, .modal-box, .stat-card {
-                        background-color: var(--color-surface-900);
-                    }
-
-                    /* Topbar button refinement */
-                    .topbar button {
-                        border-color: ${theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'} !important;
-                        color: ${theme === 'dark' ? '#94a3b8' : '#64748b'} !important;
-                    }
-                `}} />
-            )}
 
             <Sidebar />
             <div className="main-content" style={{
@@ -119,13 +72,8 @@ export default function AdminLayout() {
                 minHeight: '100vh',
                 background: theme === 'dark' ? 'var(--color-surface-950)' : '#f4f6fb'
             }}>
-                {/* Top bar */}
-                <header className="topbar" style={{
-                    position: 'sticky', top: 0, zIndex: 100,
-                    backdropFilter: 'blur(12px)',
-                    backgroundColor: theme === 'dark' ? 'rgba(10, 15, 29, 0.8)' : 'rgba(255, 255, 255, 0.8)',
-                    borderBottom: `1px solid ${theme === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)'}`
-                }}>
+                {/* Top bar — styled entirely via .topbar CSS class in index.css */}
+                <header className="topbar">
                     <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
                         <span style={{
                             fontSize: '1rem',
