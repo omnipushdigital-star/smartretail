@@ -1,56 +1,64 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 @variant dark (&:where(.dark, .dark *));
 
+/* ═══════════════════════════════════════════════════════════════
+   OMNIPUSH DESIGN SYSTEM — SINGLE SOURCE OF TRUTH
+   Primary: Dark Glass Professional
+   Brand:   Cyan #00daf3  |  Red #ff3d00  |  Navy #0a0f1d
+═══════════════════════════════════════════════════════════════ */
 @theme {
   --font-sans: 'Inter', system-ui, sans-serif;
-  --font-display: 'Manrope', 'Space Grotesk', system-ui, sans-serif;
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
 
-  --color-brand-50: #e9fbff;
-  --color-brand-100: #9cf0ff;
-  --color-brand-200: #00daf3;
-  --color-brand-300: #007e8c;
-  --color-brand-400: #006875;
+  /* ── OmniPush Brand (locked — never changes) ── */
   --color-brand-500: #00daf3;
-  /* Lumina Primary */
-  --color-brand-600: #007e8c;
-  --color-brand-700: #004f58;
-  --color-brand-800: #00363d;
-  --color-brand-900: #001f24;
-  --color-brand-950: #001f24;
   --color-brand-500-rgb: 0, 218, 243;
+  --color-brand-600: #007e8c;
+  --color-brand-400: #33e2f5;
+  --color-brand-300: #66ecf8;
+  --color-brand-100: rgba(0, 218, 243, 0.1);
+  --color-accent: #ff3d00;
+  --color-accent-rgb: 255, 61, 0;
 
-  --color-surface-50: #e2e2e8;
-  /* Text On Surface */
-  --color-surface-100: #c2c6d8;
-  /* Text Variant */
-  --color-surface-200: #8c90a1;
-  /* Outline */
-  --color-surface-300: #424656;
-  /* Outline Variant */
-  --color-surface-400: #333539;
-  /* Surface Highest */
-  --color-surface-500: #282a2e;
-  /* Surface High */
-  --color-surface-600: #1e2024;
-  /* Surface Container */
-  --color-surface-700: #1a1c20;
-  /* Surface Low (Sidebar) */
-  --color-surface-800: #111318;
-  /* Base Surface */
-  --color-surface-900: #0c0e12;
-  /* Surface Lowest */
-  --color-surface-950: #111318;
+  /* ── Dark Theme Surfaces (default) ── */
+  --color-bg: #080c14;
+  --color-surface-1: #0d1117;
+  --color-surface-2: #111827;
+  --color-surface-3: #1e2535;
+  --color-surface-4: #253047;
+  --color-border: rgba(255, 255, 255, 0.06);
+  --color-border-strong: rgba(255, 255, 255, 0.12);
 
-  --color-success-500: #2ff801;
-  /* Lumina Secondary */
-  --color-success-600: #0f6d00;
+  /* ── Dark Theme Text ── */
+  --color-text-1: #f1f5f9;
+  --color-text-2: #94a3b8;
+  --color-text-3: #475569;
+
+  /* ── Status ── */
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-error: #ff3d00;
+
+  /* ── Legacy aliases (for existing components) ── */
+  --color-surface-50: #f1f5f9;
+  --color-surface-100: #e2e8f0;
+  --color-surface-200: #94a3b8;
+  --color-surface-300: rgba(255, 255, 255, 0.06);
+  --color-surface-400: #1e2535;
+  --color-surface-500: #1e2535;
+  --color-surface-600: #111827;
+  --color-surface-700: #0d1117;
+  --color-surface-800: #080c14;
+  --color-surface-900: #0d1117;
+  --color-surface-950: #080c14;
+  --color-text-primary: #f1f5f9;
+  --color-error-500: #ff3d00;
+  --color-success-500: #22c55e;
   --color-warning-500: #f59e0b;
-  --color-error-500: #ffb4ab;
-  --color-error-600: #93000a;
-  --color-text-primary: #e2e2e8;
 }
 
+/* ── Base Reset ─────────────────────────────────────────────── */
 * {
   box-sizing: border-box;
 }
@@ -61,50 +69,40 @@ html {
 
 body {
   margin: 0;
-  background: var(--color-surface-950);
-  color: var(--color-text-primary);
+  background: var(--color-bg);
+  color: var(--color-text-1);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Light mode — "Digital Atelier" design system */
+/* ── Light Mode Override ────────────────────────────────────── */
 body.light {
-  background: #f7f9fd;
-  color: #191c1f;
-  --color-text-primary: #191c1f;
-
-  /* Surface hierarchy: tonal depth, no hard borders */
-  --color-surface-50: #3e4850;
-  /* Text body / on-surface-variant  */
-  --color-surface-100: #191c1f;
-  /* Text headlines / on-surface      */
-  --color-surface-200: #6e7881;
-  /* Text muted / outline             */
-  --color-surface-300: rgba(190, 200, 210, 0.25);
-  /* Ghost border          */
-  --color-surface-400: #e6e8ec;
-  /* Hover / surface-container-high   */
+  --color-bg: #f4f7fb;
+  --color-surface-1: #ffffff;
+  --color-surface-2: #f8fafc;
+  --color-surface-3: #f1f5f9;
+  --color-surface-4: #e2e8f0;
+  --color-border: rgba(0, 0, 0, 0.07);
+  --color-border-strong: rgba(0, 0, 0, 0.12);
+  --color-text-1: #0f172a;
+  --color-text-2: #475569;
+  --color-text-3: #94a3b8;
+  /* Legacy aliases */
+  --color-surface-50: #0f172a;
+  --color-surface-100: #1e293b;
+  --color-surface-200: #64748b;
+  --color-surface-300: rgba(0, 0, 0, 0.07);
+  --color-surface-400: #e2e8f0;
   --color-surface-500: #ffffff;
-  /* Card / active surface            */
-  --color-surface-600: #f2f4f8;
-  /* Input / surface-container-low    */
+  --color-surface-600: #f1f5f9;
   --color-surface-700: #ffffff;
-  /* Sidebar background               */
-  --color-surface-800: #f7f9fd;
-  /* Topbar / page chrome             */
-  --color-surface-900: #eceef2;
-  /* Section divider / container      */
-  --color-surface-950: #f7f9fd;
-  /* Canvas / root background         */
-
-  /* OmniPush brand — locked, never overridden by tenant */
-  --color-brand-500: #00daf3;
-  --color-brand-500-rgb: 0, 218, 243;
-  --color-brand-600: #007e8c;
-  --color-brand-400: #00daf3cc;
-  --color-brand-300: #00daf399;
-  --color-error-500: #ff3d00;
-  --color-success-500: #22c55e;
+  --color-surface-800: #f4f7fb;
+  --color-surface-900: #ffffff;
+  --color-surface-950: #f4f7fb;
+  --color-text-primary: #0f172a;
+  background: #f4f7fb;
+  color: #0f172a;
 }
 
 /* Scrollbar */
@@ -506,10 +504,14 @@ body.light .modal-box {
   border-radius: 20px;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   LAYOUT: SIDEBAR
+═══════════════════════════════════════════════════════════════ */
 .sidebar {
-  width: 260px;
-  background: var(--color-surface-700);
-  border-right: none;
+  width: 256px;
+  min-width: 256px;
+  background: var(--color-surface-1, #0d1117);
+  border-right: 1px solid var(--color-border, rgba(255, 255, 255, 0.06));
   height: 100vh;
   position: sticky;
   top: 0;
@@ -517,27 +519,31 @@ body.light .modal-box {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 body.light .sidebar {
   background: #ffffff;
-  border-right: none;
-  box-shadow: 2px 0 20px rgba(0, 55, 81, 0.04);
+  border-right: 1px solid rgba(0, 218, 243, 0.08);
+  box-shadow: 2px 0 24px rgba(0, 55, 81, 0.05);
 }
 
+
+/* ═══════════════════════════════════════════════════════════════
+   LAYOUT: MAIN CONTENT + TOPBAR
+═══════════════════════════════════════════════════════════════ */
 .main-content {
   flex: 1;
   min-width: 0;
-  /* Critical: prevents flex child from overflowing sidebar */
   min-height: 100vh;
-  background: var(--color-surface-950);
+  background: var(--color-bg, #080c14);
   display: flex;
   flex-direction: column;
   overflow-x: hidden;
 }
 
 body.light .main-content {
-  background: #f7f9fd;
+  background: #f4f7fb;
 }
 
 .topbar {
@@ -547,22 +553,24 @@ body.light .main-content {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  background: rgba(10, 15, 29, 0.8);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(8, 12, 20, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(0, 218, 243, 0.08);
   position: sticky;
   top: 0;
   z-index: 100;
+  flex-shrink: 0;
 }
 
 body.light .topbar {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(0, 218, 243, 0.08);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(0, 218, 243, 0.1);
   box-shadow: 0 1px 24px rgba(0, 55, 81, 0.06);
 }
+
 
 .page-content {
   padding: 1.5rem;
@@ -602,55 +610,90 @@ body.light .page-subtitle {
 
 /* Darker in light mode */
 
+/* ═══════════════════════════════════════════════════════════════
+   NAVIGATION ITEMS
+═══════════════════════════════════════════════════════════════ */
 .nav-item {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.625rem 1rem;
+  padding: 0.55rem 0.875rem;
   border-radius: 8px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.15s ease;
   font-size: 0.875rem;
-  color: #cbd5e1;
-  text-decoration: none;
-  margin: 0 0.75rem;
   font-weight: 500;
+  color: rgba(255, 255, 255, 0.55);
+  text-decoration: none;
+  margin: 1px 0;
+  border-left: 3px solid transparent;
 }
 
 .nav-item:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: #ffffff;
+  background: rgba(0, 218, 243, 0.06);
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .nav-item.active {
-  background: rgba(var(--color-brand-500-rgb), 0.15);
-  color: var(--color-brand-500);
+  background: rgba(0, 218, 243, 0.1);
+  color: #00daf3;
   font-weight: 600;
+  border-left-color: #00daf3;
 }
 
 .nav-icon {
-  color: #94a3b8;
+  color: rgba(255, 255, 255, 0.35);
   display: flex;
+  flex-shrink: 0;
 }
 
 .nav-item:hover .nav-icon {
-  color: #ffffff;
+  color: #00daf3;
 }
 
 .nav-item.active .nav-icon {
-  color: var(--color-brand-500);
+  color: #00daf3;
+}
+
+/* Light mode nav */
+body.light .nav-item {
+  color: #475569;
+}
+
+body.light .nav-item:hover {
+  background: rgba(0, 218, 243, 0.07);
+  color: #0f172a;
+}
+
+body.light .nav-item.active {
+  background: rgba(0, 218, 243, 0.1);
+  color: #007e8c;
+  font-weight: 700;
+  border-left-color: #00daf3;
+}
+
+body.light .nav-icon {
+  color: #94a3b8;
+}
+
+body.light .nav-item:hover .nav-icon {
+  color: #00daf3;
+}
+
+body.light .nav-item.active .nav-icon {
+  color: #00daf3;
 }
 
 .nav-item-logout {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.625rem 1rem;
+  padding: 0.55rem 0.875rem;
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.15s;
   font-size: 0.875rem;
-  color: #cbd5e1;
+  color: rgba(255, 255, 255, 0.35);
   background: transparent;
   width: 100%;
   border: none;
@@ -662,45 +705,15 @@ body.light .page-subtitle {
   color: #ef4444;
 }
 
-/* Light mode nav — OmniPush Brand */
-body.light .nav-item {
-  color: #334155;
-  font-weight: 500;
-}
-
-body.light .nav-item:hover {
-  background: rgba(0, 218, 243, 0.06);
-  color: #0f172a;
-}
-
-body.light .nav-icon {
-  color: #64748b;
-}
-
-body.light .nav-item:hover .nav-icon {
-  color: #00daf3;
-}
-
-body.light .nav-item.active {
-  background: rgba(0, 218, 243, 0.1);
-  color: #007e8c;
-  font-weight: 700;
-  box-shadow: inset 3px 0 0 #00daf3;
-}
-
-body.light .nav-item.active .nav-icon {
-  color: #00daf3;
-}
-
 body.light .nav-item-logout {
-  color: #64748b;
-  font-weight: 500;
+  color: #94a3b8;
 }
 
 body.light .nav-item-logout:hover {
   background: rgba(239, 68, 68, 0.08);
   color: #ef4444;
 }
+
 
 .stat-card {
   background: var(--color-surface-500);
