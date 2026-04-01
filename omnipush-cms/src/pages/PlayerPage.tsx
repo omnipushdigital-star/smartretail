@@ -1282,11 +1282,12 @@ export default function PlayerPage() {
             console.log(`[Player] Processing command: ${cmd.command} (${cmd.id})`)
 
             try {
-                // 1. Mark as EXECUTED immediately in Supabase
-                await supabase.from('device_commands').update({
-                    status: 'EXECUTED',
-                    executed_at: new Date().toISOString()
-                }).eq('id', cmd.id)
+                // 1. Mark as EXECUTED via Edge Function (bypasses RLS)
+                await callEdgeFn('device-heartbeat', {
+                    device_code: dc,
+                    device_secret: secretRef.current,
+                    ack_command_id: cmd.id
+                })
 
                 // 2. Perform the actual logic
                 if (cmd.command === 'REBOOT' || cmd.command === 'RELOAD') {
@@ -1337,11 +1338,12 @@ export default function PlayerPage() {
             for (const cmd of commands) {
                 console.log(`[Player] Executing remote command: ${cmd.command}`)
 
-                // Mark as executing/finished
-                await supabase.from('device_commands').update({
-                    status: 'EXECUTED',
-                    executed_at: new Date().toISOString()
-                }).eq('id', cmd.id)
+                // Mark as executing/finished via Edge Function
+                await callEdgeFn('device-heartbeat', {
+                    device_code: dc,
+                    device_secret: secretRef.current,
+                    ack_command_id: cmd.id
+                })
 
                 if (cmd.command === 'REBOOT') {
                     console.warn('[Player] Remote Reboot triggered via CMS. Reloading page...')

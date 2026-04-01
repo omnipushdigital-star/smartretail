@@ -41,6 +41,7 @@ serve(async (req: Request) => {
             device_secret: _ds,
             current_version,
             status,
+            ack_command_id,
             // Named telemetry fields (sent by PlayerPage)
             device_model,
             local_ip,
@@ -75,6 +76,15 @@ serve(async (req: Request) => {
             req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
             req.headers.get("x-real-ip") ||
             null;
+
+        // If this is just a quick command ACK, don't write a full heartbeat row
+        if (ack_command_id) {
+            await supabase.from("device_commands")
+                .update({ status: "EXECUTED", executed_at: new Date().toISOString() })
+                .eq("id", ack_command_id)
+                .eq("device_id", device.id);
+            return Response.json({ ok: true }, { headers: corsHeaders });
+        }
 
         // Insert heartbeat
         const { error: hbErr } = await supabase.from("device_heartbeats").insert({
