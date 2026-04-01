@@ -508,8 +508,19 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
 
     useEffect(() => {
         if (isTransitioning) {
-            const t = setTimeout(() => setShowNext(true), 50)
-            return () => clearTimeout(t)
+            // Use double requestAnimationFrame to ensure the browser paints the starting frame
+            // BEFORE we apply the showNext=true target styles. This prevents slow Android TV boxes
+            // from batching the renders and completely skipping the CSS transition.
+            let r2: number;
+            const r1 = requestAnimationFrame(() => {
+                r2 = requestAnimationFrame(() => {
+                    setShowNext(true)
+                })
+            })
+            return () => {
+                cancelAnimationFrame(r1)
+                if (r2) cancelAnimationFrame(r2)
+            }
         } else {
             setShowNext(false)
         }
@@ -526,12 +537,12 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
         setIsTransitioning(true)
         setShowNext(false)
 
-        // After transition delay, hide the old slot
+        // After transition delay and rAF buffer, hide the old slot
         setTimeout(() => {
             setPrevIdx(null)
             setIsTransitioning(false)
             setShowNext(false)
-        }, 600)
+        }, 650)
     }, [idx, activeItems.length])
 
     const memoizedAssets = React.useMemo(() => assets, [JSON.stringify(assets)])

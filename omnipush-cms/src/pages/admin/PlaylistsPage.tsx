@@ -291,7 +291,7 @@ export default function PlaylistsPage() {
             return updated
         }))
 
-        const updates: any = {}
+        const updates: any = { updated_at: new Date().toISOString() }
         if (data.duration_seconds !== undefined) updates.duration_seconds = data.duration_seconds
         if (data.playback_speed !== undefined) updates.playback_speed = data.playback_speed
         if (data.transition) {
@@ -326,7 +326,10 @@ export default function PlaylistsPage() {
 
         // Bulk update sort order in DB
         await Promise.all(newItems.map(item =>
-            supabase.from('playlist_items').update({ sort_order: item.sort_order }).eq('id', item.id)
+            supabase.from('playlist_items').update({
+                sort_order: item.sort_order,
+                updated_at: new Date().toISOString()
+            }).eq('id', item.id)
         ))
     }
 
