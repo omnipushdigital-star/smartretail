@@ -616,7 +616,6 @@ export default function DevicesPage() {
                                         <th>Store</th>
                                         <th>Role</th>
                                         <th>Orientation</th>
-                                        <th>Device Secret</th>
                                         <th>Status</th>
                                         <th>Last Seen</th>
                                         <th>Version</th>
@@ -698,6 +697,24 @@ export default function DevicesPage() {
                                                                 <button onClick={() => openEdit(d)} className="btn-secondary" style={{ padding: '0.375rem 0.625rem' }} title="Edit device">
                                                                     <Edit2 size={13} />
                                                                 </button>
+                                                                {/* Promoted primary actions */}
+                                                                <button
+                                                                    onClick={() => setSelectedHealthDevice(d)}
+                                                                    className="btn-secondary"
+                                                                    style={{ padding: '0.375rem 0.625rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#06b6d4' }}
+                                                                    title="Device Health & Diagnostics"
+                                                                >
+                                                                    <Activity size={12} /> Diagnostics
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleScreenshot(d.id, d.device_code)}
+                                                                    className="btn-secondary"
+                                                                    style={{ padding: '0.375rem 0.625rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                                                                    title="Request Screenshot"
+                                                                >
+                                                                    <Camera size={12} /> Preview
+                                                                </button>
+                                                                {/* Secondary icon-only actions */}
                                                                 <button
                                                                     onClick={() => handleReboot(d.id, d.device_code)}
                                                                     className="btn-secondary"
@@ -721,22 +738,6 @@ export default function DevicesPage() {
                                                                     title="Check for App Update"
                                                                 >
                                                                     <Download size={13} />
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => setSelectedHealthDevice(d)}
-                                                                    className="btn-secondary"
-                                                                    style={{ padding: '0.375rem 0.625rem', color: '#06b6d4' }}
-                                                                    title="Device Health & Diagnostics"
-                                                                >
-                                                                    <Activity size={13} />
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => handleScreenshot(d.id, d.device_code)}
-                                                                    className="btn-secondary"
-                                                                    style={{ padding: '0.375rem 0.625rem' }}
-                                                                    title="Request Screenshot"
-                                                                >
-                                                                    <Camera size={13} />
                                                                 </button>
                                                                 <button
                                                                     onClick={() => { setPairingInfo({ device_code: d.device_code, device_secret: d.device_secret }); setShowPairingModal(true) }}

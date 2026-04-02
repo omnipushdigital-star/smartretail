@@ -620,9 +620,34 @@ export default function PlaylistsPage() {
 
                         {/* Items list */}
                         <div>
-                            <h3 style={{ margin: '0 0 1rem', fontSize: '0.875rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                Items ({playlistItems.length}) — drag to reorder
-                            </h3>
+                            {/* Stats Bar */}
+                            {(() => {
+                                const totalItems = playlistItems.length
+                                const totalBytes = playlistItems.reduce((sum, i) => sum + (i.media?.bytes || 0), 0)
+                                const totalSecs = playlistItems.reduce((sum, i) => {
+                                    if (i.type === 'video') return sum
+                                    return sum + (i.duration_seconds || 15)
+                                }, 0)
+                                const fmtBytes = (b: number) => b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : b >= 1024 ? `${(b / 1024).toFixed(0)} KB` : b > 0 ? `${b} B` : '—'
+                                const fmtDur = (s: number) => `${Math.floor(s / 60)}m ${s % 60}s`
+                                return totalItems > 0 ? (
+                                    <div style={{
+                                        display: 'flex', alignItems: 'center', gap: '0.75rem',
+                                        padding: '0.5rem 0.875rem', marginBottom: '0.875rem',
+                                        background: 'var(--color-surface-900)', borderRadius: 8,
+                                        border: '1px solid var(--color-surface-800)',
+                                        fontSize: '0.8rem',
+                                    }}>
+                                        <span style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>{totalItems}</span>
+                                        <span style={{ color: 'var(--color-surface-500)' }}>items</span>
+                                        <span style={{ color: 'var(--color-surface-700)' }}>·</span>
+                                        <span style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>{fmtBytes(totalBytes)}</span>
+                                        <span style={{ color: 'var(--color-surface-700)' }}>·</span>
+                                        <span style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>{fmtDur(totalSecs)}</span>
+                                        <span style={{ color: 'var(--color-surface-500)', fontSize: '0.7rem', marginLeft: 'auto' }}>drag to reorder</span>
+                                    </div>
+                                ) : null
+                            })()}
                             {playlistItems.length === 0 ? (
                                 <div style={{ textAlign: 'center', padding: '2rem', color: '#475569', fontSize: '0.875rem' }}>No items yet</div>
                             ) : (

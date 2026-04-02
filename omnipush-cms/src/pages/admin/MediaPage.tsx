@@ -21,6 +21,17 @@ function formatBytes(bytes?: number) {
     return `${(bytes / 1024 / 1024).toFixed(2)} MB`
 }
 
+function timeAgo(dateStr?: string) {
+    if (!dateStr) return null
+    const now = Date.now()
+    const then = new Date(dateStr).getTime()
+    const diff = Math.floor((now - then) / 1000)
+    if (diff < 60) return 'just now'
+    if (diff < 3600) return `${Math.floor(diff / 60)} min ago`
+    if (diff < 86400) return `${Math.floor(diff / 3600)} hr ago`
+    return `${Math.floor(diff / 86400)} days ago`
+}
+
 function TypeIcon({ type }: { type: string }) {
     if (type === 'video') return <Film size={14} color="#a78bfa" />
     if (type === 'web_url') return <Globe size={14} color="#34d399" />
@@ -275,85 +286,129 @@ export default function MediaPage() {
                 </div>
             </div>
 
-            {/* Filters */}
+            {/* Search Bar */}
             <div className="card" style={{ marginBottom: '1rem', padding: '1rem' }}>
-                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                    <div style={{ position: 'relative', flex: '1 1 200px' }}>
-                        <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
-                        <input type="text" className="input-field" placeholder="Search media..." value={search}
-                            onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ paddingLeft: '2rem' }} />
-                    </div>
-                    <select className="input-field" style={{ width: 'auto' }} value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1) }}>
-                        <option value="">All types</option>
-                        <option value="image">Images</option>
-                        <option value="video">Videos</option>
-                        <option value="ppt">PowerPoint</option>
-                        <option value="web_url">Web URLs</option>
-                    </select>
+                <div style={{ position: 'relative' }}>
+                    <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+                    <input type="text" className="input-field" placeholder="Search media..." value={search}
+                        onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ paddingLeft: '2rem' }} />
                 </div>
             </div>
 
-            {loading ? (
-                <div style={{ textAlign: 'center', padding: '4rem', color: '#64748b' }}><Loader2 size={32} style={{ margin: '0 auto' }} /></div>
-            ) : paginated.length === 0 ? (
-                <div className="empty-state" style={{ marginTop: '2rem' }}>
-                    <ImageIcon size={48} />
-                    <h3>No media found</h3>
-                    <p>{search ? 'Try different search terms.' : 'Upload your first image or video to get started.'}</p>
-                </div>
-            ) : (
-                <>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-                        {paginated.map(a => (
-                            <div key={a.id} className="card" style={{ padding: 0, overflow: 'hidden', cursor: 'pointer' }} onClick={() => setPreview(a)}>
-                                {/* Thumbnail */}
-                                <div style={{ height: 130, background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                                    {a.type === 'image' && a.url ? (
-                                        <img src={a.url} alt={a.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                    ) : a.type === 'video' && a.url ? (
-                                        <video src={a.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted />
-                                    ) : a.type === 'ppt' ? (
-                                        <div style={{ textAlign: 'center', color: '#f59e0b' }}>
-                                            <Presentation size={48} />
-                                            <div style={{ fontSize: '0.65rem', marginTop: '0.5rem', fontWeight: 600 }}>POWERPOINT</div>
-                                        </div>
-                                    ) : (
-                                        <Globe size={36} color="#34d399" />
-                                    )}
-                                    <div style={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: '0.375rem' }}>
-                                        <span className={`badge ${a.type === 'video' ? 'badge-blue' : a.type === 'web_url' ? 'badge-green' : ''}`} style={{ background: 'rgba(0,0,0,0.7)' }}>
-                                            <TypeIcon type={a.type} />
-                                            {a.type}
-                                        </span>
-                                    </div>
-                                    {/* R2 badge */}
-                                    {isR2Url(a.url) && (
-                                        <div style={{ position: 'absolute', bottom: 6, left: 6, background: 'rgba(99,102,241,0.85)', borderRadius: 4, padding: '0.1rem 0.4rem', fontSize: '0.625rem', color: '#fff', fontWeight: 600 }}>
-                                            ☁ R2
-                                        </div>
-                                    )}
-                                </div>
-                                <div style={{ padding: '0.75rem' }}>
-                                    <div style={{ fontWeight: 500, fontSize: '0.875rem', color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.name}</div>
-                                    <div style={{ fontSize: '0.75rem', color: 'var(--color-surface-500)', marginTop: '0.25rem', display: 'flex', justifyContent: 'space-between' }}>
-                                        <span>{formatBytes(a.bytes)}</span>
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); handleDelete(a) }}
-                                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', display: 'flex', padding: 0 }}
-                                            disabled={deleting === a.id}
-                                        >
-                                            {deleting === a.id ? <Loader2 size={13} /> : <Trash2 size={13} />}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
+            {/* Two-column layout: sidebar + grid */}
+            <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'flex-start' }}>
+
+                {/* LEFT SIDEBAR — Type Filter */}
+                <div style={{ width: 160, flexShrink: 0 }}>
+                    <div className="card" style={{ padding: '0.875rem' }}>
+                        <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 700, letterSpacing: '0.08em', marginBottom: '0.625rem' }}>
+                            Filter by Type
+                        </div>
+                        {([
+                            { value: '', label: 'All Media', icon: <Filter size={13} color="#94a3b8" /> },
+                            { value: 'image', label: 'Images', icon: <ImageIcon size={13} color="#60a5fa" /> },
+                            { value: 'video', label: 'Videos', icon: <Film size={13} color="#a78bfa" /> },
+                            { value: 'ppt', label: 'Slides', icon: <Presentation size={13} color="#f59e0b" /> },
+                            { value: 'web_url', label: 'Web URLs', icon: <Globe size={13} color="#34d399" /> },
+                        ] as { value: string; label: string; icon: React.ReactNode }[]).map(({ value, label, icon }) => (
+                            <button
+                                key={value}
+                                onClick={() => { setFilterType(value); setPage(1) }}
+                                style={{
+                                    width: '100%', textAlign: 'left', padding: '0.45rem 0.625rem',
+                                    borderRadius: 6, border: 'none', cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                    fontSize: '0.8125rem', marginBottom: '0.125rem',
+                                    background: filterType === value ? 'rgba(var(--color-brand-rgb), 0.12)' : 'transparent',
+                                    color: filterType === value ? 'var(--color-brand-400)' : 'var(--color-surface-400)',
+                                    fontWeight: filterType === value ? 600 : 400,
+                                    transition: 'all 0.15s',
+                                }}
+                            >
+                                {icon} {label}
+                            </button>
                         ))}
+
+                        {/* Asset counts */}
+                        <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--color-surface-800)', fontSize: '0.7rem', color: '#64748b', lineHeight: 1.8 }}>
+                            <div>Total: <strong style={{ color: 'var(--color-text-secondary)' }}>{assets.length}</strong></div>
+                            <div>{assets.filter(a => a.type === 'image').length} images</div>
+                            <div>{assets.filter(a => a.type === 'video').length} videos</div>
+                            <div>{assets.filter(a => a.type === 'ppt').length} slides</div>
+                            <div>{assets.filter(a => a.type === 'web_url').length} URLs</div>
+                        </div>
                     </div>
-                    <div className="card" style={{ padding: 0 }}>
-                        <Pagination page={page} totalPages={Math.ceil(filtered.length / PAGE_SIZE)} totalItems={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
-                    </div>
-                </>
-            )}
+                </div>
+
+                {/* RIGHT: Main content grid */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+
+                    {loading ? (
+                        <div style={{ textAlign: 'center', padding: '4rem', color: '#64748b' }}><Loader2 size={32} style={{ margin: '0 auto' }} /></div>
+                    ) : paginated.length === 0 ? (
+                        <div className="empty-state" style={{ marginTop: '2rem' }}>
+                            <ImageIcon size={48} />
+                            <h3>No media found</h3>
+                            <p>{search ? 'Try different search terms.' : 'Upload your first image or video to get started.'}</p>
+                        </div>
+                    ) : (
+                        <>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                                {paginated.map(a => (
+                                    <div key={a.id} className="card" style={{ padding: 0, overflow: 'hidden', cursor: 'pointer' }} onClick={() => setPreview(a)}>
+                                        {/* Thumbnail */}
+                                        <div style={{ height: 130, background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                                            {a.type === 'image' && a.url ? (
+                                                <img src={a.url} alt={a.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                            ) : a.type === 'video' && a.url ? (
+                                                <video src={a.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted />
+                                            ) : a.type === 'ppt' ? (
+                                                <div style={{ textAlign: 'center', color: '#f59e0b' }}>
+                                                    <Presentation size={48} />
+                                                    <div style={{ fontSize: '0.65rem', marginTop: '0.5rem', fontWeight: 600 }}>POWERPOINT</div>
+                                                </div>
+                                            ) : (
+                                                <Globe size={36} color="#34d399" />
+                                            )}
+                                            <div style={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: '0.375rem' }}>
+                                                <span className={`badge ${a.type === 'video' ? 'badge-blue' : a.type === 'web_url' ? 'badge-green' : ''}`} style={{ background: 'rgba(0,0,0,0.7)' }}>
+                                                    <TypeIcon type={a.type} />
+                                                    {a.type}
+                                                </span>
+                                            </div>
+                                            {/* R2 badge */}
+                                            {isR2Url(a.url) && (
+                                                <div style={{ position: 'absolute', bottom: 6, left: 6, background: 'rgba(99,102,241,0.85)', borderRadius: 4, padding: '0.1rem 0.4rem', fontSize: '0.625rem', color: '#fff', fontWeight: 600 }}>
+                                                    ☁ R2
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div style={{ padding: '0.75rem' }}>
+                                            <div style={{ fontWeight: 500, fontSize: '0.875rem', color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.name}</div>
+                                            <div style={{ fontSize: '0.7rem', color: '#475569', marginTop: '0.2rem' }}>
+                                                Updated {timeAgo((a as any).updated_at || (a as any).created_at)}
+                                            </div>
+                                            <div style={{ fontSize: '0.75rem', color: 'var(--color-surface-500)', marginTop: '0.35rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span>{formatBytes(a.bytes)}</span>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleDelete(a) }}
+                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', display: 'flex', padding: 0 }}
+                                                    disabled={deleting === a.id}
+                                                >
+                                                    {deleting === a.id ? <Loader2 size={13} /> : <Trash2 size={13} />}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="card" style={{ padding: 0 }}>
+                                <Pagination page={page} totalPages={Math.ceil(filtered.length / PAGE_SIZE)} totalItems={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
+                            </div>
+                        </>
+                    )}
+                </div> {/* end main grid column */}
+            </div> {/* end two-column layout */}
 
             {/* Add Web URL modal */}
             {showUrlModal && (
