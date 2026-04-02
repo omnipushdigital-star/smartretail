@@ -81,11 +81,11 @@ function SortableItem({ item, onRemove, onUpdateSettings }: {
                     >
                         <option value="0.5">0.5x</option>
                         <option value="0.75">0.75x</option>
-                        <option value="1.0">1.0x</option>
+                        <option value="1">1.0x</option>
                         <option value="1.25">1.25x</option>
                         <option value="1.5">1.5x</option>
-                        <option value="2.0">2.0x</option>
-                        <option value="3.0">3.0x</option>
+                        <option value="2">2.0x</option>
+                        <option value="3">3.0x</option>
                     </select>
                 )}
 
@@ -135,7 +135,7 @@ export default function PlaylistsPage() {
     const [addMediaId, setAddMediaId] = useState('')
     const [addUrl, setAddUrl] = useState('')
     const [addDuration, setAddDuration] = useState('10')
-    const [addPlaybackSpeed, setAddPlaybackSpeed] = useState('1.0')
+    const [addPlaybackSpeed, setAddPlaybackSpeed] = useState('1')
     const [addIsScheduled, setAddIsScheduled] = useState(false)
     const [addStartDate, setAddStartDate] = useState('')
     const [addEndDate, setAddEndDate] = useState('')
@@ -531,11 +531,11 @@ export default function PlaylistsPage() {
                                     <select className="input-field" value={addPlaybackSpeed} onChange={e => setAddPlaybackSpeed(e.target.value)}>
                                         <option value="0.5">0.5x (Slow)</option>
                                         <option value="0.75">0.75x</option>
-                                        <option value="1.0">1.0x (Normal)</option>
+                                        <option value="1">1.0x (Normal)</option>
                                         <option value="1.25">1.25x</option>
                                         <option value="1.5">1.5x (Fast)</option>
-                                        <option value="2.0">2.0x (Very Fast)</option>
-                                        <option value="3.0">3.0x (Super Fast)</option>
+                                        <option value="2">2.0x (Very Fast)</option>
+                                        <option value="3">3.0x (Super Fast)</option>
                                     </select>
                                 </div>
                             )}
