@@ -324,13 +324,17 @@ export default function PlaylistsPage() {
         const newItems = arrayMove(playlistItems, oldIndex, newIndex).map((item, idx) => ({ ...item, sort_order: idx }))
         setPlaylistItems(newItems)
 
-        // Bulk update sort order in DB
-        await Promise.all(newItems.map(item =>
-            supabase.from('playlist_items').update({
-                sort_order: item.sort_order,
-                updated_at: new Date().toISOString()
-            }).eq('id', item.id)
-        ))
+        // Bulk update sort order in DB via single upsert (stripped of joined .media properties)
+        const payload = newItems.map(({ media, ...dbProps }) => ({
+            ...dbProps,
+            updated_at: new Date().toISOString()
+        }))
+
+        const { error } = await supabase.from('playlist_items').upsert(payload, { onConflict: 'id' })
+        if (error) {
+            console.error('Batch updating sort order failed:', error)
+            toast.error('Failed to sync new order')
+        }
     }
 
     const filteredMedia = mediaAssets.filter(m => m.type === addType)

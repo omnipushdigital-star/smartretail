@@ -139,6 +139,8 @@ interface PlaybackProps {
     items: ManifestItem[]
     assets: ManifestAsset[]
     region: { id: string; x: number; y: number; width: number; height: number }
+    showDebug?: boolean
+    deviceCode?: string
 }
 
 // ─── Double-Buffer Video Player ──────────────────────────────────────────────
@@ -153,10 +155,12 @@ interface VideoBufferProps {
     style?: React.CSSProperties
 }
 
-function DoubleBufferVideo({ items, assets, onAdvance }: {
+function DoubleBufferVideo({ items, assets, onAdvance, showDebug, deviceCode }: {
     items: ManifestItem[]
     assets: ManifestAsset[]
     onAdvance: () => void
+    showDebug?: boolean
+    deviceCode?: string
 }) {
     const [activeSlot, setActiveSlot] = useState<0 | 1>(0)
     const v1 = useRef<HTMLVideoElement>(null)
@@ -402,14 +406,17 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
                 />
             ))}
             {/* Debug Overlay */}
-            <div style={{
-                position: 'absolute', bottom: 5, right: 5, zIndex: 9999,
-                fontSize: '9px', color: 'rgba(255,255,255,0.7)', fontFamily: 'monospace',
-                background: 'rgba(0,0,0,0.6)', padding: '4px 8px', borderRadius: '4px',
-                pointerEvents: 'none'
-            }}>
-                ID:{idxRef.current}/{sorted.length} | {debug}
-            </div>
+            {showDebug && (
+                <div style={{
+                    position: 'absolute', bottom: 5, right: 5, zIndex: 9999,
+                    fontSize: '9px', color: 'rgba(255,255,255,1)', fontFamily: 'monospace',
+                    background: 'rgba(15, 23, 42, 0.8)', padding: '2px 6px', borderRadius: '4px',
+                    pointerEvents: 'none', border: '1px solid rgba(255,255,255,0.1)',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.5)'
+                }}>
+                    ID:{idxRef.current + 1}/{sorted.length} | {debug}
+                </div>
+            )}
         </div>
     )
 }
@@ -417,7 +424,7 @@ function DoubleBufferVideo({ items, assets, onAdvance }: {
 
 // ─── Playback Engine ──────────────────────────────────────────────────────────
 
-function PlaybackEngine({ items, assets, region }: PlaybackProps) {
+function PlaybackEngine({ items, assets, region, showDebug, deviceCode }: PlaybackProps) {
     const [idx, setIdx] = useState(0)
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const [currentTime, setCurrentTime] = useState(new Date())
@@ -653,6 +660,8 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
                     items={activeItems}
                     assets={memoizedAssets}
                     onAdvance={advance}
+                    showDebug={showDebug}
+                    deviceCode={deviceCode}
                 />
             ) : (
                 /* Mixed content: use two-slot cross-fade */
@@ -746,6 +755,19 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
                             </div>
                         );
                     })}
+
+                    {/* Per-Region Debug Info for Mixed content */}
+                    {showDebug && (
+                        <div style={{
+                            position: 'absolute', bottom: 5, right: 5, zIndex: 9999,
+                            fontSize: '9px', color: '#fff', fontFamily: 'monospace',
+                            background: 'rgba(15, 23, 42, 0.8)', padding: '2px 6px', borderRadius: '4px',
+                            pointerEvents: 'none', border: '1px solid rgba(255,255,255,0.1)',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.5)'
+                        }}>
+                            Reg:{region.id} | ID:{idx + 1}/{activeItems.length}
+                        </div>
+                    )}
                 </div>
             )}
             {type === 'ppt' && url && (
@@ -1067,6 +1089,23 @@ export default function PlayerPage() {
 
     const [pairingPin, setPairingPin] = useState('')
     const [showDiagnostics, setShowDiagnostics] = useState(false)
+    const [showDebugOverlay, setShowDebugOverlay] = useState(false)
+    const [lastSyncTime, setLastSyncTime] = useState<string>(new Date().toLocaleTimeString())
+
+    // Debug Toggle Tap Sequence (Top-Right)
+    const debugTapCountRef = useRef(0)
+    const debugTapTimerRef = useRef<any>(null)
+
+    const handleDebugCornerTap = () => {
+        debugTapCountRef.current += 1
+        if (debugTapTimerRef.current) clearTimeout(debugTapTimerRef.current)
+        debugTapTimerRef.current = setTimeout(() => { debugTapCountRef.current = 0 }, 1500) // Reset after 1.5s
+
+        if (debugTapCountRef.current >= 3) {
+            debugTapCountRef.current = 0
+            setShowDebugOverlay(prev => !prev)
+        }
+    }
     const secretRef = useRef(secret)
     useEffect(() => { secretRef.current = secret }, [secret])
 
@@ -1300,12 +1339,15 @@ export default function PlayerPage() {
                         // Fallback: In browser, we can't easily screenshot, but we record the attempt
                         console.error('[Player] Native screenshot bridge NOT available.')
                     }
+                } else if (cmd.command === 'TOGGLE_DEBUG') {
+                    console.log('[Player] Remote Debug Toggle triggered.')
+                    setShowDebugOverlay(prev => !prev)
                 }
             } catch (err: any) {
                 console.error(`[Player] Command ${cmd.id} execution failed:`, err.message)
             }
         }
-    }, [dc])
+    }, [dc, setShowDebugOverlay])
 
     // Keep checkCommands for legacy/backup or direct REST usage
     const checkCommands = useCallback(async () => {
@@ -1444,6 +1486,7 @@ export default function PlayerPage() {
             if (data.up_to_date) {
                 console.log(`[Player] Content ${data.version} is up to date. Keep loop playing.`)
                 setOffline(false)
+                setLastSyncTime(new Date().toLocaleTimeString())
                 return true
             }
 
@@ -1477,6 +1520,7 @@ export default function PlayerPage() {
                 win.AndroidHealth.setStoreInfo(data.device?.store_id || null, data.device?.store_name || null)
             }
             addRemoteLog(`Manifest Loaded (v${newVersion})`)
+            setLastSyncTime(new Date().toLocaleTimeString())
             return true
         } catch (err: any) {
             const msg: string = (err.message || '').toLowerCase()
@@ -1938,20 +1982,31 @@ export default function PlayerPage() {
                         region={reg}
                         items={regionItems}
                         assets={manifest.assets}
+                        showDebug={showDebugOverlay}
+                        deviceCode={dc}
                     />
                 )
             })}
 
-
-
             <AdminPanel />
 
             {/* Invisible 60×60 tap zone — top-right corner triggers admin panel */}
+            {/* Admin Tap Zone (Top-Left) */}
             <div
                 onClick={handleCornerTap}
                 style={{
                     position: 'fixed', top: 0, left: 0,
-                    width: 60, height: 60, zIndex: 99998,
+                    width: 60, height: 60, zIndex: 99999,
+                    cursor: 'default',
+                }}
+            />
+
+            {/* Debug Tap Zone (Top-Right) */}
+            <div
+                onClick={handleDebugCornerTap}
+                style={{
+                    position: 'fixed', top: 0, right: 0,
+                    width: 60, height: 60, zIndex: 99999,
                     cursor: 'default',
                 }}
             />
@@ -1999,6 +2054,35 @@ export default function PlayerPage() {
 
             {/* Bottom bar on top of content - hidden by default unless diagnostics active */}
             {showDiagnostics && <BottomBar device_code={dc} version={version} offline={offline} />}
+
+            {/* NEW: Debug Overlay (Bottom-Right) */}
+            {showDebugOverlay && (
+                <div style={{
+                    position: 'fixed', bottom: 10, right: 10, zIndex: 100000,
+                    background: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(10px)',
+                    border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8,
+                    padding: '8px 12px', minWidth: 180, pointerEvents: 'none',
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+                }}>
+                    <div style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', marginBottom: 6, paddingBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.6rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>📡 Debug Info</span>
+                        <span style={{ fontSize: '0.6rem', color: offline ? '#ef4444' : '#22c55e', fontWeight: 700 }}>{offline ? 'OFFLINE' : 'ONLINE'}</span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'auto auto', gap: '4px 12px', fontSize: '10px', fontFamily: 'monospace' }}>
+                        <span style={{ color: '#64748b' }}>Last Sync:</span>
+                        <span style={{ color: '#f1f5f9', textAlign: 'right' }}>{lastSyncTime}</span>
+                        <span style={{ color: '#64748b' }}>Media:</span>
+                        <span style={{ color: '#f1f5f9', textAlign: 'right' }}>{manifest?.assets?.length || 0} assets</span>
+                        <span style={{ color: '#64748b' }}>Env/UA:</span>
+                        <span style={{ color: '#f1f5f9', textAlign: 'right' }}>Signage Web-V1</span>
+                    </div>
+                    {remoteLogs.length > 0 && remoteLogs[0].type === 'error' && (
+                        <div style={{ marginTop: 6, paddingTop: 4, borderTop: '1px solid rgba(255,255,255,0.05)', color: '#ef4444', fontSize: '9px', fontStyle: 'italic' }}>
+                            ⚠ {remoteLogs[0].msg}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Sync Overlay removed as per user request to avoid playback jitter/noise */}
 

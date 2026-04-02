@@ -451,6 +451,20 @@ export default function DevicesPage() {
         }
     }
 
+    const handleToggleDebug = async (deviceId: string, deviceCode: string) => {
+        try {
+            const { error } = await supabase.from('device_commands').insert({
+                device_id: deviceId,
+                command: 'TOGGLE_DEBUG',
+                status: 'PENDING'
+            })
+            if (error) throw error
+            toast.success(`Debug overlay toggle requested for ${deviceCode}`)
+        } catch (err: any) {
+            toast.error(`Failed to request debug toggle: ${err.message}`)
+        }
+    }
+
     const handleScreenshot = async (deviceId: string, deviceCode: string) => {
         try {
             const { data, error } = await supabase.from('device_commands').insert({
@@ -999,13 +1013,23 @@ export default function DevicesPage() {
                     device={selectedHealthDevice}
                     heartbeat={heartbeats[selectedHealthDevice.device_code]}
                     onClose={() => setSelectedHealthDevice(null)}
+                    onToggleDebug={() => handleToggleDebug(selectedHealthDevice.id, selectedHealthDevice.device_code)}
+                    onScreenshot={() => handleScreenshot(selectedHealthDevice.id, selectedHealthDevice.device_code)}
+                    onReload={() => handleCheckUpdate(selectedHealthDevice.id, selectedHealthDevice.device_code)}
                 />
             )}
         </div>
     )
 }
 
-function DeviceHealthModal({ device, heartbeat, onClose }: { device: Device, heartbeat?: DeviceHeartbeat, onClose: () => void }) {
+function DeviceHealthModal({ device, heartbeat, onClose, onToggleDebug, onScreenshot, onReload }: {
+    device: Device,
+    heartbeat?: DeviceHeartbeat,
+    onClose: () => void,
+    onToggleDebug: () => void,
+    onScreenshot: () => void,
+    onReload: () => void
+}) {
     if (!device) return null;
     const meta = (heartbeat?.meta as any) || {};
 
@@ -1084,8 +1108,19 @@ function DeviceHealthModal({ device, heartbeat, onClose }: { device: Device, hea
                     </table>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
-                    <button className="btn-primary" onClick={onClose}>Close Diagnostics</button>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ display: 'flex', gap: '0.75rem' }}>
+                        <button className="btn-secondary" onClick={onToggleDebug} style={{ fontSize: '0.75rem', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <Activity size={14} /> Toggle Debug Overlay
+                        </button>
+                        <button className="btn-secondary" onClick={onScreenshot} style={{ fontSize: '0.75rem', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <Camera size={14} /> Force Screenshot
+                        </button>
+                        <button className="btn-secondary" onClick={onReload} style={{ fontSize: '0.75rem', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <RefreshCw size={14} /> Check for Updates
+                        </button>
+                    </div>
+                    <button className="btn-primary" onClick={onClose}>Close</button>
                 </div>
             </div>
         </Modal>
