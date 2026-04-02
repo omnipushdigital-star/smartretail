@@ -30,11 +30,19 @@
 | **3.2** | **Update & Status Metrics** | Integrate `lastSyncTime`, `playlistItemCount`, and the error tail log. | 1 hr | Completed |
 | **3.3** | **UI/UX Refinement** | Style the overlay for maximum readability on 1080p retail screens. | 1 hr | Completed |
 
+## Milestone 4: Infrastructure & Architecture Alignment
+
+**Goal:** Codify the technical vision and establish long-term architectural patterns.
+
+| Phase | Title | Description | Est. Time | Status |
+|-------|-------|-------------|-----------|--------|
+| **4.1** | **Define System Architecture Intent** | Research and document the formal architectural intent, patterns, and scaling strategy. | 2 hrs | Completed |
+
 ## Operational Status
 
 - **Project Initialized:** 2026-04-02
-- **Completed Phases:** 100%
-- **Current Milestone:** Completed
+- **Completed Phases:** 92%
+- **Current Milestone:** Milestone 4
 
 ---
 *Last updated: 2026-04-02*
