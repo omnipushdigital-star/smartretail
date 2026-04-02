@@ -15,10 +15,10 @@ A critical observability update for the **Omnipush Smart Retail Player** and **C
 - ✓ [Existing] RLS-Bypass Heartbeat ACKing (Stability fixed in master)
 
 ### Active
-- [ ] Remote Debug Toggle (CMS Devices page)
-- [ ] Local Debug Toggle (Mouse/Tap hidden pattern on player)
-- [ ] Ephemeral State (Reset debug view to 0/False on reboot)
-- [ ] Metrics Overhaul (Last sync time, Network status, Playlist count, Tail error log)
+- ✓ Remote Debug Toggle (CMS Devices page)
+- ✓ Local Debug Toggle (Mouse/Tap hidden pattern on player)
+- ✓ Ephemeral State (Reset debug view to 0/False on reboot)
+- ✓ Metrics Overhaul (Last sync time, Network status, Playlist count, Tail error log)
 
 ### Out of Scope
 - [Persistent Debug Logs] - This project focus is real-time overlay, not historical log aggregation.
@@ -27,8 +27,8 @@ A critical observability update for the **Omnipush Smart Retail Player** and **C
 ## Key Decisions
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Session-only Persistence | Security/UX: We don't want a screen to accidentally stay in "Debug mode" for days after a technician finishes. Rebooting should always restore the perfect retail view. | Pending |
-| Multi-Channel Toggle | Both local and remote. In remote areas, it might be hard to access the CMS; in physical kiosks, local access via mouse/tap is better. | Pending |
+| Session-only Persistence | Security/UX: We don't want a screen to accidentally stay in "Debug mode" for days after a technician finishes. Rebooting should always restore the perfect retail view. | **Implemented** |
+| Multi-Channel Toggle | Both local and remote. In remote areas, it might be hard to access the CMS; in physical kiosks, local access via mouse/tap is better. | **Implemented** |
 
 ## Evolution
 This document evolves during phase transitions and milestone boundaries.
