@@ -178,7 +178,7 @@ export default function DisplayMenu() {
                     </div>
 
                     <div className="mt-12 text-center pt-8 border-t border-white/5">
-                        <p className="text-xs text-surface-600 uppercase tracking-[0.3em] font-medium">Tax included · Premium Ingredients · Authentic Recipe</p>
+                        <p className="text-xs text-surface-600 uppercase tracking-[0.3em] font-medium">Tax Included • Premium Ingredients • Authentic Recipe</p>
                     </div>
                 </div>
 

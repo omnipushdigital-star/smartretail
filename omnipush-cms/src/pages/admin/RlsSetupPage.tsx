@@ -538,6 +538,32 @@ create policy "commands_update" on public.device_commands for update to authenti
 create policy "commands_delete" on public.device_commands for delete to authenticated using (exists (select 1 from public.devices d where d.id = device_id and public.is_tenant_member(d.tenant_id)));
 `
 
+const SECTION_G_SQL = `-- ╔══════════════════════════════════════════════════════════════╗
+-- ║  SECTION G — Public Menu Access (Signage & QR)               ║
+-- ╚══════════════════════════════════════════════════════════════╝
+-- Menus and basic branding need to be readable by anonymous users 
+-- (the 'anon' role) so that player screens (iframes) and QR codes work.
+
+-- 1. Allow anyone to read Menus metadata
+drop policy if exists "menus_anon_select" on public.menus;
+create policy "menus_anon_select" on public.menus for select to public using (true);
+
+-- 2. Allow anyone to read Menu Categories
+drop policy if exists "menu_categories_anon_select" on public.menu_categories;
+create policy "menu_categories_anon_select" on public.menu_categories for select to public using (true);
+
+-- 3. Allow anyone to read Menu Items
+drop policy if exists "menu_items_anon_select" on public.menu_items;
+create policy "menu_items_anon_select" on public.menu_items for select to public using (true);
+
+-- 4. Allow anyone to read basic Tenant branding (name, settings)
+-- Note: This is read-only and restricted to the public role.
+drop policy if exists "tenants_public_branding_select" on public.tenants;
+create policy "tenants_public_branding_select"
+on public.tenants for select
+to public
+using (active = true);`
+
 const SECTION_D_SQL = `-- ╔══════════════════════════════════════════════════════════════╗
 -- ║  SECTION D — RLS for device_heartbeats (read-only for admins)║
 -- ╚══════════════════════════════════════════════════════════════╝
@@ -701,6 +727,13 @@ const BLOCKS = [
     label: 'Section F — Verification Queries',
     description: 'Run these after applying all sections to confirm RLS is active and your user can access their tenant data.',
     sql: SECTION_F_SQL,
+  },
+  {
+    id: 'G',
+    color: '#ec4899',
+    label: 'Section G — Public Menu Access (Optional)',
+    description: 'Grant anonymous read access to menus. REQUIRED for Digital Menus to show on player screens and via QR codes.',
+    sql: SECTION_G_SQL,
   },
 ]
 

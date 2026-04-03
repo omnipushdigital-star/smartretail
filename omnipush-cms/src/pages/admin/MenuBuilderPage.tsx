@@ -720,7 +720,7 @@ export default function MenuBuilderPage() {
                                                 </div>
 
                                                 <div className="mt-8 text-center">
-                                                    <p className="text-[7px] text-surface-600 uppercase tracking-widest">Tax included · Ask staff for allergen info</p>
+                                                    <p className="text-[7px] text-surface-600 uppercase tracking-widest">Tax included • Ask staff for allergen info</p>
                                                 </div>
                                             </div>
 

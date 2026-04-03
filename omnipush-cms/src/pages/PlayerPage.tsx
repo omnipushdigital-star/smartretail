@@ -830,18 +830,45 @@ function PlaybackEngine({ items, assets, region, showDebug, deviceCode }: Playba
     )
 }
 
+const bgStyle: React.CSSProperties = {
+    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+    background: 'linear-gradient(135deg, #020617 0%, #0f172a 60%, #450a0a 100%)',
+    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+    color: 'white', overflow: 'hidden',
+}
+
 // ─── UI States ────────────────────────────────────────────────────────────────
 
-function LoadingState({ device_code, tenantId }: { device_code: string; tenantId?: string }) {
+function LoadingState({ device_code, tenantId, phase }: { device_code: string; tenantId?: string; phase?: string }) {
     return (
         <div style={bgStyle}>
             <div style={{ textAlign: 'center', zIndex: 1, position: 'relative' }}>
                 <Logo tenantId={tenantId} />
                 <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.1)', borderTopColor: '#00daf3', animation: 'spin 0.8s linear infinite', margin: '2.5rem auto 1rem' }} />
                 <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.8rem', letterSpacing: '0.05em' }}>Connecting to Cloud…</div>
-                <div style={{ fontFamily: 'monospace', color: 'rgba(255,255,255,0.2)', fontSize: '0.7rem', marginTop: '0.5rem' }}>{device_code}</div>
+                <div style={{ fontFamily: 'monospace', color: 'rgba(255,255,255,0.2)', fontSize: '0.7rem', marginTop: '0.5rem' }}>
+                    {device_code} {phase && `· Phase: ${phase}`}
+                </div>
                 <div style={{ marginTop: '2rem' }}>
                     <LiveClock />
+                </div>
+                <div style={{ marginTop: '3rem' }}>
+                    <button
+                        onClick={() => {
+                            localStorage.clear();
+                            window.location.reload();
+                        }}
+                        style={{
+                            background: 'rgba(255,255,255,0.05)',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            color: 'rgba(255,255,255,0.3)',
+                            padding: '0.5rem 1rem',
+                            borderRadius: '8px',
+                            fontSize: '0.7rem'
+                        }}
+                    >
+                        Force Flush & Reload
+                    </button>
                 </div>
             </div>
         </div>
@@ -948,13 +975,6 @@ function ErrorState({ device_code, tenantId, msg, onRetry }: { device_code: stri
 
 // ─── Shared UI helpers ───────────────────────────────────────────────────────
 
-const bgStyle: React.CSSProperties = {
-    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-    background: 'linear-gradient(135deg, #020617 0%, #0f172a 60%, #450a0a 100%)',
-    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-    color: 'white', overflow: 'hidden',
-}
-
 function AmbientOrbs() {
     return (
         <>
@@ -1048,12 +1068,13 @@ console.log = (...args) => {
             return String(a);
         }
     }).join(' ')
-    const log = `[${new Date().toLocaleTimeString()}] ${msg}`
-    consoleLogs.push(log)
+    const logStr = `[${new Date().toLocaleTimeString()}] ${msg}`
+    consoleLogs.push(logStr)
     if (consoleLogs.length > MAX_LOGS) consoleLogs.shift()
     originalLog.apply(console, args)
 
     const win = window as any
+    if (win.addRemoteLog) win.addRemoteLog(msg, 'info')
     if (win.AndroidHealth?.logLine) {
         win.AndroidHealth.logLine(msg)
     }
@@ -1067,12 +1088,13 @@ console.error = (...args) => {
             return String(a);
         }
     }).join(' ')
-    const log = `[${new Date().toLocaleTimeString()}] ERROR: ${msg}`
-    consoleLogs.push(log)
+    const logStr = `[${new Date().toLocaleTimeString()}] ERROR: ${msg}`
+    consoleLogs.push(logStr)
     if (consoleLogs.length > MAX_LOGS) consoleLogs.shift()
     originalError.apply(console, args)
 
     const win = window as any
+    if (win.addRemoteLog) win.addRemoteLog(msg, 'error')
     if (win.AndroidHealth?.reportError) {
         win.AndroidHealth.reportError(msg)
     }
@@ -1086,12 +1108,13 @@ console.warn = (...args) => {
             return String(a);
         }
     }).join(' ')
-    const log = `[${new Date().toLocaleTimeString()}] WARN: ${msg}`
-    consoleLogs.push(log)
+    const logStr = `[${new Date().toLocaleTimeString()}] WARN: ${msg}`
+    consoleLogs.push(logStr)
     if (consoleLogs.length > MAX_LOGS) consoleLogs.shift()
     originalWarn.apply(console, args)
 
     const win = window as any
+    if (win.addRemoteLog) win.addRemoteLog(msg, 'info')
     if (win.AndroidHealth?.logLine) {
         win.AndroidHealth.logLine(`⚠️ WARN: ${msg}`)
     }
@@ -1133,7 +1156,7 @@ export default function PlayerPage() {
             msg,
             type,
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-        }, ...prev].slice(0, 10))
+        }, ...prev].slice(0, 50)) // Show more logs on screen
     }, [])
 
     useEffect(() => {
@@ -1521,6 +1544,7 @@ export default function PlayerPage() {
 
         // Update manifest with blob URLs
         setManifest(prev => prev ? { ...prev, assets: updatedAssets } : null)
+        console.log(`[Cache] Sync Completed. ${completed}/${updatedAssets.length} assets ready for offline play.`)
         setTimeout(() => setSyncProgress(null), 2000)
     }, [])
 
@@ -1571,7 +1595,12 @@ export default function PlayerPage() {
             }
 
             // ── Regular Load ──
-            // Pre-hydrate any assets we already have in cache to avoid black-flicker during re-sync
+            // IMPORTANT: Save the raw data (with remote URLs) to localStorage first
+            // This ensures that on reboot, we can correctly hydrate NEW session-specific blob URLs.
+            const dataToSave = { ...data }
+            localStorage.setItem(manifestKey(dc), JSON.stringify(dataToSave))
+
+            // Now hydrate for current active session
             if (data.assets) {
                 const hydrated = await hydrateAssetsFromCache(data.assets)
                 data.assets = hydrated
@@ -1580,7 +1609,6 @@ export default function PlayerPage() {
             setManifest(data)
             setVersion(newVersion)
             versionRef.current = newVersion
-            localStorage.setItem(manifestKey(dc), JSON.stringify(data))
             setOffline(false)
 
             if (data.assets) syncAssets(data.assets)
@@ -1623,17 +1651,25 @@ export default function PlayerPage() {
             if (cached) {
                 try {
                     const c = JSON.parse(cached)
-                    const hydrated = await hydrateAssetsFromCache(c.assets)
-                    c.assets = hydrated
-                    setManifest(c)
-                    if (c.resolved?.version) {
-                        setVersion(c.resolved.version)
-                        versionRef.current = c.resolved.version
+                    const newCachedVersion = c.resolved?.version
+
+                    // ONLY re-set and re-hydrate manifest if we don't have one, or version changed.
+                    // This prevents constant loop restarts every 30s while offline.
+                    if (!manifest || version !== newCachedVersion) {
+                        console.log(`[Offline] Hydrating cached manifest (v${newCachedVersion})...`)
+                        const hydrated = await hydrateAssetsFromCache(c.assets)
+                        c.assets = hydrated
+                        setManifest(c)
+                        if (newCachedVersion) {
+                            setVersion(newCachedVersion)
+                            versionRef.current = newCachedVersion
+                        }
                     }
+
                     setOffline(true)
-                    addRemoteLog(`Network Fail - Loading Offline Cache`, 'error')
+                    addRemoteLog(`OFFLINE Fallback: ${newCachedVersion ? `(v${newCachedVersion})` : 'Using Cache'}`, 'info')
                     return true
-                } catch { /* ignore cache fail */ }
+                } catch { /* ignore parse errors */ }
             }
 
             setErrorMsg(err.message || 'Fetch failed')
@@ -1765,6 +1801,21 @@ export default function PlayerPage() {
             setSecret(stored)
             secretRef.current = stored
 
+            // NEW: Immediately try to hydrate manifest from localStorage to avoid "Initializing" screen
+            const cachedManifest = localStorage.getItem(manifestKey(dc))
+            let preLoaded = false
+            if (cachedManifest) {
+                try {
+                    const parsed = JSON.parse(cachedManifest)
+                    setManifest(parsed)
+                    setVersion(parsed.resolved?.version || null)
+                    versionRef.current = parsed.resolved?.version || null
+                    preLoaded = true
+                } catch (e) {
+                    console.warn('[Init] Failed to pre-load manifest from cache:', e)
+                }
+            }
+
             // --- SYNC TO NATIVE (Backwards compatibility / Auto-recovery) ---
             const win = window as any
             if (win.AndroidHealth?.syncSecret) {
@@ -1775,7 +1826,11 @@ export default function PlayerPage() {
             setPhase('loading')
             fetchManifest(stored).then(ok => {
                 if (ok) setPhase(p => p === 'standby' ? 'standby' : 'playing')
-                else setPhase('error')
+                else if (!preLoaded) setPhase('error') // Only go to error if we don't have a cached manifest either
+                else {
+                    setPhase('playing') // Fallback to cached playing even if fetch failed
+                    setOffline(true)
+                }
             })
         } else {
             setPhase('pairing')
@@ -1833,7 +1888,7 @@ export default function PlayerPage() {
             if (manifestTimerRef.current) clearInterval(manifestTimerRef.current)
             if (hbTimerRef.current) clearInterval(hbTimerRef.current)
         }
-    }, [phase, !!secret, manifest?.poll_seconds]) // Stable dependencies
+    }, [phase, !!secret, manifest?.poll_seconds, fetchManifest]) // Stable dependencies
 
     // ── Handle secret submission ──
     const handleSecret = async (s: string) => {
@@ -2014,7 +2069,7 @@ export default function PlayerPage() {
 
 
     // Multi-Region Rendering
-    if (!manifest) return <LoadingState device_code={dc} />
+    if (!manifest) return <LoadingState device_code={dc} phase={phase} />
 
     const regions = manifest.layout?.regions || [{ id: 'full', x: 0, y: 0, width: 100, height: 100 }]
     const hasAnyContent = Object.values(manifest.region_playlists || {}).some(items => items.length > 0)
