@@ -10,6 +10,16 @@ import toast from 'react-hot-toast'
 const PAGE_SIZE = 10
 const TIMEZONES = ['UTC', 'Asia/Kolkata', 'America/New_York', 'America/Chicago', 'America/Los_Angeles', 'Europe/London', 'Asia/Dubai', 'Australia/Sydney']
 const emptyForm = { code: '', name: '', timezone: 'UTC', active: true }
+const timeAgo = (dateStr?: string) => {
+    if (!dateStr) return null
+    const now = Date.now()
+    const then = new Date(dateStr).getTime()
+    const diff = Math.floor((now - then) / 1000)
+    if (diff < 60) return 'just now'
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+    return new Date(dateStr).toLocaleDateString()
+}
 
 export default function StoresPage() {
     const [stores, setStores] = useState<Store[]>([])
@@ -104,7 +114,7 @@ export default function StoresPage() {
             <div className="card" style={{ marginBottom: '1rem', padding: '1rem' }}>
                 <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
                     <div style={{ position: 'relative', flex: '1 1 240px' }}>
-                        <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+                        <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-2)' }} />
                         <input id="store-search" type="text" className="input-field" placeholder="Search stores..."
                             value={search} onChange={e => { setSearch(e.target.value); setPage(1) }}
                             style={{ paddingLeft: '2rem' }} />
@@ -120,7 +130,7 @@ export default function StoresPage() {
 
             <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
                 {loading ? (
-                    <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}><Loader2 size={24} className="animate-spin" style={{ margin: '0 auto' }} /></div>
+                    <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--color-text-2)' }}><Loader2 size={24} className="animate-spin" style={{ margin: '0 auto' }} /></div>
                 ) : paginated.length === 0 ? (
                     <div className="empty-state">
                         <StoreIcon size={40} />
@@ -146,9 +156,9 @@ export default function StoresPage() {
                                         <tr key={s.id}>
                                             <td><span style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--color-text-primary)' }}>{s.code}</span></td>
                                             <td style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}>{s.name}</td>
-                                            <td style={{ color: 'var(--color-surface-400)', fontSize: '0.8125rem' }}>{s.timezone}</td>
-                                            <td style={{ color: 'var(--color-surface-500)', fontSize: '0.8125rem' }}>
-                                                {s.updated_at ? new Date(s.updated_at).toLocaleDateString() : '—'}
+                                            <td style={{ color: 'var(--color-text-2)', fontSize: '0.8125rem' }}>{s.timezone}</td>
+                                            <td style={{ color: 'var(--color-text-2)', fontSize: '0.8125rem' }}>
+                                                {timeAgo(s.updated_at || s.created_at)}
                                             </td>
                                             <td>
                                                 <span className={`badge ${s.active ? 'badge-green' : 'badge-gray'}`}>

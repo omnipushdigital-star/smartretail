@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react'
-import { Plus, Edit2, Trash2, Layout as LayoutIcon, Loader2 } from 'lucide-react'
+import { Plus, Edit2, Trash2, Layout as LayoutIcon, Loader2, Send, CheckCircle, Smartphone } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useTenant } from '../../contexts/TenantContext'
-import { Layout, LayoutTemplate, Playlist } from '../../types'
+import { Layout, LayoutTemplate, Playlist, Role } from '../../types'
 import Modal from '../../components/ui/Modal'
 import Pagination from '../../components/ui/Pagination'
 import toast from 'react-hot-toast'
@@ -22,19 +22,24 @@ export default function LayoutsPage() {
     const [form, setForm] = useState({ name: '', template_id: '' })
     const [detailPlaylists, setDetailPlaylists] = useState<any[]>([])
     const [detailPlaylistId, setDetailPlaylistId] = useState('')
+    const [roles, setRoles] = useState<Role[]>([])
+    const [showQuickPublish, setShowQuickPublish] = useState<Layout | null>(null)
+    const [publishing, setPublishing] = useState(false)
     const [saving, setSaving] = useState(false)
 
     const loadAll = async () => {
         if (!currentTenantId) return
         setLoading(true)
-        const [lRes, tRes, pRes] = await Promise.all([
+        const [lRes, tRes, pRes, rRes] = await Promise.all([
             supabase.from('layouts').select('*, template:layout_templates(id,name,regions)').eq('tenant_id', currentTenantId).order('name'),
             supabase.from('layout_templates').select('*').order('name'),
             supabase.from('playlists').select('*').eq('tenant_id', currentTenantId).order('name'),
+            supabase.from('roles').select('*').eq('tenant_id', currentTenantId).order('name'),
         ])
         setLayouts(lRes.data || [])
         setTemplates(tRes.data || [])
         setPlaylists(pRes.data || [])
+        setRoles(rRes.data || [])
         setLoading(false)
     }
 
@@ -136,6 +141,67 @@ export default function LayoutsPage() {
         }
     }
 
+    const handleQuickPublish = async (roleId: string) => {
+        if (!showQuickPublish || !currentTenantId) return
+        setPublishing(true)
+        const loadingToast = toast.loading('Initiating Quick Publish...')
+
+        try {
+            const version = `auto-v${new Date().getTime().toString().slice(-6)}`
+            const layout = showQuickPublish
+
+            // 1. Create Bundle
+            const { data: bundle, error: bErr } = await supabase
+                .from('bundles')
+                .insert({
+                    tenant_id: currentTenantId,
+                    version: version,
+                    notes: `Quick Publish from Layout "${layout.name}"`
+                })
+                .select('id')
+                .single()
+            if (bErr) throw bErr
+
+            // 2. Snapshot Media
+            const { data: regionMaps } = await supabase.from('layout_region_playlists').select('playlist_id').eq('layout_id', layout.id)
+            const playlistIds = (regionMaps || []).map((r: any) => r.playlist_id).filter(Boolean)
+            if (playlistIds.length > 0) {
+                const { data: items } = await supabase.from('playlist_items').select('media_id').in('playlist_id', playlistIds)
+                const mediaIds = [...new Set((items || []).map((i: any) => i.media_id).filter(Boolean))]
+                if (mediaIds.length > 0) {
+                    await supabase.from('bundle_files').insert(mediaIds.map(mid => ({ bundle_id: bundle.id, media_id: mid })))
+                }
+            }
+
+            // 3. Deactivate current active for this role
+            await supabase.from('layout_publications')
+                .update({ is_active: false })
+                .eq('tenant_id', currentTenantId)
+                .eq('is_active', true)
+                .eq('scope', 'GLOBAL')
+                .eq('role_id', roleId)
+
+            // 4. Insert Publication
+            const { error: pubErr } = await supabase.from('layout_publications').insert({
+                tenant_id: currentTenantId,
+                layout_id: layout.id,
+                bundle_id: bundle.id,
+                scope: 'GLOBAL',
+                role_id: roleId,
+                is_active: true,
+                published_at: new Date().toISOString()
+            })
+            if (pubErr) throw pubErr
+
+            toast.success(`Broadcasting update to all screens...`, { id: loadingToast })
+            setShowQuickPublish(null)
+        } catch (err: any) {
+            toast.error(`Quick Publish failed: ${err.message}`, { id: loadingToast })
+        } finally {
+            setPublishing(false)
+        }
+    }
+
     const paginated = layouts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
     return (
@@ -143,7 +209,7 @@ export default function LayoutsPage() {
             <div className="page-header">
                 <div>
                     <h1 className="page-title">Layouts</h1>
-                    <p className="page-subtitle">Combine templates + playlists to build display layouts</p>
+                    <p className="text-text-2 mt-2 text-lg">Combine templates + playlists to build display layouts</p>
                 </div>
                 <button id="create-layout-btn" className="btn-primary" onClick={openCreate}>
                     <Plus size={16} /> New Layout
@@ -173,10 +239,13 @@ export default function LayoutsPage() {
                                 <tbody>
                                     {paginated.map(l => (
                                         <tr key={l.id}>
-                                            <td>{l.name}</td>
-                                            <td>{(l as any).template?.name || '—'}</td>
+                                            <td className="text-text-1 font-bold">{l.name}</td>
+                                            <td className="text-text-2">{(l as any).template?.name || '—'}</td>
                                             <td>
                                                 <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                    <button onClick={() => setShowQuickPublish(l)} className="btn-primary" style={{ fontSize: '0.8125rem', padding: '0.375rem 0.75rem', gap: '0.4rem', border: 'none', background: 'var(--color-brand-600)', color: 'white' }}>
+                                                        <Send size={13} /> Quick Publish
+                                                    </button>
                                                     <button onClick={() => openDetail(l)} className="btn-secondary" style={{ fontSize: '0.8125rem', padding: '0.375rem 0.75rem' }}>
                                                         Assign Playlist
                                                     </button>
@@ -230,7 +299,7 @@ export default function LayoutsPage() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                         {detailPlaylists.map(r => (
                             <div key={r.id} className="form-group" style={{ marginBottom: 0 }}>
-                                <label className="label" style={{ fontSize: '0.75rem' }}>Region: <span style={{ color: '#7a8aff', fontFamily: 'monospace' }}>{r.region_id}</span></label>
+                                <label className="label" style={{ fontSize: '0.75rem' }}>Region: <span style={{ color: 'var(--color-brand-400)', fontFamily: 'monospace' }}>{r.region_id}</span></label>
                                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                                     <select
                                         className="input-field"
@@ -257,11 +326,56 @@ export default function LayoutsPage() {
                         <button
                             className="btn-secondary"
                             onClick={syncRegions}
-                            style={{ border: 'none', background: 'none', color: '#64748b', fontSize: '0.75rem', textDecoration: 'underline', padding: 0 }}
+                            style={{ border: 'none', background: 'none', color: 'var(--color-text-3)', fontSize: '0.75rem', textDecoration: 'underline', padding: 0 }}
                         >
                             Sync Regions from Template
                         </button>
                         <button className="btn-secondary" onClick={() => setShowDetail(null)}>Close</button>
+                    </div>
+                </Modal>
+            )}
+
+            {/* Quick Publish Modal */}
+            {showQuickPublish && (
+                <Modal title="Quick Publish Layout" onClose={() => setShowQuickPublish(null)}>
+                    <div className="mb-6">
+                        <div className="flex items-center gap-3 mb-4 p-4 bg-brand-500/5 rounded-2xl border border-brand-500/10">
+                            <LayoutIcon size={24} className="text-brand-500" />
+                            <div>
+                                <h4 className="text-sm font-bold text-text-1">{showQuickPublish.name}</h4>
+                                <p className="text-xs text-text-3">Auto-bundles media & pushes to all screens in selected role</p>
+                            </div>
+                        </div>
+
+                        <label className="label mb-2">Select Target Screen Role</label>
+                        <div className="grid grid-cols-1 gap-2">
+                            {roles.length === 0 ? (
+                                <p className="text-xs text-text-3 p-4 border border-dashed rounded-xl">No screen roles defined. Create roles first.</p>
+                            ) : roles.map(role => (
+                                <button
+                                    key={role.id}
+                                    onClick={() => handleQuickPublish(role.id)}
+                                    disabled={publishing}
+                                    className="flex items-center justify-between p-4 rounded-xl border border-slate-200 dark:border-white/5 bg-white dark:bg-surface-950/50 hover:border-brand-500 hover:bg-brand-500/5 transition-all text-left group"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded-lg bg-brand-500/10 flex items-center justify-center text-brand-500">
+                                            <Smartphone size={16} />
+                                        </div>
+                                        <div>
+                                            <span className="block text-sm font-bold text-text-1">{role.name}</span>
+                                            <span className="block text-[10px] text-text-3 font-mono">{role.key}</span>
+                                        </div>
+                                    </div>
+                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <Send size={14} className="text-brand-500" />
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="flex justify-end pt-4 border-t border-slate-200 dark:border-white/10">
+                        <button className="btn-secondary" onClick={() => setShowQuickPublish(null)}>Cancel</button>
                     </div>
                 </Modal>
             )}

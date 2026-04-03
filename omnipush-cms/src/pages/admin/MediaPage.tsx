@@ -300,7 +300,7 @@ export default function MediaPage() {
 
                 {/* LEFT SIDEBAR — Type Filter */}
                 <div style={{ width: 160, flexShrink: 0 }}>
-                    <div className="card" style={{ padding: '0.875rem' }}>
+                    <div className="card" style={{ padding: '0.875rem', marginBottom: '1rem' }}>
                         <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 700, letterSpacing: '0.08em', marginBottom: '0.625rem' }}>
                             Filter by Type
                         </div>
@@ -328,7 +328,25 @@ export default function MediaPage() {
                                 {icon} {label}
                             </button>
                         ))}
+                    </div>
 
+                    <div className="card" style={{ padding: '0.875rem', marginBottom: '1rem' }}>
+                        <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 700, letterSpacing: '0.08em', marginBottom: '0.625rem' }}>
+                            Folders (Tags)
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', padding: '0.5rem', background: 'var(--color-surface-900)', borderRadius: 6, border: '1px dashed var(--color-surface-800)', textAlign: 'center' }}>
+                            Grouping available in Stage 3
+                        </div>
+                    </div>
+
+                    <div className="card" style={{ padding: '0.875rem' }}>
+                        <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 700, letterSpacing: '0.08em', marginBottom: '0.625rem' }}>
+                            Library Stats
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: '#64748b', lineHeight: 1.8 }}>
+                            <div>Total size: <strong style={{ color: 'var(--color-text-secondary)' }}>{formatBytes(assets.reduce((sum, a) => sum + (a.bytes || 0), 0))}</strong></div>
+                            <div>Storage usage: <strong style={{ color: 'var(--color-brand-400)' }}>{(assets.reduce((sum, a) => sum + (a.bytes || 0), 0) / (1024 * 1024 * 1024)).toFixed(2)} GB</strong></div>
+                        </div>
                         {/* Asset counts */}
                         <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--color-surface-800)', fontSize: '0.7rem', color: '#64748b', lineHeight: 1.8 }}>
                             <div>Total: <strong style={{ color: 'var(--color-text-secondary)' }}>{assets.length}</strong></div>
@@ -385,10 +403,10 @@ export default function MediaPage() {
                                         </div>
                                         <div style={{ padding: '0.75rem' }}>
                                             <div style={{ fontWeight: 500, fontSize: '0.875rem', color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.name}</div>
-                                            <div style={{ fontSize: '0.7rem', color: '#475569', marginTop: '0.2rem' }}>
+                                            <div style={{ fontSize: '0.7rem', color: 'var(--color-text-3)', marginTop: '0.2rem' }}>
                                                 Updated {timeAgo((a as any).updated_at || (a as any).created_at)}
                                             </div>
-                                            <div style={{ fontSize: '0.75rem', color: 'var(--color-surface-500)', marginTop: '0.35rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-2)', marginTop: '0.35rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <span>{formatBytes(a.bytes)}</span>
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleDelete(a) }}

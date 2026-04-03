@@ -224,9 +224,9 @@ export default function PublishPage() {
     }
 
     const scopeTarget = (pub: ActivePub) => {
-        if (pub.scope === 'GLOBAL') return <span style={{ color: '#94a3b8' }}>All stores</span>
-        if (pub.scope === 'STORE') return <span style={{ color: '#fde68a' }}>{pub.store?.name || pub.store_id}</span>
-        return <span style={{ color: '#86efac' }}>{pub.device?.device_code} {pub.device?.display_name ? `(${pub.device.display_name})` : ''}</span>
+        if (pub.scope === 'GLOBAL') return <span style={{ color: 'var(--color-text-3)' }}>All stores</span>
+        if (pub.scope === 'STORE') return <span style={{ color: 'var(--color-warning)' }}>{pub.store?.name || pub.store_id}</span>
+        return <span style={{ color: 'var(--color-success)' }}>{pub.device?.device_code} {pub.device?.display_name ? `(${pub.device.display_name})` : ''}</span>
     }
 
     return (
@@ -251,21 +251,21 @@ export default function PublishPage() {
             </div>
 
             {/* Override hierarchy note */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.25rem', marginBottom: '1.25rem', background: 'rgba(90,100,246,0.05)', border: '1px solid rgba(90,100,246,0.15)', borderRadius: 10, fontSize: '0.8125rem' }}>
-                <span style={{ color: '#64748b' }}>Override priority:</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.25rem', marginBottom: '1.25rem', background: 'rgba(var(--color-brand-rgb), 0.05)', border: '1px solid rgba(var(--color-brand-rgb), 0.15)', borderRadius: 10, fontSize: '0.8125rem' }}>
+                <span style={{ color: 'var(--color-text-3)' }}>Override priority:</span>
                 <span className="badge badge-green">DEVICE</span>
-                <span style={{ color: '#475569' }}>›</span>
+                <span style={{ color: 'var(--color-text-3)' }}>›</span>
                 <span className="badge badge-gray">STORE</span>
-                <span style={{ color: '#475569' }}>›</span>
+                <span style={{ color: 'var(--color-text-3)' }}>›</span>
                 <span className="badge badge-blue">GLOBAL</span>
-                <span style={{ color: '#64748b', marginLeft: '0.25rem' }}>— per (tenant, role)</span>
+                <span style={{ color: 'var(--color-text-3)', marginLeft: '0.25rem' }}>— per (tenant, role)</span>
             </div>
 
             {/* Active Publications */}
             <div className="card" style={{ marginBottom: '1.5rem', padding: 0, overflow: 'hidden' }}>
-                <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <FileCheck size={16} color="#22c55e" />
-                    <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#f1f5f9' }}>Active Publications</h2>
+                <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--color-surface-800)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <FileCheck size={16} color="var(--color-success)" />
+                    <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: 'var(--color-text-1)' }}>Active Publications</h2>
                 </div>
                 {loading ? (
                     <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}><Loader2 size={20} style={{ margin: '0 auto' }} /></div>
@@ -290,7 +290,7 @@ export default function PublishPage() {
                                     <tr key={p.id}>
                                         <td>
                                             <span style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                                                {scopeIcon(p.scope)} <span style={{ fontSize: '0.8125rem', color: '#94a3b8' }}>{p.scope}</span>
+                                                {scopeIcon(p.scope)} <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-2)' }}>{p.scope}</span>
                                             </span>
                                         </td>
                                         <td>
@@ -301,7 +301,7 @@ export default function PublishPage() {
                                         <td>{scopeTarget(p)}</td>
                                         <td style={{ fontWeight: 500 }}>{p.layout?.name || '—'}</td>
                                         <td><span className="badge badge-green">{p.bundle?.version || '—'}</span></td>
-                                        <td style={{ color: '#64748b', fontSize: '0.8125rem' }}>
+                                        <td style={{ color: 'var(--color-text-3)', fontSize: '0.8125rem' }}>
                                             {p.published_at ? formatDistanceToNow(new Date(p.published_at), { addSuffix: true }) : '—'}
                                         </td>
                                         <td>
@@ -319,9 +319,9 @@ export default function PublishPage() {
 
             {/* Bundles overview */}
             <div>
-                <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#f1f5f9', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', justifyContent: 'space-between' }}>
+                <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-text-1)', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', justifyContent: 'space-between' }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <Package size={15} color="#7a8aff" /> All Bundles
+                        <Package size={15} color="var(--color-brand-400)" /> All Bundles
                     </span>
                     <button
                         onClick={() => navigate('/admin/bundles')}
@@ -340,8 +340,8 @@ export default function PublishPage() {
                         {bundles.slice(0, 8).map(b => (
                             <div key={b.id} className="card" style={{ padding: '0.75rem 1.25rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
                                 <span className="badge badge-blue" style={{ fontWeight: 700 }}>{b.version}</span>
-                                <span style={{ color: '#64748b', fontSize: '0.8125rem', flex: 1 }}>{b.notes || 'No notes'}</span>
-                                <span style={{ color: '#475569', fontSize: '0.75rem' }}>{b.created_at ? new Date(b.created_at).toLocaleDateString() : ''}</span>
+                                <span style={{ color: 'var(--color-text-2)', fontSize: '0.8125rem', flex: 1 }}>{b.notes || 'No notes'}</span>
+                                <span style={{ color: 'var(--color-text-3)', fontSize: '0.75rem' }}>{b.created_at ? new Date(b.created_at).toLocaleDateString() : ''}</span>
                             </div>
                         ))}
                     </div>
@@ -420,8 +420,8 @@ export default function PublishPage() {
                             </select>
                         </div>
 
-                        <div style={{ padding: '0.75rem 1rem', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 8, marginBottom: '1rem', fontSize: '0.8125rem', color: '#92400e' }}>
-                            ⚠️ <span style={{ color: '#94a3b8' }}>Publishing will <strong style={{ color: '#fbbf24' }}>deactivate the current active publication</strong> for the same (tenant, scope, role{form.scope !== 'GLOBAL' ? ', target' : ''}) automatically.</span>
+                        <div style={{ padding: '0.75rem 1rem', background: 'rgba(var(--color-warning-rgb), 0.06)', border: '1px solid rgba(var(--color-warning-rgb), 0.15)', borderRadius: 8, marginBottom: '1rem', fontSize: '0.8125rem', color: 'var(--color-warning)' }}>
+                            ⚠️ <span style={{ color: 'var(--color-text-2)' }}>Publishing will <strong style={{ color: 'var(--color-warning)' }}>deactivate the current active publication</strong> for the same target automatically.</span>
                         </div>
 
                         <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>

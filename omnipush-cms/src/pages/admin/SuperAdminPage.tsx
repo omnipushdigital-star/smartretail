@@ -97,7 +97,7 @@ export default function SuperAdminPage() {
         return (
             <div className="flex items-center justify-center p-20">
                 <Activity className="animate-spin text-brand-500 mr-2" />
-                <span className="text-surface-400">Loading Global Infrastructure...</span>
+                <span className="text-text-1">Loading Global Infrastructure...</span>
             </div>
         )
     }
@@ -110,7 +110,7 @@ export default function SuperAdminPage() {
                         <ShieldCheck className="text-brand-500" size={28} />
                         Super Admin Control Panel
                     </h1>
-                    <p className="text-surface-400 mt-1">Multi-Tenant Network Operations & Financial Metrics</p>
+                    <p className="text-text-2 mt-1">Multi-Tenant Network Operations & Financial Metrics</p>
                 </div>
                 <button
                     onClick={() => setShowOnboardModal(true)}
@@ -136,33 +136,33 @@ export default function SuperAdminPage() {
                         <h4 className="text-sm font-bold text-white uppercase tracking-wider">Projected Annual Revenue</h4>
                     </div>
                     <div className="text-3xl font-black text-white">${(totalRevenue * 12).toLocaleString()}</div>
-                    <p className="text-xs text-surface-500 mt-2">Based on current device count and $19.99/mo license</p>
+                    <p className="text-xs text-text-3 mt-2">Based on current device count and $19.99/mo license</p>
                 </div>
-                <div className="card-glass p-5 rounded-2xl border border-white/5 bg-white/[0.02]">
-                    <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 bg-blue-500/10 rounded-lg"><Users size={20} className="text-blue-400" /></div>
-                        <h4 className="text-sm font-bold text-white uppercase tracking-wider">Network Growth Index</h4>
+                <div className="card-glass border border-white/5 rounded-2xl p-6 bg-surface-950/50">
+                    <div className="flex items-center gap-2 text-brand-400 mb-2">
+                        <TrendingUp size={20} />
+                        <span className="text-xs font-black uppercase tracking-widest">Growth Velocity</span>
                     </div>
-                    <div className="text-3xl font-black text-white">+14.2%</div>
-                    <p className="text-xs text-surface-500 mt-2">Scaling rate across top 5 performing tenants</p>
+                    <div className="text-2xl font-black text-white">+14.2%</div>
+                    <p className="text-xs text-text-3 mt-2">Scaling rate across top 5 performing tenants</p>
                 </div>
-                <div className="card-glass p-5 rounded-2xl border border-white/5 bg-white/[0.02]">
-                    <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 bg-purple-500/10 rounded-lg"><Activity size={20} className="text-purple-400" /></div>
-                        <h4 className="text-sm font-bold text-white uppercase tracking-wider">Business Continuity Score</h4>
+                <div className="card-glass border border-white/5 rounded-2xl p-6 bg-surface-950/50">
+                    <div className="flex items-center gap-2 text-brand-400 mb-2">
+                        <ShieldCheck size={20} />
+                        <span className="text-xs font-black uppercase tracking-widest">Uptime SLA</span>
                     </div>
-                    <div className="text-3xl font-black text-white">A+</div>
-                    <p className="text-xs text-surface-500 mt-2">Redundancy factor across multi-region edge deployment</p>
+                    <div className="text-2xl font-black text-white">99.98%</div>
+                    <p className="text-xs text-text-3 mt-2">Redundancy factor across multi-region edge deployment</p>
                 </div>
             </div>
 
             <div className="card-glass border border-white/5 rounded-2xl overflow-hidden">
                 <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/5">
                     <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                        <BarChart3 size={20} className="text-surface-400" />
+                        <BarChart3 size={20} className="text-text-1" />
                         Tenant Performance Review
                     </h3>
-                    <div className="text-xs text-surface-400 uppercase tracking-widest font-semibold px-2 py-1 bg-white/10 rounded">
+                    <div className="text-xs text-text-1 uppercase tracking-widest font-semibold px-2 py-1 bg-white/10 rounded">
                         Updated Live
                     </div>
                 </div>
@@ -170,7 +170,7 @@ export default function SuperAdminPage() {
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
                         <thead>
-                            <tr className="bg-white/[0.02] text-surface-400 text-xs uppercase tracking-wider">
+                            <tr className="bg-white/[0.02] text-text-1 text-xs uppercase tracking-wider">
                                 <th className="px-6 py-4">Organization</th>
                                 <th className="px-6 py-4 text-center">Screens</th>
                                 <th className="px-6 py-4 text-center">Publications</th>
@@ -189,7 +189,7 @@ export default function SuperAdminPage() {
                                             </div>
                                             <div>
                                                 <div className="text-sm font-medium text-white">{t.name}</div>
-                                                <div className="text-xs text-surface-500">ID: {t.id.slice(0, 8)}...</div>
+                                                <div className="text-xs text-text-2">ID: {t.id.slice(0, 8)}...</div>
                                             </div>
                                         </div>
                                     </td>
@@ -211,7 +211,7 @@ export default function SuperAdminPage() {
                                     </td>
                                     <td className="px-6 py-4 text-right">
                                         <div className="text-sm font-semibold text-white">${t.metrics?.estimated_billing.toLocaleString()}</div>
-                                        <div className="text-[10px] text-surface-500">Credit Cycle Active</div>
+                                        <div className="text-[10px] text-text-3">Credit Cycle Active</div>
                                     </td>
                                     <td className="px-6 py-4 text-right">
                                         <button

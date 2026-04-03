@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Plus, Search, Edit2, Trash2, ListVideo, GripVertical, X, Image as ImageIcon, Film, Globe, Loader2, Presentation } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, ListVideo, GripVertical, X, Image as ImageIcon, Film, Globe, Loader2, Presentation, Share2, Monitor, CheckCircle2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { Playlist, PlaylistItem, MediaAsset } from '../../types'
 import { useTenant } from '../../contexts/TenantContext'
@@ -61,7 +61,7 @@ function SortableItem({ item, onRemove, onUpdateSettings }: {
                                 textAlign: 'center'
                             }}
                         />
-                        <span style={{ fontSize: '0.65rem', color: 'var(--color-surface-500)' }}>s</span>
+                        <span style={{ fontSize: '0.65rem', color: 'var(--color-text-3)' }}>s</span>
                     </div>
                 )}
 
@@ -143,6 +143,11 @@ export default function PlaylistsPage() {
     const [addEndTime, setAddEndTime] = useState('')
     const [addDaysOfWeek, setAddDaysOfWeek] = useState<number[]>([0, 1, 2, 3, 4, 5, 6])
     const [addTransition, setAddTransition] = useState<'slide' | 'zoom' | 'fade' | 'none'>('slide')
+    const [showPushModal, setShowPushModal] = useState(false)
+    const [pushingPlaylist, setPushingPlaylist] = useState<Playlist | null>(null)
+    const [devices, setDevices] = useState<any[]>([])
+    const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([])
+    const [pushing, setPushing] = useState(false)
     const { currentTenantId } = useTenant()
 
     const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }))
@@ -217,6 +222,35 @@ export default function PlaylistsPage() {
 
         setPlaylistItems(resolved as any)
         setShowEditor(true)
+    }
+
+    const openPushModal = async (p: Playlist) => {
+        setPushingPlaylist(p)
+        setShowPushModal(true)
+        const { data } = await supabase.from('devices').select('*, store:stores(name)').eq('tenant_id', currentTenantId).is('deleted_at', null).order('display_name')
+        setDevices(data || [])
+        // Pre-select devices already using this playlist
+        setSelectedDeviceIds((data || []).filter(d => d.playlist_id === p.id).map(d => d.id))
+    }
+
+    const handlePush = async () => {
+        if (!pushingPlaylist) return
+        setPushing(true)
+        try {
+            // 1. Unset this playlist from any device that was selected but is NO LONGER selected (optional, maybe too destructive)
+            // For now, let's just APPLY to selected.
+            if (selectedDeviceIds.length > 0) {
+                const { error } = await supabase.from('devices')
+                    .update({ playlist_id: pushingPlaylist.id, updated_at: new Date().toISOString() })
+                    .in('id', selectedDeviceIds)
+                if (error) throw error
+            }
+            toast.success(`Playlist pushed to ${selectedDeviceIds.length} screens`)
+            setShowPushModal(false)
+        } catch (err: any) {
+            toast.error(err.message)
+        }
+        setPushing(false)
     }
 
     const addItem = async () => {
@@ -344,7 +378,7 @@ export default function PlaylistsPage() {
             <div className="page-header">
                 <div>
                     <h1 className="page-title">Playlists</h1>
-                    <p className="page-subtitle">Build and manage content playlists for your displays</p>
+                    <p className="text-text-2 mt-2 text-lg">Build and manage content playlists for your displays</p>
                 </div>
                 <button id="create-playlist-btn" className="btn-primary" onClick={openCreate}>
                     <Plus size={16} /> New Playlist
@@ -374,26 +408,36 @@ export default function PlaylistsPage() {
                             <table>
                                 <thead>
                                     <tr>
+                                        <th style={{ width: 40 }}></th>
                                         <th>Name</th>
                                         <th>Description</th>
-                                        <th>Actions</th>
+                                        <th style={{ textAlign: 'right', paddingRight: '2.5rem' }}>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {paginated.map(p => (
-                                        <tr key={p.id}>
-                                            <td style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}>{p.name}</td>
-                                            <td style={{ color: 'var(--color-surface-400)', fontSize: '0.8125rem' }}>{p.description || '—'}</td>
-                                            <td>
-                                                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                                    <button onClick={() => openEditor(p)} className="btn-secondary" style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }}>
-                                                        Edit Items
+                                        <tr key={p.id} className="hover:bg-brand-500/5 transition-colors">
+                                            <td style={{ textAlign: 'center' }}>
+                                                <div className="w-8 h-8 rounded-lg bg-brand-500/10 flex items-center justify-center text-brand-500">
+                                                    <ListVideo size={16} />
+                                                </div>
+                                            </td>
+                                            <td style={{ color: 'var(--color-text-1)', fontWeight: 700, fontSize: '0.9375rem' }}>{p.name}</td>
+                                            <td style={{ color: 'var(--color-text-2)', fontSize: '0.8125rem' }}>{p.description || '—'}</td>
+                                            <td style={{ textAlign: 'right', paddingRight: '1.25rem' }}>
+                                                <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end', alignItems: 'center' }}>
+                                                    <button onClick={() => openEditor(p)} className="btn-secondary" style={{ padding: '0.375rem 0.75rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', border: 'none', background: 'var(--color-brand-500)', color: 'white' }}>
+                                                        <ListVideo size={12} /> Manage Items
                                                     </button>
-                                                    <button onClick={() => openEdit(p)} className="btn-secondary" style={{ padding: '0.375rem 0.625rem' }}>
-                                                        <Edit2 size={13} />
+                                                    <button onClick={() => openPushModal(p)} className="btn-secondary" style={{ padding: '0.375rem 0.75rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', color: 'var(--color-brand-400)', border: '1px solid rgba(var(--color-brand-rgb), 0.2)' }}>
+                                                        <Share2 size={12} /> Push
                                                     </button>
-                                                    <button onClick={async () => { if (!confirm('Delete playlist?')) return; await supabase.from('playlists').delete().eq('id', p.id); toast.success('Deleted'); loadAll() }} className="btn-danger" style={{ padding: '0.375rem 0.625rem' }}>
-                                                        <Trash2 size={13} />
+                                                    <div style={{ width: '1px', height: '1.25rem', background: 'var(--color-surface-800)', margin: '0 0.25rem' }} />
+                                                    <button onClick={() => openEdit(p)} className="btn-secondary" style={{ padding: '0.375rem 0.5rem', border: 'none' }} title="Edit Name">
+                                                        <Edit2 size={14} className="text-text-3" />
+                                                    </button>
+                                                    <button onClick={async () => { if (!confirm('Delete playlist?')) return; await supabase.from('playlists').delete().eq('id', p.id); toast.success('Deleted'); loadAll() }} className="btn-danger" style={{ padding: '0.375rem 0.5rem', background: 'transparent', border: 'none' }} title="Delete">
+                                                        <Trash2 size={14} className="text-red-500" />
                                                     </button>
                                                 </div>
                                             </td>
@@ -408,262 +452,219 @@ export default function PlaylistsPage() {
             </div>
 
             {/* Create/Edit Modal */}
-            {showModal && (
-                <Modal title={editing ? 'Edit Playlist' : 'New Playlist'} onClose={() => setShowModal(false)}>
-                    <form onSubmit={handleSave}>
-                        <div className="form-group">
-                            <label className="label">Playlist Name *</label>
-                            <input className="input-field" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Main Menu Loop" />
-                        </div>
-                        <div className="form-group">
-                            <label className="label">Description</label>
-                            <textarea className="input-field" rows={2} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Optional description..." />
-                        </div>
-                        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
-                            <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
-                            <button type="submit" className="btn-primary" disabled={saving}>
-                                {saving && <Loader2 size={14} />}
-                                {saving ? 'Saving…' : editing ? 'Update' : 'Create'}
-                            </button>
-                        </div>
-                    </form>
-                </Modal>
-            )}
+            {
+                showModal && (
+                    <Modal title={editing ? 'Edit Playlist' : 'New Playlist'} onClose={() => setShowModal(false)}>
+                        <form onSubmit={handleSave}>
+                            <div className="form-group">
+                                <label className="label">Playlist Name *</label>
+                                <input className="input-field" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Main Menu Loop" />
+                            </div>
+                            <div className="form-group">
+                                <label className="label">Description</label>
+                                <textarea className="input-field" rows={2} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Optional description..." />
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
+                                <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
+                                <button type="submit" className="btn-primary" disabled={saving}>
+                                    {saving && <Loader2 size={14} />}
+                                    {saving ? 'Saving…' : editing ? 'Update' : 'Create'}
+                                </button>
+                            </div>
+                        </form>
+                    </Modal>
+                )
+            }
 
             {/* Playlist editor */}
-            {showEditor && editingPlaylist && (
-                <Modal title={`Edit: ${editingPlaylist.name}`} onClose={() => setShowEditor(false)} maxWidth="700px">
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-                        {/* Add items */}
-                        <div>
-                            <h3 style={{ margin: '0 0 1rem', fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-surface-400)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Add Item</h3>
-                            <div className="form-group">
-                                <label className="label">Type</label>
-                                <select className="input-field" value={addType} onChange={e => { setAddType(e.target.value as any); setAddMediaId('') }}>
-                                    <option value="image">Image</option>
-                                    <option value="video">Video</option>
-                                    <option value="ppt">PowerPoint</option>
-                                    <option value="web_url">Web URL / Menu Builder</option>
-                                </select>
+            {
+                showEditor && (
+                    <Modal title={`Playlist: ${editingPlaylist?.name || ''}`} onClose={() => setShowEditor(false)} maxWidth="1000px">
+                        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 320px', gap: '1.5rem', height: '75vh' }}>
+
+                            {/* LEFT: Items list (The Playlist Content) */}
+                            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0 }}>
+                                <div style={{ marginBottom: '1rem' }}>
+                                    {/* Stats Bar */}
+                                    {(() => {
+                                        const totalItems = playlistItems.length
+                                        const totalBytes = playlistItems.reduce((sum, i) => sum + (i.media?.bytes || 0), 0)
+                                        const totalSecs = playlistItems.reduce((sum, i) => {
+                                            if (i.type === 'video') return sum
+                                            return sum + (i.duration_seconds || 15)
+                                        }, 0)
+                                        const fmtBytes = (b: number) => b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : b >= 1024 ? `${(b / 1024).toFixed(0)} KB` : b > 0 ? `${b} B` : '—'
+                                        const fmtDur = (s: number) => `${Math.floor(s / 60)}m ${s % 60}s`
+                                        return totalItems > 0 ? (
+                                            <div style={{
+                                                display: 'flex', alignItems: 'center', gap: '0.75rem',
+                                                padding: '0.5rem 0.875rem',
+                                                background: 'var(--color-surface-900)', borderRadius: 8,
+                                                border: '1px solid var(--color-surface-800)',
+                                                fontSize: '0.8rem',
+                                            }}>
+                                                <span style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>{totalItems}</span>
+                                                <span style={{ color: 'var(--color-text-2)' }}>items</span>
+                                                <span style={{ color: 'var(--color-text-3)' }}>·</span>
+                                                <span style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>{fmtBytes(totalBytes)}</span>
+                                                <span style={{ color: 'var(--color-text-3)' }}>·</span>
+                                                <span style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>{fmtDur(totalSecs)}</span>
+                                                <span style={{ color: 'var(--color-text-3)', fontSize: '0.7rem', marginLeft: 'auto' }}>drag to reorder</span>
+                                            </div>
+                                        ) : (
+                                            <div style={{ padding: '2rem', textAlign: 'center', background: 'rgba(255,255,255,0.02)', borderRadius: 8, border: '1px dashed var(--color-surface-800)', color: 'var(--color-text-3)' }}>
+                                                Playlist is empty. Add items from the library on the right.
+                                            </div>
+                                        )
+                                    })()}
+                                </div>
+
+                                <div style={{ flex: 1, overflowY: 'auto', paddingRight: '0.5rem' }}>
+                                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                                        <SortableContext items={playlistItems.map(i => i.id)} strategy={verticalListSortingStrategy}>
+                                            {playlistItems.map(item => (
+                                                <SortableItem key={item.id} item={item} onRemove={removeItem} onUpdateSettings={updateItemSettings} />
+                                            ))}
+                                        </SortableContext>
+                                    </DndContext>
+                                </div>
                             </div>
-                            <div className="form-group">
-                                <label className="label">
-                                    Select from Library
-                                    {filteredMedia.length > 0 && (
-                                        <span style={{ marginLeft: '0.5rem', fontSize: '0.7rem', color: '#64748b', fontWeight: 400 }}>
-                                            ({filteredMedia.length} available)
-                                        </span>
-                                    )}
-                                </label>
-                                {filteredMedia.length === 0 ? (
-                                    <div style={{
-                                        padding: '0.75rem 1rem',
-                                        background: 'rgba(245,158,11,0.06)',
-                                        border: '1px solid rgba(245,158,11,0.2)',
-                                        borderRadius: 8,
-                                        fontSize: '0.8125rem',
-                                        color: '#92400e',
-                                        lineHeight: 1.5,
-                                    }}>
-                                        <span style={{ color: '#fbbf24' }}>⚠ No {addType} assets found.</span><br />
-                                        <span style={{ color: '#94a3b8' }}>
-                                            {addType === 'web_url'
-                                                ? 'Use manual link or add to Media Library first.'
-                                                : `Go to Media Library and upload a ${addType} file first.`}
-                                        </span>
+
+                            {/* RIGHT: Library / Add Items Panel */}
+                            <div style={{ borderLeft: '1px solid var(--color-surface-800)', paddingLeft: '1.5rem', overflowY: 'auto' }}>
+                                <h3 style={{ margin: '0 0 1rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-1)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Add Items</h3>
+
+                                <div className="form-group">
+                                    <label className="label">Content Type</label>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.375rem' }}>
+                                        {[
+                                            { id: 'video', label: 'Video', icon: <Film size={12} /> },
+                                            { id: 'image', label: 'Image', icon: <ImageIcon size={12} /> },
+                                            { id: 'web_url', label: 'Web URL', icon: <Globe size={12} /> },
+                                            { id: 'ppt', label: 'PPT', icon: <Presentation size={12} /> },
+                                        ].map(t => (
+                                            <button
+                                                key={t.id}
+                                                onClick={() => { setAddType(t.id as any); setAddMediaId('') }}
+                                                style={{
+                                                    padding: '0.5rem', fontSize: '0.75rem', borderRadius: 6, border: '1px solid var(--color-surface-800)',
+                                                    background: addType === t.id ? 'rgba(var(--color-brand-rgb), 0.15)' : 'transparent',
+                                                    color: addType === t.id ? 'var(--color-brand-400)' : 'var(--color-surface-400)',
+                                                    display: 'flex', alignItems: 'center', gap: '0.375rem', justifyContent: 'center'
+                                                }}
+                                            >
+                                                {t.icon} {t.label}
+                                            </button>
+                                        ))}
                                     </div>
-                                ) : (
-                                    <select className="input-field" value={addMediaId} onChange={e => { setAddMediaId(e.target.value); setAddUrl('') }}>
-                                        <option value="">— Select {addType} —</option>
-                                        {filteredMedia.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                                    </select>
+                                </div>
+
+                                <div className="form-group">
+                                    <label className="label">Library Assets ({filteredMedia.length})</label>
+                                    <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--color-surface-800)', borderRadius: 8, background: 'var(--color-surface-900)' }}>
+                                        {filteredMedia.length === 0 ? (
+                                            <div style={{ padding: '0.75rem', fontSize: '0.75rem', color: 'var(--color-text-3)', textAlign: 'center' }}>No {addType}s found</div>
+                                        ) : (
+                                            filteredMedia.map(m => (
+                                                <button
+                                                    key={m.id}
+                                                    onClick={() => { setAddMediaId(m.id); setAddUrl('') }}
+                                                    style={{
+                                                        width: '100%', textAlign: 'left', padding: '0.5rem 0.75rem', border: 'none', borderBottom: '1px solid var(--color-surface-800)',
+                                                        background: addMediaId === m.id ? 'rgba(var(--color-brand-rgb), 0.1)' : 'transparent',
+                                                        color: addMediaId === m.id ? 'var(--color-brand-400)' : 'var(--color-text-secondary)',
+                                                        fontSize: '0.8125rem', display: 'flex', alignItems: 'center', gap: '0.5rem'
+                                                    }}
+                                                >
+                                                    {addMediaId === m.id ? <CheckCircle2 size={12} /> : <Plus size={12} />}
+                                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</span>
+                                                </button>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+
+                                {addType === 'web_url' && (
+                                    <div className="form-group">
+                                        <label className="label">Manual URL</label>
+                                        <input className="input-field" type="url" value={addUrl} onChange={e => { setAddUrl(e.target.value); setAddMediaId('') }} placeholder="https://..." style={{ fontSize: '0.8125rem' }} />
+                                    </div>
                                 )}
-                            </div>
 
-                            {addType === 'web_url' && (
-                                <div className="form-group" style={{ marginTop: '0.5rem' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                                        <div style={{ height: '1px', flex: 1, background: '#1e293b' }}></div>
-                                        <span style={{ fontSize: '0.7rem', color: '#475569', textTransform: 'uppercase' }}>OR</span>
-                                        <div style={{ height: '1px', flex: 1, background: '#1e293b' }}></div>
+                                <div style={{ padding: '1rem', background: 'var(--color-surface-900)', borderRadius: 10, border: '1px solid var(--color-surface-800)', marginTop: '1rem' }}>
+                                    <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <label className="label" style={{ marginBottom: 0 }}>Auto-Schedule</label>
+                                            <input type="checkbox" checked={addIsScheduled} onChange={e => setAddIsScheduled(e.target.checked)} />
+                                        </div>
                                     </div>
-                                    <label className="label">Manual URL Entry</label>
-                                    <input
-                                        className="input-field"
-                                        type="url"
-                                        value={addUrl}
-                                        onChange={e => {
-                                            let val = e.target.value
-                                            // Auto-convert YouTube watch URLs to embed
-                                            const ytMatch = val.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]{11})/)
-                                            if (ytMatch) val = `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1&mute=1&controls=0&loop=1&playlist=${ytMatch[1]}`
-                                            setAddUrl(val)
-                                            setAddMediaId('')
-                                        }}
-                                        placeholder="https://... (YouTube, webpage, or dashboard)"
-                                    />
-                                    {/* YouTube auto-convert success notice */}
-                                    {addUrl.includes('youtube.com/embed/') && (
-                                        <div style={{ marginTop: '0.5rem', padding: '0.625rem 0.875rem', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: 8, fontSize: '0.75rem', color: '#16a34a', display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
-                                            <span style={{ flexShrink: 0, fontSize: '0.875rem' }}>✅</span>
-                                            <span><strong>YouTube embed detected</strong> — URL auto-converted to embed format. Video will play muted &amp; looped on screen.</span>
+
+                                    {addType !== 'video' && (
+                                        <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                                            <label className="label">Duration (seconds)</label>
+                                            <input className="input-field" type="number" value={addDuration} onChange={e => setAddDuration(e.target.value)} style={{ padding: '0.375rem' }} />
                                         </div>
                                     )}
-                                    {/* Warn if user pasted a plain youtube.com/watch URL that wasn't caught */}
-                                    {addUrl.includes('youtube.com/watch') && (
-                                        <div style={{ marginTop: '0.5rem', padding: '0.625rem 0.875rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 8, fontSize: '0.75rem', color: '#dc2626', display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
-                                            <span style={{ flexShrink: 0 }}>⚠️</span>
-                                            <span><strong>YouTube watch URL detected</strong> — This will be blocked by your browser. Please use the embed URL format: <code>https://www.youtube.com/embed/VIDEO_ID</code></span>
-                                        </div>
-                                    )}
-                                    <div style={{ marginTop: '0.375rem', fontSize: '0.6875rem', color: '#64748b' }}>
-                                        💡 Paste any YouTube link — it will be auto-converted to an embed URL.
-                                    </div>
-                                </div>
-                            )}
 
-                            {(addType === 'image' || addType === 'web_url' || addType === 'ppt') && (
-                                <div className="form-group">
-                                    <label className="label">Duration (seconds)</label>
-                                    <input className="input-field" type="number" min="1" value={addDuration} onChange={e => setAddDuration(e.target.value)} />
+                                    <button className="btn-primary" onClick={addItem} style={{ width: '100%', justifyContent: 'center', marginTop: '0.5rem' }}>
+                                        Add to Playlist
+                                    </button>
                                 </div>
-                            )}
-
-                            {addType === 'video' && (
-                                <div className="form-group">
-                                    <label className="label">Playback Speed</label>
-                                    <select className="input-field" value={addPlaybackSpeed} onChange={e => setAddPlaybackSpeed(e.target.value)}>
-                                        <option value="0.5">0.5x (Slow)</option>
-                                        <option value="0.75">0.75x</option>
-                                        <option value="1">1.0x (Normal)</option>
-                                        <option value="1.25">1.25x</option>
-                                        <option value="1.5">1.5x (Fast)</option>
-                                        <option value="2">2.0x (Very Fast)</option>
-                                        <option value="3">3.0x (Super Fast)</option>
-                                    </select>
-                                </div>
-                            )}
-
-                            <div className="form-group">
-                                <label className="label">Transition Effect</label>
-                                <select className="input-field" value={addTransition} onChange={e => setAddTransition(e.target.value as any)}>
-                                    <option value="slide">Slide (Horizontal)</option>
-                                    <option value="zoom">Zoom</option>
-                                    <option value="fade">Fade</option>
-                                    <option value="none">None</option>
-                                </select>
                             </div>
+                        </div>
+                    </Modal>
+                )
+            }
 
-                            {/* Scheduling Section */}
-                            <div style={{ marginTop: '1.5rem', padding: '1rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 12 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                                    <h4 style={{ margin: 0, fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-text-secondary)' }}>Advance Scheduling</h4>
-                                    <label className="switch">
-                                        <input type="checkbox" checked={addIsScheduled} onChange={e => setAddIsScheduled(e.target.checked)} />
-                                        <span className="slider round"></span>
+            {/* Push to Screens Modal */}
+            {
+                showPushModal && (
+                    <Modal title={`Push to Screens: ${pushingPlaylist?.name || ''}`} onClose={() => setShowPushModal(false)} maxWidth="500px">
+                        <p style={{ fontSize: '0.875rem', color: 'var(--color-text-2)', marginBottom: '1.25rem' }}>
+                            Select the screens you want to assign this playlist to. This will override their current content.
+                        </p>
+
+                        <div style={{ maxHeight: '400px', overflowY: 'auto', marginBottom: '1.5rem', border: '1px solid var(--color-surface-800)', borderRadius: 12, background: 'var(--color-surface-950)' }}>
+                            {devices.length === 0 ? (
+                                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-3)' }}>No active devices found</div>
+                            ) : (
+                                devices.map(d => (
+                                    <label key={d.id} style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '0.875rem 1rem', borderBottom: '1px solid var(--color-surface-900)', cursor: 'pointer' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedDeviceIds.includes(d.id)}
+                                            onChange={e => {
+                                                if (e.target.checked) setSelectedDeviceIds(prev => [...prev, d.id])
+                                                else setSelectedDeviceIds(prev => prev.filter(id => id !== d.id))
+                                            }}
+                                            style={{ width: 18, height: 18, borderRadius: 4 }}
+                                        />
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ fontSize: '0.9rem', color: 'var(--color-text-primary)', fontWeight: 500 }}>{d.display_name}</div>
+                                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-2)', display: 'flex', gap: '0.5rem' }}>
+                                                <span style={{ fontFamily: 'monospace', color: 'var(--color-text-primary)' }}>{d.device_code}</span>
+                                                <span>·</span>
+                                                <span>{d.store?.name || 'Unassigned'}</span>
+                                            </div>
+                                        </div>
+                                        {d.playlist_id === pushingPlaylist?.id && (
+                                            <span style={{ fontSize: '0.65rem', background: 'rgba(34,197,94,0.1)', color: '#22c55e', padding: '0.15rem 0.4rem', borderRadius: 4, fontWeight: 700 }}>ACTIVE</span>
+                                        )}
                                     </label>
-                                </div>
+                                ))
+                            )}
+                        </div>
 
-                                {addIsScheduled && (
-                                    <div className="space-y-4" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                                            <div className="form-group">
-                                                <label className="label">Start Date</label>
-                                                <input className="input-field" type="date" value={addStartDate} onChange={e => setAddStartDate(e.target.value)} />
-                                            </div>
-                                            <div className="form-group">
-                                                <label className="label">End Date</label>
-                                                <input className="input-field" type="date" value={addEndDate} onChange={e => setAddEndDate(e.target.value)} />
-                                            </div>
-                                        </div>
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                                            <div className="form-group">
-                                                <label className="label">Start Time</label>
-                                                <input className="input-field" type="time" value={addStartTime} onChange={e => setAddStartTime(e.target.value)} />
-                                            </div>
-                                            <div className="form-group">
-                                                <label className="label">End Time</label>
-                                                <input className="input-field" type="time" value={addEndTime} onChange={e => setAddEndTime(e.target.value)} />
-                                            </div>
-                                        </div>
-                                        <div className="form-group">
-                                            <label className="label">Days of Week</label>
-                                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                                                {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
-                                                    <button
-                                                        key={i}
-                                                        onClick={() => {
-                                                            setAddDaysOfWeek(prev =>
-                                                                prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i]
-                                                            )
-                                                        }}
-                                                        style={{
-                                                            width: 28, height: 28, borderRadius: 6, fontSize: '0.75rem', fontWeight: 600,
-                                                            background: addDaysOfWeek.includes(i) ? 'var(--color-brand-600)' : 'var(--color-surface-800)',
-                                                            color: addDaysOfWeek.includes(i) ? 'white' : 'var(--color-text-secondary)',
-                                                            border: 'none', cursor: 'pointer', transition: 'all 0.2s'
-                                                        }}
-                                                    >
-                                                        {d}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            <button className="btn-primary" onClick={addItem} style={{ width: '100%', justifyContent: 'center', marginTop: '1rem' }}>
-                                <Plus size={14} /> Add to Playlist
+                        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                            <button className="btn-secondary" onClick={() => setShowPushModal(false)}>Cancel</button>
+                            <button className="btn-primary" onClick={handlePush} disabled={pushing || selectedDeviceIds.length === 0}>
+                                {pushing ? <Loader2 size={14} className="animate-spin" /> : <Monitor size={14} />}
+                                Update {selectedDeviceIds.length} Screens
                             </button>
                         </div>
-
-                        {/* Items list */}
-                        <div>
-                            {/* Stats Bar */}
-                            {(() => {
-                                const totalItems = playlistItems.length
-                                const totalBytes = playlistItems.reduce((sum, i) => sum + (i.media?.bytes || 0), 0)
-                                const totalSecs = playlistItems.reduce((sum, i) => {
-                                    if (i.type === 'video') return sum
-                                    return sum + (i.duration_seconds || 15)
-                                }, 0)
-                                const fmtBytes = (b: number) => b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : b >= 1024 ? `${(b / 1024).toFixed(0)} KB` : b > 0 ? `${b} B` : '—'
-                                const fmtDur = (s: number) => `${Math.floor(s / 60)}m ${s % 60}s`
-                                return totalItems > 0 ? (
-                                    <div style={{
-                                        display: 'flex', alignItems: 'center', gap: '0.75rem',
-                                        padding: '0.5rem 0.875rem', marginBottom: '0.875rem',
-                                        background: 'var(--color-surface-900)', borderRadius: 8,
-                                        border: '1px solid var(--color-surface-800)',
-                                        fontSize: '0.8rem',
-                                    }}>
-                                        <span style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>{totalItems}</span>
-                                        <span style={{ color: 'var(--color-surface-500)' }}>items</span>
-                                        <span style={{ color: 'var(--color-surface-700)' }}>·</span>
-                                        <span style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>{fmtBytes(totalBytes)}</span>
-                                        <span style={{ color: 'var(--color-surface-700)' }}>·</span>
-                                        <span style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>{fmtDur(totalSecs)}</span>
-                                        <span style={{ color: 'var(--color-surface-500)', fontSize: '0.7rem', marginLeft: 'auto' }}>drag to reorder</span>
-                                    </div>
-                                ) : null
-                            })()}
-                            {playlistItems.length === 0 ? (
-                                <div style={{ textAlign: 'center', padding: '2rem', color: '#475569', fontSize: '0.875rem' }}>No items yet</div>
-                            ) : (
-                                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                                    <SortableContext items={playlistItems.map(i => i.id)} strategy={verticalListSortingStrategy}>
-                                        {playlistItems.map(item => (
-                                            <SortableItem key={item.id} item={item} onRemove={removeItem} onUpdateSettings={updateItemSettings} />
-                                        ))}
-                                    </SortableContext>
-                                </DndContext>
-                            )}
-                        </div>
-                    </div>
-                </Modal>
-            )
+                    </Modal>
+                )
             }
-        </div >
+        </div>
     )
 }

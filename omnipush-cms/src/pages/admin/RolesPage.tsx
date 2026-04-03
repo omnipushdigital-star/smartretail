@@ -133,7 +133,7 @@ export default function RolesPage() {
 
             <div className="card" style={{ marginBottom: '1rem', padding: '1rem' }}>
                 <div style={{ position: 'relative', maxWidth: 360 }}>
-                    <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+                    <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-2)' }} />
                     <input
                         id="role-search" type="text" className="input-field"
                         placeholder="Search roles..."
@@ -146,7 +146,7 @@ export default function RolesPage() {
 
             <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
                 {loading ? (
-                    <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}><Loader2 size={24} style={{ margin: '0 auto' }} /></div>
+                    <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--color-text-2)' }}><Loader2 size={24} style={{ margin: '0 auto' }} /></div>
                 ) : paginated.length === 0 ? (
                     <div className="empty-state">
                         <UsersIcon size={40} />
@@ -210,13 +210,13 @@ export default function RolesPage() {
                         </div>
                         <div className="form-group">
                             <label className="label" style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                                Role Key * <span title="Stable identifier used by Player" style={{ display: 'flex' }}><Info size={12} color="#64748b" /></span>
+                                Role Key * <span title="Stable identifier used by Player" style={{ display: 'flex' }}><Info size={12} color="var(--color-text-2)" /></span>
                             </label>
                             <input id="role-key" className="input-field" value={form.key}
                                 onChange={e => handleKeyChange(e.target.value)}
                                 placeholder="e.g. MAIN_MENU, DEALS, DRINKS"
                                 style={{ fontFamily: 'monospace' }} />
-                            <p style={{ margin: '0.375rem 0 0', fontSize: '0.75rem', color: '#475569' }}>
+                            <p style={{ margin: '0.375rem 0 0', fontSize: '0.75rem', color: 'var(--color-text-3)' }}>
                                 Only <code>[A-Z0-9_]</code> allowed. Examples: <code>MAIN_MENU</code>, <code>DEALS</code>, <code>DRINKS</code>
                             </p>
                         </div>

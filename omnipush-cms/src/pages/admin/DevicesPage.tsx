@@ -57,6 +57,7 @@ export default function DevicesPage() {
     const [devices, setDevices] = useState<Device[]>([])
     const [stores, setStores] = useState<Store[]>([])
     const [roles, setRoles] = useState<Role[]>([])
+    const [playlists, setPlaylists] = useState<any[]>([])
     const [heartbeats, setHeartbeats] = useState<Record<string, DeviceHeartbeat>>({})
     const [loading, setLoading] = useState(true)
     const [search, setSearch] = useState('')
@@ -111,14 +112,16 @@ export default function DevicesPage() {
             query = query.is('deleted_at', null)
         }
 
-        const [devicesRes, storesRes, rolesRes] = await Promise.all([
+        const [devicesRes, storesRes, rolesRes, playlistsRes] = await Promise.all([
             query,
             supabase.from('stores').select('*').eq('tenant_id', currentTenantId).eq('active', true).order('name'),
             supabase.from('roles').select('*').eq('tenant_id', currentTenantId).order('name'),
+            supabase.from('playlists').select('id, name').eq('tenant_id', currentTenantId).order('name'),
         ])
         setDevices(devicesRes.data || [])
         setStores(storesRes.data || [])
         setRoles(rolesRes.data || [])
+        setPlaylists(playlistsRes.data || [])
         setLoading(false)
 
         const deviceIds = devicesRes.data?.map(d => d.id) || []
@@ -236,31 +239,24 @@ export default function DevicesPage() {
     const handleBulkDelete = async () => {
         if (!selectedIds.length) return
         const count = selectedIds.length
-        if (!confirm(`Permanently delete ${count} selected devices? This cannot be undone.`)) return
+        const isBin = viewMode === 'bin'
+        if (!confirm(isBin ? `Permanently delete ${count} selected devices?` : `Move ${count} devices to Bin?`)) return
 
         setLoading(true)
         try {
-            // Explicitly cascade delete from related tables first
-            await supabase.from('device_commands').delete().in('device_id', selectedIds)
-            await supabase.from('device_heartbeats').delete().in('device_id', selectedIds)
-            await supabase.from('layout_publications').delete().in('device_id', selectedIds)
-
-            // Look up device codes for the items being deleted to clear storage
-            const deletingDevices = devices.filter(d => selectedIds.includes(d.id))
-            for (const d of deletingDevices) {
-                try {
-                    const { data: files } = await supabase.storage.from('device-screenshots').list('screenshots', { search: d.device_code })
-                    if (files && files.length > 0) {
-                        const paths = files.map(f => `screenshots/${f.name}`)
-                        await supabase.storage.from('device-screenshots').remove(paths)
-                    }
-                } catch (e) { console.error('Screenshot cleanup failed', e) }
+            if (isBin) {
+                // Permanent
+                await supabase.from('device_commands').delete().in('device_id', selectedIds)
+                await supabase.from('device_heartbeats').delete().in('device_id', selectedIds)
+                await supabase.from('layout_publications').delete().in('device_id', selectedIds)
+                const { error } = await supabase.from('devices').delete().in('id', selectedIds)
+                if (error) throw error
+            } else {
+                // Soft delete
+                const { error } = await supabase.from('devices').update({ deleted_at: new Date().toISOString() }).in('id', selectedIds)
+                if (error) throw error
             }
-
-            // Then delete the main device records
-            const { error } = await supabase.from('devices').delete().in('id', selectedIds)
-            if (error) throw error
-            toast.success(`${count} devices deleted permanently`)
+            toast.success(isBin ? 'Permanently deleted' : 'Moved to Bin')
             setSelectedIds([])
             loadData()
         } catch (err: any) {
@@ -269,6 +265,26 @@ export default function DevicesPage() {
         setLoading(false)
     }
 
+    const handleBulkAssignPlaylist = async (playlistId: string) => {
+        if (!playlistId || selectedIds.length === 0) return
+        setLoading(true)
+        try {
+            const updates: any = { updated_at: new Date().toISOString() }
+            if (playlistId === 'NULL') updates.playlist_id = null
+            else updates.playlist_id = playlistId
+
+            const { error } = await supabase.from('devices')
+                .update(updates)
+                .in('id', selectedIds)
+            if (error) throw error
+            toast.success(`Updated ${selectedIds.length} screens`)
+            setSelectedIds([])
+            loadData()
+        } catch (err: any) {
+            toast.error(err.message)
+        }
+        setLoading(false)
+    }
     const handleBulkRestore = async () => {
         if (!selectedIds.length) return
         const count = selectedIds.length
@@ -534,251 +550,304 @@ export default function DevicesPage() {
                 </p>
             </div>
 
-            <div className="card" style={{ marginBottom: '1rem', padding: '1rem' }}>
-                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            {/* Two-column layout: sidebar + table */}
+            <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'flex-start' }}>
 
-                    {/* View Mode Toggle */}
-                    <div className="btn-group-glass">
-                        <button
-                            className={`btn-tab-glass ${viewMode === 'active' ? 'active' : ''}`}
-                            onClick={() => setViewMode('active')}
-                        >
-                            Active
-                        </button>
-                        <button
-                            className={`btn-tab-glass error-tab ${viewMode === 'bin' ? 'active' : ''}`}
-                            onClick={() => setViewMode('bin')}
-                        >
-                            <Trash2 size={12} /> Bin
-                        </button>
+                {/* LEFT SIDEBAR — Store & Role grouping */}
+                <div style={{ width: 190, flexShrink: 0 }}>
+                    <div className="card" style={{ padding: '0.875rem', marginBottom: '1rem' }}>
+                        <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 700, letterSpacing: '0.08em', marginBottom: '0.625rem' }}>Stores</div>
+                        {[{ id: '', name: 'All Screens' }, ...stores].map(s => {
+                            const count = s.id === '' ? devices.filter(d => !(d as any).deleted_at).length : devices.filter(d => (d as any).store?.id === s.id).length
+                            return (
+                                <button
+                                    key={s.id}
+                                    onClick={() => { setFilterStore(s.id); setPage(1) }}
+                                    style={{
+                                        width: '100%', textAlign: 'left', padding: '0.45rem 0.625rem',
+                                        borderRadius: 6, border: 'none', cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                        fontSize: '0.8125rem', marginBottom: '0.125rem',
+                                        background: filterStore === s.id ? 'rgba(var(--color-brand-rgb), 0.12)' : 'transparent',
+                                        color: filterStore === s.id ? 'var(--color-brand-400)' : 'var(--color-surface-400)',
+                                        fontWeight: filterStore === s.id ? 600 : 400,
+                                        transition: 'all 0.15s',
+                                    }}
+                                >
+                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                                    <span style={{
+                                        fontSize: '0.65rem', fontWeight: 700, minWidth: 18, textAlign: 'center',
+                                        background: filterStore === s.id ? 'var(--color-brand-600)' : 'var(--color-surface-800)',
+                                        color: filterStore === s.id ? 'white' : '#64748b',
+                                        borderRadius: 10, padding: '0.05rem 0.4rem',
+                                    }}>{count}</span>
+                                </button>
+                            )
+                        })}
                     </div>
 
-                    <div style={{ position: 'relative', flex: '1 1 200px' }}>
-                        <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-surface-200)' }} />
-                        <input type="text" className="input-field" placeholder={`Search ${viewMode === 'bin' ? 'bin' : 'devices'}...`} value={search}
-                            onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ paddingLeft: '2rem' }} />
+                    <div className="card" style={{ padding: '0.875rem' }}>
+                        <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 700, letterSpacing: '0.08em', marginBottom: '0.625rem' }}>Role</div>
+                        {[{ id: '', name: 'All Roles' }, ...roles].map(r => (
+                            <button
+                                key={r.id}
+                                onClick={() => { setFilterRole(r.id); setPage(1) }}
+                                style={{
+                                    width: '100%', textAlign: 'left', padding: '0.45rem 0.625rem',
+                                    borderRadius: 6, border: 'none', cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center',
+                                    fontSize: '0.8125rem', marginBottom: '0.125rem',
+                                    background: filterRole === r.id ? 'rgba(var(--color-brand-rgb), 0.12)' : 'transparent',
+                                    color: filterRole === r.id ? 'var(--color-brand-400)' : 'var(--color-text-3)',
+                                    fontWeight: filterRole === r.id ? 600 : 400,
+                                    transition: 'all 0.15s',
+                                }}
+                            >
+                                {r.name}
+                            </button>
+                        ))}
                     </div>
-                    {viewMode === 'active' && (
-                        <>
-                            <select className="input-field" style={{ width: 'auto' }} value={filterStore} onChange={e => { setFilterStore(e.target.value); setPage(1) }}>
-                                <option value="">All stores</option>
-                                {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                            </select>
-                            <select className="input-field" style={{ width: 'auto' }} value={filterRole} onChange={e => { setFilterRole(e.target.value); setPage(1) }}>
-                                <option value="">All roles</option>
-                                {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                            </select>
-                        </>
-                    )}
-
-                    {viewMode === 'bin' && selectedIds.length > 0 && (
-                        <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 px-4 py-2 rounded-xl animate-in fade-in slide-in-from-left-4">
-                            <span className="text-red-400 font-bold text-sm">{selectedIds.length} Selected</span>
-                            <div className="h-4 w-px bg-red-500/20" />
-                            <button onClick={handleBulkRestore} className="text-emerald-400 hover:text-emerald-300 text-sm font-bold flex items-center gap-1.5 transition-colors">
-                                <RotateCcw size={14} /> Restore
-                            </button>
-                            <button onClick={handleBulkDelete} className="text-red-400 hover:text-red-300 text-sm font-bold flex items-center gap-1.5 transition-colors">
-                                <Trash2 size={14} /> Delete Permanently
-                            </button>
-                        </div>
-                    )}
                 </div>
-            </div>
 
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                {loading ? (
-                    <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}><Loader2 size={24} style={{ margin: '0 auto' }} /></div>
-                ) : paginated.length === 0 ? (
-                    <div className="empty-state">
-                        <Monitor size={40} />
-                        <h3>No devices found</h3>
-                        <p>{search || filterStore || filterRole ? 'Try adjusting filters.' : 'Register your first display device.'}</p>
-                    </div>
-                ) : (
-                    <>
-                        <div className="table-wrapper">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        {viewMode === 'bin' && (
-                                            <th style={{ width: 40 }}>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedIds.length > 0 && selectedIds.length === paginated.length}
-                                                    onChange={toggleSelectAll}
-                                                    className="w-4 h-4 rounded border-slate-700 bg-slate-900"
-                                                />
-                                            </th>
-                                        )}
-                                        <th>Device Code</th>
-                                        <th>Display Name</th>
-                                        <th>Store</th>
-                                        <th>Role</th>
-                                        <th>Orientation</th>
-                                        <th>Status</th>
-                                        <th>Last Seen</th>
-                                        <th>Version</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {paginated.map(d => {
-                                        const hb = heartbeats[d.device_code]
-                                        const online = isOnline(hb?.last_seen_at)
-                                        const isSelected = selectedIds.includes(d.id)
-                                        return (
-                                            <tr key={d.id} className={isSelected ? 'bg-brand-500/5' : ''}>
-                                                {viewMode === 'bin' && (
-                                                    <td>
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={isSelected}
-                                                            onChange={() => toggleSelect(d.id)}
-                                                            className="w-4 h-4 rounded border-slate-700 bg-slate-900"
-                                                        />
-                                                    </td>
-                                                )}
-                                                <td><span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.875rem', color: isSelected ? 'var(--color-brand-500)' : 'var(--color-text-primary)', letterSpacing: '0.05em' }}>{d.device_code}</span></td>
-                                                <td style={{ color: 'var(--color-text-primary)' }}>{d.display_name || '—'}</td>
-                                                <td style={{ color: '#64748b', fontSize: '0.8125rem' }}>{(d as any).store?.name || '—'}</td>
-                                                <td>
-                                                    {(d as any).role?.key
-                                                        ? <span className="badge badge-blue" style={{ fontFamily: 'monospace' }}>{(d as any).role.key}</span>
-                                                        : <span style={{ color: '#cbd5e1' }}>—</span>
-                                                    }
-                                                </td>
-                                                <td style={{ color: '#64748b', fontSize: '0.8125rem', textTransform: 'capitalize' }}>{d.orientation}</td>
-                                                {/* ── Device Secret cell ── */}
-                                                <td>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                                                        <span style={{
-                                                            fontFamily: 'monospace', fontSize: '0.7rem',
-                                                            color: revealedId === d.id ? 'var(--color-brand-500)' : '#94a3b8',
-                                                            maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                                            letterSpacing: revealedId === d.id ? undefined : '0.1em',
-                                                        }}>
-                                                            {revealedId === d.id ? d.device_secret : '••••••••••••'}
-                                                        </span>
-                                                        <button
-                                                            onClick={() => setRevealedId(revealedId === d.id ? null : d.id)}
-                                                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#475569', padding: '0.2rem', display: 'flex' }}
-                                                            title={revealedId === d.id ? 'Hide secret' : 'Reveal secret'}
-                                                        >
-                                                            {revealedId === d.id ? <EyeOff size={12} /> : <Eye size={12} />}
-                                                        </button>
-                                                        <button
-                                                            onClick={() => copyText(d.device_secret, 'Secret', d.id)}
-                                                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: copiedId === d.id ? '#22c55e' : '#475569', padding: '0.2rem', display: 'flex' }}
-                                                            title="Copy secret"
-                                                        >
-                                                            {copiedId === d.id ? <Check size={12} /> : <Copy size={12} />}
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <span className={`badge ${online ? 'badge-green' : hb ? 'badge-red' : 'badge-gray'} `}>
-                                                        {online ? '● Online' : hb ? '● Offline' : '○ Never'}
-                                                    </span>
-                                                </td>
-                                                <td style={{ fontSize: '0.8125rem', color: '#64748b' }}>
-                                                    {hb ? formatDistanceToNow(new Date(hb.last_seen_at), { addSuffix: true }) : '—'}
-                                                </td>
-                                                <td>
-                                                    {hb?.current_version
-                                                        ? <span className="badge badge-blue">{hb.current_version}</span>
-                                                        : <span style={{ color: '#cbd5e1' }}>—</span>
-                                                    }
-                                                </td>
-                                                <td>
-                                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                                        {viewMode === 'active' ? (
-                                                            <>
-                                                                <button onClick={() => openEdit(d)} className="btn-secondary" style={{ padding: '0.375rem 0.625rem' }} title="Edit device">
-                                                                    <Edit2 size={13} />
-                                                                </button>
-                                                                {/* Promoted primary actions */}
-                                                                <button
-                                                                    onClick={() => setSelectedHealthDevice(d)}
-                                                                    className="btn-secondary"
-                                                                    style={{ padding: '0.375rem 0.625rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#06b6d4' }}
-                                                                    title="Device Health & Diagnostics"
-                                                                >
-                                                                    <Activity size={12} /> Diagnostics
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => handleScreenshot(d.id, d.device_code)}
-                                                                    className="btn-secondary"
-                                                                    style={{ padding: '0.375rem 0.625rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
-                                                                    title="Request Screenshot"
-                                                                >
-                                                                    <Camera size={12} /> Preview
-                                                                </button>
-                                                                {/* Secondary icon-only actions */}
-                                                                <button
-                                                                    onClick={() => handleReboot(d.id, d.device_code)}
-                                                                    className="btn-secondary"
-                                                                    style={{ padding: '0.375rem 0.625rem' }}
-                                                                    title="Remote Reboot"
-                                                                >
-                                                                    <RotateCcw size={13} />
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => handleClearCache(d.id, d.device_code)}
-                                                                    className="btn-secondary"
-                                                                    style={{ padding: '0.375rem 0.625rem' }}
-                                                                    title="Clear Device Cache"
-                                                                >
-                                                                    <Eraser size={13} />
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => handleCheckUpdate(d.id, d.device_code)}
-                                                                    className="btn-secondary"
-                                                                    style={{ padding: '0.375rem 0.625rem' }}
-                                                                    title="Check for App Update"
-                                                                >
-                                                                    <Download size={13} />
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => { setPairingInfo({ device_code: d.device_code, device_secret: d.device_secret }); setShowPairingModal(true) }}
-                                                                    className="btn-secondary"
-                                                                    style={{ padding: '0.375rem 0.625rem' }}
-                                                                    title="Show pairing info"
-                                                                >
-                                                                    <QrCode size={13} />
-                                                                </button>
-                                                            </>
-                                                        ) : (
-                                                            <button
-                                                                onClick={() => handleRestore(d.id, d.device_code)}
-                                                                className="btn-secondary"
-                                                                style={{ padding: '0.375rem 0.625rem', color: '#10b981' }}
-                                                                title="Restore Device"
-                                                            >
-                                                                <RotateCcw size={13} />
-                                                            </button>
-                                                        )}
-                                                        <button
-                                                            onClick={() => handleDelete(d.id, d.device_code)}
-                                                            className="btn-danger"
-                                                            style={{ padding: '0.375rem 0.625rem' }}
-                                                            disabled={deleting === d.id}
-                                                            title={viewMode === 'bin' ? "Delete permanently" : "Move to Bin"}
-                                                        >
-                                                            {deleting === d.id ? <Loader2 size={13} /> : <Trash2 size={13} />}
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        )
-                                    })}
-                                </tbody>
-                            </table>
+                {/* RIGHT: Devices content */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+
+                    {/* Top toolbar */}
+                    <div className="card" style={{ marginBottom: '1rem', padding: '0.875rem 1rem' }}>
+                        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                            <div className="btn-group-glass">
+                                <button className={`btn-tab-glass ${viewMode === 'active' ? 'active' : ''}`} onClick={() => setViewMode('active')}>Active</button>
+                                <button className={`btn-tab-glass error-tab ${viewMode === 'bin' ? 'active' : ''}`} onClick={() => setViewMode('bin')}><Trash2 size={12} /> Bin</button>
+                            </div>
+                            <div style={{ position: 'relative', flex: '1 1 200px' }}>
+                                <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-3)' }} />
+                                <input type="text" className="input-field" placeholder={`Search ${viewMode === 'bin' ? 'bin' : 'devices'}...`} value={search}
+                                    onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ paddingLeft: '2rem' }} />
+                            </div>
+                            {viewMode === 'bin' && selectedIds.length > 0 && (
+                                <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 px-4 py-2 rounded-xl animate-in fade-in slide-in-from-left-4">
+                                    <span className="text-red-400 font-bold text-sm">{selectedIds.length} Selected</span>
+                                    <div className="h-4 w-px bg-red-500/20" />
+                                    <button onClick={handleBulkRestore} className="text-emerald-400 hover:text-emerald-300 text-sm font-bold flex items-center gap-1.5 transition-colors"><RotateCcw size={14} /> Restore</button>
+                                    <button onClick={handleBulkDelete} className="text-red-400 hover:text-red-300 text-sm font-bold flex items-center gap-1.5 transition-colors"><Trash2 size={14} /> Delete Permanently</button>
+                                </div>
+                            )}
+
+                            {viewMode === 'active' && selectedIds.length > 0 && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(var(--color-brand-rgb), 0.1)', border: '1px solid rgba(var(--color-brand-rgb), 0.2)', padding: '0.5rem 1rem', borderRadius: 12 }}>
+                                    <span style={{ color: 'var(--color-brand-400)', fontWeight: 700, fontSize: '0.8rem' }}>{selectedIds.length} Selected</span>
+                                    <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.1)' }} />
+                                    <select
+                                        className="input-field"
+                                        style={{ width: 'auto', height: '32px', fontSize: '0.8rem', padding: '0 0.5rem', background: 'var(--color-surface-900)' }}
+                                        onChange={(e) => {
+                                            if (e.target.value) handleBulkAssignPlaylist(e.target.value)
+                                            e.target.value = ''
+                                        }}
+                                    >
+                                        <option value="">Assign Playlist...</option>
+                                        <option value="NULL">— No Playlist —</option>
+                                        {playlists.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                    </select>
+                                    <button onClick={handleBulkDelete} className="btn-danger" style={{ padding: '0.375rem 0.75rem', fontSize: '0.8rem' }}>
+                                        <Trash2 size={12} /> Move to Bin
+                                    </button>
+                                </div>
+                            )}
                         </div>
-                        <Pagination page={page} totalPages={Math.ceil(filtered.length / PAGE_SIZE)} totalItems={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
-                    </>
-                )}
-            </div>
+                    </div>
+
+                    <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                        {loading ? (
+                            <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--color-text-2)' }}><Loader2 size={24} style={{ margin: '0 auto' }} /></div>
+                        ) : paginated.length === 0 ? (
+                            <div className="empty-state">
+                                <Monitor size={40} />
+                                <h3>No devices found</h3>
+                                <p>{search || filterStore || filterRole ? 'Try adjusting filters.' : 'Register your first display device.'}</p>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="table-wrapper">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th style={{ width: 40 }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedIds.length > 0 && selectedIds.length === paginated.length}
+                                                        onChange={toggleSelectAll}
+                                                        className="w-4 h-4 rounded border-slate-700 bg-slate-900"
+                                                    />
+                                                </th>
+                                                <th>Device Code</th>
+                                                <th>Display Name</th>
+                                                <th>Store</th>
+                                                <th>Role</th>
+                                                <th>Orientation</th>
+                                                <th>Status</th>
+                                                <th>Last Seen</th>
+                                                <th>Version</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {paginated.map(d => {
+                                                const hb = heartbeats[d.device_code]
+                                                const online = isOnline(hb?.last_seen_at)
+                                                const isSelected = selectedIds.includes(d.id)
+                                                return (
+                                                    <tr key={d.id} className={isSelected ? 'bg-brand-500/5' : ''}>
+                                                        <td style={{ width: 40 }}>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={selectedIds.includes(d.id)}
+                                                                onChange={() => toggleSelect(d.id)}
+                                                                className="w-4 h-4 rounded border-slate-700 bg-slate-900"
+                                                            />
+                                                        </td>
+                                                        <td><span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.875rem', color: isSelected ? 'var(--color-brand-500)' : 'var(--color-text-primary)', letterSpacing: '0.05em' }}>{d.device_code}</span></td>
+                                                        <td style={{ color: 'var(--color-text-primary)' }}>{d.display_name || '—'}</td>
+                                                        <td style={{ color: 'var(--color-text-2)', fontSize: '0.8125rem' }}>{(d as any).store?.name || '—'}</td>
+                                                        <td>
+                                                            {(d as any).role?.key
+                                                                ? <span className="badge badge-blue" style={{ fontFamily: 'monospace' }}>{(d as any).role.key}</span>
+                                                                : <span style={{ color: 'var(--color-text-3)' }}>—</span>
+                                                            }
+                                                        </td>
+                                                        <td style={{ color: 'var(--color-text-2)', fontSize: '0.8125rem', textTransform: 'capitalize' }}>{d.orientation}</td>
+                                                        {/* ── Device Secret cell ── */}
+                                                        <td>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                                                                <span style={{
+                                                                    fontFamily: 'monospace', fontSize: '0.7rem',
+                                                                    color: revealedId === d.id ? 'var(--color-brand-500)' : 'var(--color-text-3)',
+                                                                    maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                                                    letterSpacing: revealedId === d.id ? undefined : '0.1em',
+                                                                }}>
+                                                                    {revealedId === d.id ? d.device_secret : '••••••••••••'}
+                                                                </span>
+                                                                <button
+                                                                    onClick={() => setRevealedId(revealedId === d.id ? null : d.id)}
+                                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-3)', padding: '0.2rem', display: 'flex' }}
+                                                                    title={revealedId === d.id ? 'Hide secret' : 'Reveal secret'}
+                                                                >
+                                                                    {revealedId === d.id ? <EyeOff size={12} /> : <Eye size={12} />}
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => copyText(d.device_secret, 'Secret', d.id)}
+                                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: copiedId === d.id ? 'var(--color-success)' : 'var(--color-text-3)', padding: '0.2rem', display: 'flex' }}
+                                                                    title="Copy secret"
+                                                                >
+                                                                    {copiedId === d.id ? <Check size={12} /> : <Copy size={12} />}
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <span className={`badge ${online ? 'badge-green' : hb ? 'badge-red' : 'badge-gray'} `}>
+                                                                {online ? '● Online' : hb ? '● Offline' : '○ Never'}
+                                                            </span>
+                                                        </td>
+                                                        <td style={{ fontSize: '0.8125rem', color: 'var(--color-text-2)' }}>
+                                                            {hb ? formatDistanceToNow(new Date(hb.last_seen_at), { addSuffix: true }) : '—'}
+                                                        </td>
+                                                        <td>
+                                                            {hb?.current_version
+                                                                ? <span className="badge badge-blue">{hb.current_version}</span>
+                                                                : <span style={{ color: 'var(--color-text-3)' }}>—</span>
+                                                            }
+                                                        </td>
+                                                        <td>
+                                                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                                {viewMode === 'active' ? (
+                                                                    <>
+                                                                        <button onClick={() => openEdit(d)} className="btn-secondary" style={{ padding: '0.375rem 0.625rem' }} title="Edit device">
+                                                                            <Edit2 size={13} />
+                                                                        </button>
+                                                                        {/* Promoted primary actions */}
+                                                                        <button
+                                                                            onClick={() => setSelectedHealthDevice(d)}
+                                                                            className="btn-secondary"
+                                                                            style={{ padding: '0.375rem 0.625rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--color-brand-400)' }}
+                                                                            title="Device Health & Diagnostics"
+                                                                        >
+                                                                            <Activity size={12} /> Diagnostics
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => handleScreenshot(d.id, d.device_code)}
+                                                                            className="btn-secondary"
+                                                                            style={{ padding: '0.375rem 0.625rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                                                                            title="Request Screenshot"
+                                                                        >
+                                                                            <Camera size={12} /> Preview
+                                                                        </button>
+                                                                        {/* Secondary icon-only actions */}
+                                                                        <button
+                                                                            onClick={() => handleReboot(d.id, d.device_code)}
+                                                                            className="btn-secondary"
+                                                                            style={{ padding: '0.375rem 0.625rem' }}
+                                                                            title="Remote Reboot"
+                                                                        >
+                                                                            <RotateCcw size={13} />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => handleClearCache(d.id, d.device_code)}
+                                                                            className="btn-secondary"
+                                                                            style={{ padding: '0.375rem 0.625rem' }}
+                                                                            title="Clear Device Cache"
+                                                                        >
+                                                                            <Eraser size={13} />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => handleCheckUpdate(d.id, d.device_code)}
+                                                                            className="btn-secondary"
+                                                                            style={{ padding: '0.375rem 0.625rem' }}
+                                                                            title="Check for App Update"
+                                                                        >
+                                                                            <Download size={13} />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => { setPairingInfo({ device_code: d.device_code, device_secret: d.device_secret }); setShowPairingModal(true) }}
+                                                                            className="btn-secondary"
+                                                                            style={{ padding: '0.375rem 0.625rem' }}
+                                                                            title="Show pairing info"
+                                                                        >
+                                                                            <QrCode size={13} />
+                                                                        </button>
+                                                                    </>
+                                                                ) : (
+                                                                    <button
+                                                                        onClick={() => handleRestore(d.id, d.device_code)}
+                                                                        className="btn-secondary"
+                                                                        style={{ padding: '0.375rem 0.625rem', color: 'var(--color-success)' }}
+                                                                        title="Restore Device"
+                                                                    >
+                                                                        <RotateCcw size={13} />
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    onClick={() => handleDelete(d.id, d.device_code)}
+                                                                    className="btn-danger"
+                                                                    style={{ padding: '0.375rem 0.625rem' }}
+                                                                    disabled={deleting === d.id}
+                                                                    title={viewMode === 'bin' ? "Delete permanently" : "Move to Bin"}
+                                                                >
+                                                                    {deleting === d.id ? <Loader2 size={13} /> : <Trash2 size={13} />}
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                )
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <Pagination page={page} totalPages={Math.ceil(filtered.length / PAGE_SIZE)} totalItems={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
+                            </>
+                        )}
+                    </div>
+                </div> {/* end right col */}
+            </div> {/* end two-column layout */}
 
             {/* Register Device Modal */}
             {showModal && (

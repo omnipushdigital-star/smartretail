@@ -196,7 +196,7 @@ export default function RulesPage() {
                     <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white flex items-center gap-3 tracking-tight">
                         Rules &amp; Scheduling
                     </h1>
-                    <p className="text-slate-500 dark:text-surface-400 mt-2 text-lg">Define display layout rules with targeting and scheduling</p>
+                    <p className="text-text-2 mt-2 text-lg">Define display layout rules with targeting and scheduling</p>
                 </div>
                 <div className="flex gap-4">
                     <button className="btn-secondary" onClick={() => setShowPreview(true)}>
@@ -210,7 +210,7 @@ export default function RulesPage() {
 
             <div className="card-glass border border-slate-200 dark:border-white/5 bg-white/70 dark:bg-surface-900/50 mb-6 p-4">
                 <div className="relative maxWidth-360">
-                    <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-3" />
                     <input type="text" className="input-field pl-12" placeholder="Search rules..." value={search}
                         onChange={e => { setSearch(e.target.value); setPage(1) }} />
                 </div>
@@ -218,7 +218,7 @@ export default function RulesPage() {
 
             <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
                 {loading ? (
-                    <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}><Loader2 size={24} style={{ margin: '0 auto' }} /></div>
+                    <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--color-text-2)' }}><Loader2 size={24} style={{ margin: '0 auto' }} /></div>
                 ) : paginated.length === 0 ? (
                     <div className="empty-state">
                         <CalendarRange size={40} />
@@ -256,9 +256,9 @@ export default function RulesPage() {
                                                         {r.target_type}
                                                     </span>
                                                 </td>
-                                                <td className="text-slate-500 dark:text-surface-400 font-medium">{r.priority}</td>
-                                                <td className="text-slate-500 dark:text-surface-400 text-sm italic font-medium">{(r as any).layout?.name || '—'}</td>
-                                                <td className="text-xs font-bold tracking-tight text-slate-400 dark:text-surface-500">
+                                                <td className="text-text-2 font-medium">{r.priority}</td>
+                                                <td className="text-text-2 text-sm italic font-medium">{(r as any).layout?.name || '—'}</td>
+                                                <td className="text-xs font-bold tracking-tight text-text-3">
                                                     {sched ? (
                                                         <div className="space-y-0.5">
                                                             <div className="uppercase tracking-widest">{maskToDays(sched.days_mask)}</div>
@@ -346,7 +346,7 @@ export default function RulesPage() {
                                     {DAYS.map((day, i) => (
                                         <button key={day} type="button"
                                             onClick={() => setDayToggles(t => t.map((v, j) => j === i ? !v : v))}
-                                            className={`p-2 rounded-xl border-2 text-xs font-black tracking-widest transition-all cursor-pointer ${dayToggles[i] ? 'bg-brand-500 border-brand-500 text-white' : 'bg-transparent border-slate-200 dark:border-white/10 text-slate-400 dark:text-surface-400 hover:border-brand-500/50'}`}>
+                                            className={`p-2 rounded-xl border-2 text-xs font-black tracking-widest transition-all cursor-pointer ${dayToggles[i] ? 'bg-brand-500 border-brand-500 text-white' : 'bg-transparent border-slate-200 dark:border-white/10 text-text-3 hover:border-brand-500/50'}`}>
                                             {day.toUpperCase()}
                                         </button>
                                     ))}
@@ -388,7 +388,7 @@ export default function RulesPage() {
             {/* Effective Preview */}
             {showPreview && (
                 <Modal title="Effective Layout Preview" onClose={() => setShowPreview(false)}>
-                    <p style={{ fontSize: '0.875rem', color: '#64748b', marginTop: 0 }}>
+                    <p style={{ fontSize: '0.875rem', color: 'var(--color-text-2)', marginTop: 0 }}>
                         Select a device to simulate which rule would match right now (client-side approximation).
                     </p>
                     <div className="form-group">
@@ -430,7 +430,7 @@ export default function RulesPage() {
                                                 const sched: any = (previewResult as any).schedules?.[0]
                                                 if (!sched) return <span className="text-green-500 font-bold uppercase tracking-widest text-[10px]">Always active</span>
                                                 return (
-                                                    <span className="text-brand-500 font-bold text-[10px] uppercase tracking-widest">
+                                                    <span className="text-text-2 font-bold text-[10px] uppercase tracking-widest">
                                                         {maskToDays(sched.days_mask)}{sched.start_time ? `, ${sched.start_time}–${sched.end_time || '∞'}` : ''}
                                                     </span>
                                                 )

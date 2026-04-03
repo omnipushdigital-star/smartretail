@@ -292,12 +292,12 @@ export default function MenuBuilderPage() {
                         <Layout className="text-brand-500" size={28} />
                         Menu Builder
                     </h1>
-                    <p className="text-surface-400 mt-1">Drag-and-drop menu creation with real-time preview</p>
+                    <p className="text-text-2 mt-1">Drag-and-drop menu creation with real-time preview</p>
                 </div>
                 <div className="flex gap-3">
                     <button
                         onClick={loadSavedMenus}
-                        className="flex items-center gap-2 px-4 py-2 bg-surface-950 border border-white/5 text-surface-400 rounded-lg hover:text-white transition-all"
+                        className="flex items-center gap-2 px-4 py-2 bg-surface-950 border border-white/5 text-text-2 rounded-lg hover:text-white transition-all"
                     >
                         <Monitor size={18} /> My Menus
                     </button>
@@ -341,7 +341,7 @@ export default function MenuBuilderPage() {
                             </button>
                         </div>
                         <div className="flex gap-1 p-1 bg-surface-950 rounded-lg border border-white/5 font-display text-[10px] font-bold uppercase tracking-widest">
-                            <button className="px-3 py-1 text-surface-400 hover:text-white transition-colors">Draft</button>
+                            <button className="px-3 py-1 text-text-2 hover:text-white transition-colors">Draft</button>
                             <button className="px-3 py-1 bg-brand-600 text-white rounded-md shadow-sm">Live</button>
                         </div>
                     </div>
@@ -368,15 +368,15 @@ export default function MenuBuilderPage() {
                                             <div className="flex items-center gap-3 flex-1 mr-4">
                                                 {cat.isOpen ? <ChevronDown size={18} className="text-surface-500" /> : <ChevronRight size={18} className="text-surface-500" />}
                                                 <input
-                                                    className="bg-transparent border-none focus:ring-0 font-semibold text-white p-0 w-full placeholder:text-surface-600"
+                                                    className="bg-transparent border-none focus:ring-0 font-semibold text-text-1 p-0 w-full placeholder:text-surface-600"
                                                     value={cat.name}
                                                     onChange={e => updateCategoryName(cat.id, e.target.value)}
                                                     onClick={e => e.stopPropagation()}
                                                     placeholder="Category Name"
                                                 />
-                                                <span className="text-xs text-surface-500 bg-white/5 px-2 py-0.5 rounded-full whitespace-nowrap">{cat.items.length} items</span>
+                                                <span className="text-xs text-text-2 bg-white/5 px-2 py-0.5 rounded-full whitespace-nowrap">{cat.items.length} items</span>
                                             </div>
-                                            <button onClick={(e) => { e.stopPropagation(); setCategories(categories.filter(c => c.id !== cat.id)) }} className="text-surface-600 hover:text-red-400 p-1">
+                                            <button onClick={(e) => { e.stopPropagation(); setCategories(categories.filter(c => c.id !== cat.id)) }} className="text-text-3 hover:text-red-400 p-1">
                                                 <Trash2 size={16} />
                                             </button>
                                         </div>
@@ -387,18 +387,18 @@ export default function MenuBuilderPage() {
                                                     <div key={item.id} className="p-3 bg-surface-900 border border-white/5 rounded-xl space-y-3 relative group/item">
                                                         <div className="flex gap-2">
                                                             <div className="flex-1">
-                                                                <label className="text-[10px] text-surface-500 uppercase font-bold mb-1 block">Item Name</label>
+                                                                <label className="text-[10px] text-text-2 uppercase font-bold mb-1 block">Item Name</label>
                                                                 <input
-                                                                    className="input-field bg-surface-950/50 border-white/5 w-full"
+                                                                    className="input-field bg-surface-950/50 border-white/5 w-full text-text-1"
                                                                     value={item.name}
                                                                     onChange={e => updateItem(cat.id, item.id, 'name', e.target.value)}
                                                                     placeholder="e.g. Cappuccino"
                                                                 />
                                                             </div>
                                                             <div className="w-28">
-                                                                <label className="text-[10px] text-surface-500 uppercase font-bold mb-1 block">Price</label>
+                                                                <label className="text-[10px] text-text-2 uppercase font-bold mb-1 block">Price</label>
                                                                 <div className="relative">
-                                                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-500 text-xs">{layoutConfig.currency.symbol}</span>
+                                                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-2 text-xs">{layoutConfig.currency.symbol}</span>
                                                                     <input
                                                                         className="input-field bg-surface-950/50 border-white/5 pl-8 text-right"
                                                                         value={item.price}
@@ -408,7 +408,7 @@ export default function MenuBuilderPage() {
                                                             </div>
                                                         </div>
                                                         <div>
-                                                            <label className="text-[10px] text-surface-500 uppercase font-bold mb-1 block">Description (Optional)</label>
+                                                            <label className="text-[10px] text-text-2 uppercase font-bold mb-1 block">Description (Optional)</label>
                                                             <input
                                                                 className="input-field bg-surface-950/50 border-white/5 w-full text-xs"
                                                                 value={item.description || ''}
@@ -426,7 +426,7 @@ export default function MenuBuilderPage() {
                                                 ))}
                                                 <button
                                                     onClick={() => addItem(cat.id)}
-                                                    className="w-full py-2 border border-dashed border-white/10 rounded-lg text-xs text-surface-500 hover:text-brand-400 hover:border-brand-500/50 transition-all flex items-center justify-center gap-2"
+                                                    className="w-full py-2 border border-dashed border-white/10 rounded-lg text-xs text-text-2 hover:text-brand-400 hover:border-brand-500/50 transition-all flex items-center justify-center gap-2"
                                                 >
                                                     <Plus size={14} /> Add Item
                                                 </button>
@@ -438,7 +438,7 @@ export default function MenuBuilderPage() {
 
                             <button
                                 onClick={addCategory}
-                                className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl text-sm font-medium text-surface-300 transition-all flex items-center justify-center gap-2"
+                                className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl text-sm font-medium text-text-2 transition-all flex items-center justify-center gap-2"
                             >
                                 <Plus size={18} /> Add New Category
                             </button>
@@ -454,7 +454,7 @@ export default function MenuBuilderPage() {
                                             className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${!layoutConfig.showPromo ? 'bg-brand-600/10 border-brand-500 text-white' : 'bg-surface-950/50 border-white/5 text-surface-400 hover:border-white/10'}`}
                                         >
                                             <div className="w-8 h-6 bg-surface-800 rounded border border-white/20" />
-                                            <span className="text-sm font-semibold">Full Screen Menu</span>
+                                            <span className="text-sm font-semibold text-text-1">Full Screen Menu</span>
                                         </button>
                                         <button
                                             onClick={() => setLayoutConfig(l => ({ ...l, showPromo: true }))}
@@ -464,7 +464,7 @@ export default function MenuBuilderPage() {
                                                 <div className="flex-1 bg-surface-800" />
                                                 <div className="w-1/3 bg-brand-600/40" />
                                             </div>
-                                            <span className="text-sm font-semibold">Multi-Zone (Split)</span>
+                                            <span className="text-sm font-semibold text-text-1">Multi-Zone (Split)</span>
                                         </button>
                                     </div>
                                 </div>
@@ -544,8 +544,8 @@ export default function MenuBuilderPage() {
                                         <div className="flex items-center gap-3">
                                             <span className="text-xl font-black text-brand-500 w-8">{layoutConfig.currency.symbol}</span>
                                             <div>
-                                                <div className="text-sm font-bold text-white">{layoutConfig.currency.code}</div>
-                                                <div className="text-[10px] text-surface-500 uppercase tracking-tighter">{layoutConfig.currency.name}</div>
+                                                <div className="text-sm font-bold text-text-1">{layoutConfig.currency.code}</div>
+                                                <div className="text-[10px] text-text-2 uppercase tracking-tighter">{layoutConfig.currency.name}</div>
                                             </div>
                                         </div>
                                         <ChevronDown size={18} className={`text-surface-500 transition-transform ${isCurrencyListOpen ? 'rotate-180' : ''}`} />
@@ -580,7 +580,7 @@ export default function MenuBuilderPage() {
                                                             <span className="text-lg font-black text-brand-500 w-8 text-center">{curr.symbol}</span>
                                                             <div className="text-left">
                                                                 <div className="text-sm font-bold text-white">{curr.code}</div>
-                                                                <div className="text-[10px] text-surface-500 uppercase">{curr.name}</div>
+                                                                <div className="text-[10px] text-text-2 uppercase">{curr.name}</div>
                                                             </div>
                                                         </div>
                                                         {layoutConfig.currency.code === curr.code && <div className="w-1.5 h-1.5 bg-brand-500 rounded-full shadow-[0_0_8px_rgba(239,68,68,0.5)]" />}
@@ -782,47 +782,49 @@ export default function MenuBuilderPage() {
                 </div>
             </div>
             {/* Menu List Modal */}
-            {showMenuList && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
-                    <div className="w-full max-w-2xl bg-surface-900 border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
-                        <div className="p-6 border-b border-white/5 flex justify-between items-center">
-                            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                                <Layout size={24} className="text-brand-500" />
-                                My Saved Menus
-                            </h2>
-                            <button onClick={() => setShowMenuList(false)} className="text-surface-500 hover:text-white">Close</button>
-                        </div>
-                        <div className="p-6 max-h-[60vh] overflow-y-auto space-y-3">
-                            {savedMenus.length === 0 ? (
-                                <div className="text-center py-10 text-surface-500">No menus found. Create your first one!</div>
-                            ) : (
-                                savedMenus.map(m => (
-                                    <div key={m.id} className="flex items-center justify-between p-4 bg-white/5 rounded-xl hover:bg-white/10 transition-all group border border-white/5 hover:border-brand-500/30">
-                                        <div>
-                                            <div className="font-semibold text-white">{m.name}</div>
-                                            <div className="text-xs text-surface-500">Last updated: {new Date(m.updated_at).toLocaleDateString()}</div>
+            {
+                showMenuList && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
+                        <div className="w-full max-w-2xl bg-surface-900 border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
+                            <div className="p-6 border-b border-white/5 flex justify-between items-center">
+                                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                                    <Layout size={24} className="text-brand-500" />
+                                    My Saved Menus
+                                </h2>
+                                <button onClick={() => setShowMenuList(false)} className="text-surface-500 hover:text-white">Close</button>
+                            </div>
+                            <div className="p-6 max-h-[60vh] overflow-y-auto space-y-3">
+                                {savedMenus.length === 0 ? (
+                                    <div className="text-center py-10 text-surface-500">No menus found. Create your first one!</div>
+                                ) : (
+                                    savedMenus.map(m => (
+                                        <div key={m.id} className="flex items-center justify-between p-4 bg-white/5 rounded-xl hover:bg-white/10 transition-all group border border-white/5 hover:border-brand-500/30">
+                                            <div>
+                                                <div className="font-semibold text-white">{m.name}</div>
+                                                <div className="text-xs text-surface-500">Last updated: {new Date(m.updated_at).toLocaleDateString()}</div>
+                                            </div>
+                                            <button
+                                                onClick={() => loadMenu(m.id)}
+                                                className="px-4 py-2 bg-brand-600/10 text-brand-400 group-hover:bg-brand-600 group-hover:text-white rounded-lg text-sm font-bold transition-all"
+                                            >
+                                                Load Menu
+                                            </button>
                                         </div>
-                                        <button
-                                            onClick={() => loadMenu(m.id)}
-                                            className="px-4 py-2 bg-brand-600/10 text-brand-400 group-hover:bg-brand-600 group-hover:text-white rounded-lg text-sm font-bold transition-all"
-                                        >
-                                            Load Menu
-                                        </button>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                        <div className="p-4 bg-surface-950/50 flex justify-end">
-                            <button
-                                onClick={() => { setMenuId(null); setMenuName('New Menu'); setCategories([]); setShowMenuList(false); }}
-                                className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-white rounded-lg transition-all text-sm"
-                            >
-                                <Plus size={18} /> Create New Menu
-                            </button>
+                                    ))
+                                )}
+                            </div>
+                            <div className="p-4 bg-surface-950/50 flex justify-end">
+                                <button
+                                    onClick={() => { setMenuId(null); setMenuName('New Menu'); setCategories([]); setShowMenuList(false); }}
+                                    className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-white rounded-lg transition-all text-sm"
+                                >
+                                    <Plus size={18} /> Create New Menu
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     )
 }

@@ -117,11 +117,11 @@ function BundleRow({
                 </span>
 
                 {/* Notes */}
-                <span style={{ flex: 1, color: '#94a3b8', fontSize: '0.8125rem' }}>
-                    {bundle.notes || <span style={{ color: '#334155' }}>No notes</span>}
+                <span style={{ flex: 1, color: 'var(--color-text-2)', fontSize: '0.8125rem' }}>
+                    {bundle.notes || <span style={{ color: 'var(--color-text-3)' }}>No notes</span>}
                 </span>
 
-                <span style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.8125rem', color: '#64748b' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.8125rem', color: 'var(--color-text-3)' }}>
                     <Layers size={13} />
                     {bundle.file_count ?? 0} item{bundle.file_count !== 1 ? 's' : ''}
                 </span>
@@ -134,7 +134,7 @@ function BundleRow({
                 )}
 
                 {/* Created */}
-                <span style={{ fontSize: '0.75rem', color: '#475569' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-text-3)' }}>
                     {bundle.created_at ? formatDistanceToNow(new Date(bundle.created_at), { addSuffix: true }) : '—'}
                 </span>
 
@@ -203,13 +203,13 @@ function BundleRow({
                                     <span style={{ display: 'flex', alignItems: 'center' }}>
                                         {MEDIA_ICON[(f.media?.type || 'image') as MediaType]}
                                     </span>
-                                    <span style={{ flex: 1, color: '#e2e8f0', fontSize: '0.8125rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    <span style={{ flex: 1, color: 'var(--color-text-1)', fontSize: '0.8125rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                         {f.media?.name || f.media_id}
                                     </span>
                                     <span className={`badge badge-${f.media?.type === 'image' ? 'blue' : f.media?.type === 'video' ? 'gray' : f.media?.type === 'web_url' ? 'brand' : 'green'}`} style={{ fontSize: '0.6875rem' }}>
                                         {f.media?.type || '—'}
                                     </span>
-                                    <span style={{ fontSize: '0.75rem', color: '#475569', minWidth: 60, textAlign: 'right' }}>
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-3)', minWidth: 60, textAlign: 'right' }}>
                                         {f.media?.type === 'web_url' ? 'Link' : formatBytes(f.media?.bytes)}
                                     </span>
                                 </div>
@@ -336,8 +336,8 @@ function CreateBundleModal({
                         placeholder="e.g. v1.0.0"
                         style={{ fontFamily: 'monospace' }}
                     />
-                    <p style={{ margin: '0.375rem 0 0', fontSize: '0.75rem', color: '#475569' }}>
-                        Use semantic versioning (v&lt;major&gt;.&lt;minor&gt;.&lt;patch&gt;). Suggested: <code style={{ color: '#7a8aff' }}>{suggestedVersion}</code>
+                    <p style={{ margin: '0.375rem 0 0', fontSize: '0.75rem', color: 'var(--color-text-3)' }}>
+                        Use semantic versioning (v&lt;major&gt;.&lt;minor&gt;.&lt;patch&gt;). Suggested: <code style={{ color: 'var(--color-brand-400)' }}>{suggestedVersion}</code>
                     </p>
                 </div>
 
@@ -365,7 +365,7 @@ function CreateBundleModal({
                         />
                         Snapshot media from a Layout
                     </label>
-                    <p style={{ margin: '0.25rem 0 0 1.5rem', fontSize: '0.75rem', color: '#475569' }}>
+                    <p style={{ margin: '0.25rem 0 0 1.5rem', fontSize: '0.75rem', color: 'var(--color-text-3)' }}>
                         Auto-populate bundle_files with all media assets referenced by the layout's playlists.
                     </p>
                 </div>
@@ -391,12 +391,12 @@ function CreateBundleModal({
                 <div style={{
                     display: 'flex', gap: '0.625rem', alignItems: 'flex-start',
                     padding: '0.75rem 1rem', borderRadius: 8, marginBottom: '1.25rem',
-                    background: 'rgba(90,100,246,0.07)', border: '1px solid rgba(90,100,246,0.18)',
-                    fontSize: '0.8125rem', color: '#94a3b8',
+                    background: 'rgba(var(--color-brand-rgb), 0.07)', border: '1px solid rgba(var(--color-brand-rgb), 0.18)',
+                    fontSize: '0.8125rem', color: 'var(--color-text-2)',
                 }}>
-                    <AlertTriangle size={14} color="#7a8aff" style={{ flexShrink: 0, marginTop: 1 }} />
+                    <AlertTriangle size={14} color="var(--color-brand-400)" style={{ flexShrink: 0, marginTop: 1 }} />
                     <span>
-                        After creating, go to <strong style={{ color: '#c7d2fe' }}>Publish</strong> and select this bundle to push it to devices.
+                        After creating, go to <strong style={{ color: 'var(--color-text-1)' }}>Publish</strong> and select this bundle to push it to devices.
                         The Player will show the new version at the next manifest poll (~2 min).
                     </span>
                 </div>
@@ -552,14 +552,14 @@ export default function BundlesPage() {
             {/* Stat strip */}
             <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
                 {[
-                    { label: 'Total Bundles', value: bundles.length, color: '#7a8aff' },
-                    { label: 'Network Items', value: totalFiles, color: '#f59e0b' },
-                    { label: 'Active Publications', value: activePubs, color: '#22c55e' },
+                    { label: 'Total Bundles', value: bundles.length, color: 'var(--color-brand-400)' },
+                    { label: 'Network Items', value: totalFiles, color: 'var(--color-warning)' },
+                    { label: 'Active Publications', value: activePubs, color: 'var(--color-success)' },
                 ].map(s => (
                     <div key={s.label} className="card" style={{ flex: 1, padding: '0.875rem 1.25rem', display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
                         <div style={{ flex: 1 }}>
                             <div style={{ fontSize: '1.375rem', fontWeight: 700, color: s.color }}>{s.value}</div>
-                            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.125rem' }}>{s.label}</div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-3)', marginTop: '0.125rem' }}>{s.label}</div>
                         </div>
                     </div>
                 ))}
@@ -569,21 +569,21 @@ export default function BundlesPage() {
             <div style={{
                 display: 'flex', alignItems: 'center', gap: '0.625rem',
                 padding: '0.75rem 1.25rem', marginBottom: '1.5rem',
-                background: 'rgba(90,100,246,0.06)', border: '1px solid rgba(90,100,246,0.15)',
+                background: 'rgba(var(--color-brand-rgb), 0.06)', border: '1px solid rgba(var(--color-brand-rgb), 0.15)',
                 borderRadius: 10, fontSize: '0.8125rem',
             }}>
-                <span style={{ color: '#64748b' }}>Workflow:</span>
+                <span style={{ color: 'var(--color-text-3)' }}>Workflow:</span>
                 <span className="badge badge-blue">1. Media Library</span>
-                <span style={{ color: '#334155' }}>→</span>
+                <span style={{ color: 'var(--color-text-3)' }}>→</span>
                 <span className="badge badge-blue">2. Playlist</span>
-                <span style={{ color: '#334155' }}>→</span>
+                <span style={{ color: 'var(--color-text-3)' }}>→</span>
                 <span className="badge badge-blue">3. Layout</span>
-                <span style={{ color: '#334155' }}>→</span>
+                <span style={{ color: 'var(--color-text-3)' }}>→</span>
                 <span className="badge badge-green">4. Bundle (here)</span>
-                <span style={{ color: '#334155' }}>→</span>
+                <span style={{ color: 'var(--color-text-3)' }}>→</span>
                 <span className="badge badge-gray">5. Publish</span>
-                <span style={{ color: '#334155' }}>→</span>
-                <span style={{ color: '#64748b' }}>📺 Player</span>
+                <span style={{ color: 'var(--color-text-3)' }}>→</span>
+                <span style={{ color: 'var(--color-text-2)' }}>📺 Player</span>
             </div>
 
             {/* Bundle list */}
@@ -598,9 +598,9 @@ export default function BundlesPage() {
                     background: 'rgba(255,255,255,0.02)', border: '1px dashed #1e293b',
                     borderRadius: 12,
                 }}>
-                    <Package size={40} color="#334155" style={{ margin: '0 auto 1rem', display: 'block' }} />
-                    <div style={{ fontWeight: 600, color: '#475569', marginBottom: '0.5rem' }}>No bundles yet</div>
-                    <div style={{ color: '#334155', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
+                    <Package size={40} className="text-text-3 opacity-20" style={{ margin: '0 auto 1rem', display: 'block' }} />
+                    <div style={{ fontWeight: 600, color: 'var(--color-text-2)', marginBottom: '0.5rem' }}>No bundles yet</div>
+                    <div style={{ color: 'var(--color-text-3)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
                         Create your first bundle and snapshot a layout's media assets to publish to your screens.
                     </div>
                     <button className="btn-primary" onClick={() => setShowCreate(true)}>

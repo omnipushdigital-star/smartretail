@@ -270,26 +270,26 @@ export default function MonitoringPage() {
                                                         {meta.storage_total_gb !== undefined && (
                                                             <div title={`Disk: ${meta.storage_free_gb ?? 0}GB free of ${meta.storage_total_gb}GB`}>
                                                                 💾 <strong>{meta.storage_free_gb ?? '—'}</strong>GB
-                                                                <span style={{ color: 'var(--color-surface-500)' }}> / {meta.storage_total_gb}GB</span>
+                                                                <span style={{ color: 'var(--color-text-2)' }}> / {meta.storage_total_gb}GB</span>
                                                             </div>
                                                         )}
                                                         {meta.storage_quota_unavailable && !meta.storage_total_gb && (
-                                                            <div style={{ color: 'var(--color-surface-500)', fontSize: '0.7rem' }}>💾 Quota unavailable</div>
+                                                            <div style={{ color: 'var(--color-text-3)', fontSize: '0.7rem' }}>💾 Quota unavailable</div>
                                                         )}
                                                         {meta.ram_total_mb !== undefined && (
                                                             <div title={`RAM: ${meta.ram_free_mb ?? 0}MB free of ${meta.ram_total_mb}MB`}>
                                                                 🧠 <strong>{meta.ram_free_mb ?? '—'}</strong>MB
-                                                                <span style={{ color: 'var(--color-surface-500)' }}> / {meta.ram_total_mb}MB</span>
+                                                                <span style={{ color: 'var(--color-text-2)' }}> / {meta.ram_total_mb}MB</span>
                                                             </div>
                                                         )}
                                                     </div>
                                                 ) : meta.storage_quota_unavailable ? (
-                                                    <span style={{ color: 'var(--color-surface-500)', fontSize: '0.75rem' }}>💾 Restricted</span>
+                                                    <span style={{ color: 'var(--color-text-3)', fontSize: '0.75rem' }}>💾 Restricted</span>
                                                 ) : (
                                                     <span style={{ color: 'var(--color-surface-500)' }}>—</span>
                                                 )}
                                             </td>
-                                            <td style={{ color: 'var(--color-surface-400)', fontSize: '0.8125rem' }}>
+                                            <td style={{ color: 'var(--color-text-primary)', fontSize: '0.8125rem' }}>
                                                 {formatDistanceToNow(new Date(hb.last_seen_at), { addSuffix: true })}
                                             </td>
                                             <td>
@@ -297,9 +297,9 @@ export default function MonitoringPage() {
                                                     {meta.device_model || '—'}
                                                 </div>
                                                 {meta.screen && (
-                                                    <div style={{ fontSize: '0.65rem', color: 'var(--color-surface-500)' }}>🖥 {meta.screen}</div>
+                                                    <div style={{ fontSize: '0.65rem', color: 'var(--color-text-2)' }}>🖥 {meta.screen}</div>
                                                 )}
-                                                <div style={{ fontSize: '0.7rem', color: 'var(--color-surface-500)', fontFamily: 'monospace' }}>
+                                                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-3)', fontFamily: 'monospace' }}>
                                                     {meta.local_ip || hb.ip_address || '—'}
                                                 </div>
                                             </td>
@@ -318,13 +318,13 @@ export default function MonitoringPage() {
                                     const device = deviceMap[code]
                                     return (
                                         <tr key={code} style={{ opacity: 0.6 }}>
-                                            <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--color-surface-400)' }}>{code}</td>
-                                            <td style={{ color: 'var(--color-surface-400)' }}>{device?.display_name || '—'}</td>
-                                            <td style={{ color: 'var(--color-surface-500)' }}>{(device?.store as any)?.name || '—'}</td>
+                                            <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--color-text-primary)' }}>{code}</td>
+                                            <td style={{ color: 'var(--color-text-primary)' }}>{device?.display_name || '—'}</td>
+                                            <td style={{ color: 'var(--color-text-2)' }}>{(device?.store as any)?.name || '—'}</td>
                                             <td><span className="badge badge-gray">○ Never Seen</span></td>
-                                            <td><span style={{ color: 'var(--color-surface-500)', fontSize: '0.75rem' }}>Awaiting first heartbeat</span></td>
-                                            <td style={{ color: 'var(--color-surface-500)' }}>—</td>
-                                            <td style={{ color: 'var(--color-surface-500)', fontSize: '0.75rem' }}>Open Player URL to pair</td>
+                                            <td><span style={{ color: 'var(--color-text-3)', fontSize: '0.75rem' }}>Awaiting first heartbeat</span></td>
+                                            <td style={{ color: 'var(--color-text-3)' }}>—</td>
+                                            <td style={{ color: 'var(--color-text-3)', fontSize: '0.75rem' }}>Open Player URL to pair</td>
                                         </tr>
                                     )
                                 })}
