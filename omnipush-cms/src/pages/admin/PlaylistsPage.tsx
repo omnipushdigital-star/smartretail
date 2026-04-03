@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Plus, Search, Edit2, Trash2, ListVideo, GripVertical, X, Image as ImageIcon, Film, Globe, Loader2, Presentation, Share2, Monitor, CheckCircle2 } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, ListVideo, GripVertical, X, Image as ImageIcon, Film, Globe, Loader2, Presentation, Share2, Monitor, CheckCircle2, Layout as LayoutIcon } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { Playlist, PlaylistItem, MediaAsset } from '../../types'
 import { useTenant } from '../../contexts/TenantContext'
@@ -12,10 +12,11 @@ import { CSS } from '@dnd-kit/utilities'
 
 const PAGE_SIZE = 10
 
-function SortableItem({ item, onRemove, onUpdateSettings }: {
+function SortableItem({ item, onRemove, onUpdateSettings, menus = [] }: {
     item: PlaylistItem & { media?: MediaAsset },
     onRemove: (id: string) => void,
-    onUpdateSettings: (id: string, settings: any) => void
+    onUpdateSettings: (id: string, settings: any) => void,
+    menus?: any[]
 }) {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: item.id })
     const style = { transform: CSS.Transform.toString(transform), transition }
@@ -28,11 +29,23 @@ function SortableItem({ item, onRemove, onUpdateSettings }: {
     return (
         <div ref={setNodeRef} style={{ ...style, display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.625rem 0.75rem', background: 'var(--color-surface-900)', borderRadius: 8, marginBottom: '0.5rem', border: '1px solid var(--color-surface-800)' }} className="sortable-item">
             <span {...attributes} {...listeners} className="drag-handle"><GripVertical size={14} /></span>
-            {item.type === 'image' ? <ImageIcon size={14} color="#60a5fa" /> : item.type === 'video' ? <Film size={14} color="#a78bfa" /> : item.type === 'ppt' ? <Presentation size={14} color="#f59e0b" /> : <Globe size={14} color="#34d399" />}
+            {item.type === 'image' ? <ImageIcon size={14} color="#60a5fa" /> :
+                item.type === 'video' ? <Film size={14} color="#a78bfa" /> :
+                    item.type === 'ppt' ? <Presentation size={14} color="#f59e0b" /> :
+                        (item.type === 'web_url' && item.web_url?.startsWith('/display/menu/')) ? <LayoutIcon size={14} color="#f472b6" /> :
+                            <Globe size={14} color="#34d399" />}
 
             <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
                 <div style={{ fontSize: '0.875rem', color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {item.media?.name || item.web_url || 'Unknown'}
+                    {(() => {
+                        if (item.media?.name) return item.media.name
+                        if (item.web_url?.startsWith('/display/menu/')) {
+                            const menuId = item.web_url.split('/').pop()
+                            const menu = menus.find(m => m.id === menuId)
+                            return menu ? `Menu: ${menu.name}` : 'Menu'
+                        }
+                        return item.web_url || 'Unknown'
+                    })()}
                 </div>
                 {item.is_scheduled && (
                     <div style={{ fontSize: '0.65rem', color: '#fbbf24', marginTop: '2px' }}>
@@ -121,6 +134,7 @@ function SortableItem({ item, onRemove, onUpdateSettings }: {
 export default function PlaylistsPage() {
     const [playlists, setPlaylists] = useState<Playlist[]>([])
     const [mediaAssets, setMediaAssets] = useState<MediaAsset[]>([])
+    const [menus, setMenus] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
     const [search, setSearch] = useState('')
     const [page, setPage] = useState(1)
@@ -131,7 +145,7 @@ export default function PlaylistsPage() {
     const [saving, setSaving] = useState(false)
     const [editingPlaylist, setEditingPlaylist] = useState<Playlist | null>(null)
     const [playlistItems, setPlaylistItems] = useState<(PlaylistItem & { media?: MediaAsset })[]>([])
-    const [addType, setAddType] = useState<'image' | 'video' | 'web_url' | 'ppt'>('video')
+    const [addType, setAddType] = useState<'image' | 'video' | 'web_url' | 'ppt' | 'menu'>('video')
     const [addMediaId, setAddMediaId] = useState('')
     const [addUrl, setAddUrl] = useState('')
     const [addDuration, setAddDuration] = useState('10')
@@ -155,12 +169,14 @@ export default function PlaylistsPage() {
     const loadAll = async () => {
         if (!currentTenantId) return
         setLoading(true)
-        const [plRes, mediaRes] = await Promise.all([
+        const [plRes, mediaRes, menuRes] = await Promise.all([
             supabase.from('playlists').select('*').eq('tenant_id', currentTenantId).order('name'),
             supabase.from('media_assets').select('*').eq('tenant_id', currentTenantId).order('name'),
+            supabase.from('menus').select('id, name').eq('tenant_id', currentTenantId).order('name'),
         ])
         setPlaylists(plRes.data || [])
         setMediaAssets(mediaRes.data || [])
+        setMenus(menuRes.data || [])
         setLoading(false)
     }
 
@@ -257,10 +273,11 @@ export default function PlaylistsPage() {
         if (!editingPlaylist) return
 
         // Validation: must have either a library asset OR a manual URL
+        const isMenu = addType === 'menu'
         const hasLibraryAsset = !!addMediaId
         const hasManualUrl = !!addUrl.trim()
 
-        if (!hasLibraryAsset && !hasManualUrl) {
+        if (!hasLibraryAsset && !hasManualUrl && !isMenu) {
             toast.error(addType === 'web_url' ? 'Enter a URL or select from library' : 'Select a media asset')
             return
         }
@@ -273,7 +290,11 @@ export default function PlaylistsPage() {
             settings: { transition: addTransition }
         }
 
-        if (hasLibraryAsset) {
+        if (isMenu) {
+            payload.type = 'web_url'
+            payload.web_url = `/display/menu/${addMediaId}`
+            payload.duration_seconds = parseInt(addDuration) || 15
+        } else if (hasLibraryAsset) {
             payload.media_id = addMediaId
             if (addType === 'image' || addType === 'web_url' || addType === 'ppt') payload.duration_seconds = parseInt(addDuration) || 15
             if (addType === 'video') payload.playback_speed = parseFloat(addPlaybackSpeed) || 1.0
@@ -523,7 +544,7 @@ export default function PlaylistsPage() {
                                     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                                         <SortableContext items={playlistItems.map(i => i.id)} strategy={verticalListSortingStrategy}>
                                             {playlistItems.map(item => (
-                                                <SortableItem key={item.id} item={item} onRemove={removeItem} onUpdateSettings={updateItemSettings} />
+                                                <SortableItem key={item.id} item={item} onRemove={removeItem} onUpdateSettings={updateItemSettings} menus={menus} />
                                             ))}
                                         </SortableContext>
                                     </DndContext>
@@ -540,6 +561,7 @@ export default function PlaylistsPage() {
                                         {[
                                             { id: 'video', label: 'Video', icon: <Film size={12} /> },
                                             { id: 'image', label: 'Image', icon: <ImageIcon size={12} /> },
+                                            { id: 'menu', label: 'Menu', icon: <LayoutIcon size={12} /> },
                                             { id: 'web_url', label: 'Web URL', icon: <Globe size={12} /> },
                                             { id: 'ppt', label: 'PPT', icon: <Presentation size={12} /> },
                                         ].map(t => (
@@ -547,10 +569,13 @@ export default function PlaylistsPage() {
                                                 key={t.id}
                                                 onClick={() => { setAddType(t.id as any); setAddMediaId('') }}
                                                 style={{
-                                                    padding: '0.5rem', fontSize: '0.75rem', borderRadius: 6, border: '1px solid var(--color-surface-800)',
-                                                    background: addType === t.id ? 'rgba(var(--color-brand-rgb), 0.15)' : 'transparent',
-                                                    color: addType === t.id ? 'var(--color-brand-400)' : 'var(--color-surface-400)',
-                                                    display: 'flex', alignItems: 'center', gap: '0.375rem', justifyContent: 'center'
+                                                    padding: '0.625rem', fontSize: '0.75rem', borderRadius: 8,
+                                                    border: addType === t.id ? '1px solid var(--color-brand-500)' : '1px solid var(--color-surface-700)',
+                                                    background: addType === t.id ? 'rgba(var(--color-brand-rgb), 0.15)' : 'rgba(255,255,255,0.02)',
+                                                    color: addType === t.id ? 'var(--color-brand-400)' : 'var(--color-text-2)',
+                                                    display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center',
+                                                    transition: 'all 0.2s',
+                                                    cursor: 'pointer'
                                                 }}
                                             >
                                                 {t.icon} {t.label}
@@ -560,9 +585,29 @@ export default function PlaylistsPage() {
                                 </div>
 
                                 <div className="form-group">
-                                    <label className="label">Library Assets ({filteredMedia.length})</label>
+                                    <label className="label">{addType === 'menu' ? 'Saved Menus' : 'Library Assets'} ({addType === 'menu' ? menus.length : filteredMedia.length})</label>
                                     <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--color-surface-800)', borderRadius: 8, background: 'var(--color-surface-900)' }}>
-                                        {filteredMedia.length === 0 ? (
+                                        {addType === 'menu' ? (
+                                            menus.length === 0 ? (
+                                                <div style={{ padding: '0.75rem', fontSize: '0.75rem', color: 'var(--color-text-3)', textAlign: 'center' }}>No saved menus found</div>
+                                            ) : (
+                                                menus.map(m => (
+                                                    <button
+                                                        key={m.id}
+                                                        onClick={() => { setAddMediaId(m.id); setAddUrl('') }}
+                                                        style={{
+                                                            width: '100%', textAlign: 'left', padding: '0.5rem 0.75rem', border: 'none', borderBottom: '1px solid var(--color-surface-800)',
+                                                            background: addMediaId === m.id ? 'rgba(var(--color-brand-rgb), 0.1)' : 'transparent',
+                                                            color: addMediaId === m.id ? 'var(--color-brand-400)' : 'var(--color-text-secondary)',
+                                                            fontSize: '0.8125rem', display: 'flex', alignItems: 'center', gap: '0.5rem'
+                                                        }}
+                                                    >
+                                                        {addMediaId === m.id ? <CheckCircle2 size={12} /> : <Plus size={12} />}
+                                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</span>
+                                                    </button>
+                                                ))
+                                            )
+                                        ) : filteredMedia.length === 0 ? (
                                             <div style={{ padding: '0.75rem', fontSize: '0.75rem', color: 'var(--color-text-3)', textAlign: 'center' }}>No {addType}s found</div>
                                         ) : (
                                             filteredMedia.map(m => (

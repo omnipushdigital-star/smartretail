@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+﻿import React, { useState, useEffect, useCallback } from 'react'
 import {
     Tv2, Layout, Activity, Shield, ArrowRight, PlayCircle, Layers, Settings,
     Plus, Monitor, Search, MoreVertical, Edit2, Trash2, RefreshCw, Smartphone,
@@ -20,6 +20,15 @@ const ONLINE_THRESHOLD_MS = 10 * 60 * 1000 // 10 minutes (lenient for debugging)
 function isOnline(lastSeen?: string) {
     if (!lastSeen) return false
     return Date.now() - new Date(lastSeen).getTime() < ONLINE_THRESHOLD_MS
+}
+
+function formatShorthandTime(dateStr?: string) {
+    if (!dateStr) return '—'
+    const diff = (Date.now() - new Date(dateStr).getTime()) / 1000
+    if (diff < 60) return '< 1m'
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+    return `${Math.floor(diff / 86400)}d ago`
 }
 
 function generateDeviceCode(storeName?: string, roleName?: string) {
@@ -198,7 +207,7 @@ export default function DevicesPage() {
             openEdit(res.device)
 
             toast('Please assign a Store and Role to start displaying content.', {
-                icon: '📺',
+                icon: 'ðŸ“º',
                 duration: 5000
             })
         } catch (err: any) {
@@ -550,112 +559,94 @@ export default function DevicesPage() {
                 </p>
             </div>
 
-            {/* Two-column layout: sidebar + table */}
-            <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'flex-start' }}>
+            {/* TOP FILTERS & TOOLBAR */}
+            <div className="card" style={{ marginBottom: '1rem', padding: '1rem' }}>
+                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
 
-                {/* LEFT SIDEBAR — Store & Role grouping */}
-                <div style={{ width: 190, flexShrink: 0 }}>
-                    <div className="card" style={{ padding: '0.875rem', marginBottom: '1rem' }}>
-                        <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 700, letterSpacing: '0.08em', marginBottom: '0.625rem' }}>Stores</div>
-                        {[{ id: '', name: 'All Screens' }, ...stores].map(s => {
-                            const count = s.id === '' ? devices.filter(d => !(d as any).deleted_at).length : devices.filter(d => (d as any).store?.id === s.id).length
-                            return (
-                                <button
-                                    key={s.id}
-                                    onClick={() => { setFilterStore(s.id); setPage(1) }}
-                                    style={{
-                                        width: '100%', textAlign: 'left', padding: '0.45rem 0.625rem',
-                                        borderRadius: 6, border: 'none', cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                        fontSize: '0.8125rem', marginBottom: '0.125rem',
-                                        background: filterStore === s.id ? 'rgba(var(--color-brand-rgb), 0.12)' : 'transparent',
-                                        color: filterStore === s.id ? 'var(--color-brand-400)' : 'var(--color-surface-400)',
-                                        fontWeight: filterStore === s.id ? 600 : 400,
-                                        transition: 'all 0.15s',
-                                    }}
-                                >
-                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
-                                    <span style={{
-                                        fontSize: '0.65rem', fontWeight: 700, minWidth: 18, textAlign: 'center',
-                                        background: filterStore === s.id ? 'var(--color-brand-600)' : 'var(--color-surface-800)',
-                                        color: filterStore === s.id ? 'white' : '#64748b',
-                                        borderRadius: 10, padding: '0.05rem 0.4rem',
-                                    }}>{count}</span>
-                                </button>
-                            )
-                        })}
+                    {/* Status Tabs */}
+                    <div className="btn-group-glass">
+                        <button className={`btn-tab-glass ${viewMode === 'active' ? 'active' : ''}`} onClick={() => setViewMode('active')}>Active</button>
+                        <button className={`btn-tab-glass error-tab ${viewMode === 'bin' ? 'active' : ''}`} onClick={() => setViewMode('bin')}><Trash2 size={12} /> Bin</button>
                     </div>
 
-                    <div className="card" style={{ padding: '0.875rem' }}>
-                        <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 700, letterSpacing: '0.08em', marginBottom: '0.625rem' }}>Role</div>
-                        {[{ id: '', name: 'All Roles' }, ...roles].map(r => (
-                            <button
-                                key={r.id}
-                                onClick={() => { setFilterRole(r.id); setPage(1) }}
-                                style={{
-                                    width: '100%', textAlign: 'left', padding: '0.45rem 0.625rem',
-                                    borderRadius: 6, border: 'none', cursor: 'pointer',
-                                    display: 'flex', alignItems: 'center',
-                                    fontSize: '0.8125rem', marginBottom: '0.125rem',
-                                    background: filterRole === r.id ? 'rgba(var(--color-brand-rgb), 0.12)' : 'transparent',
-                                    color: filterRole === r.id ? 'var(--color-brand-400)' : 'var(--color-text-3)',
-                                    fontWeight: filterRole === r.id ? 600 : 400,
-                                    transition: 'all 0.15s',
-                                }}
-                            >
-                                {r.name}
-                            </button>
-                        ))}
+                    <div style={{ width: 1, height: 24, background: 'rgba(255,255,255,0.1)' }} />
+
+                    {/* Store Filter */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--color-text-3)', fontWeight: 700 }}>Store:</span>
+                        <select
+                            className="input-field"
+                            style={{ width: 'auto', height: 36, fontSize: '0.8125rem', padding: '0 2rem 0 0.75rem', background: 'var(--color-surface-900)' }}
+                            value={filterStore}
+                            onChange={(e) => { setFilterStore(e.target.value); setPage(1) }}
+                        >
+                            <option value="">All Stores</option>
+                            {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </select>
                     </div>
+
+                    {/* Role Filter */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--color-text-3)', fontWeight: 700 }}>Role:</span>
+                        <select
+                            className="input-field"
+                            style={{ width: 'auto', height: 36, fontSize: '0.8125rem', padding: '0 2rem 0 0.75rem', background: 'var(--color-surface-900)' }}
+                            value={filterRole}
+                            onChange={(e) => { setFilterRole(e.target.value); setPage(1) }}
+                        >
+                            <option value="">All Roles</option>
+                            {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                        </select>
+                    </div>
+
+                    {/* Search */}
+                    <div style={{ position: 'relative', flex: '1 1 200px' }}>
+                        <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-3)' }} />
+                        <input type="text" className="input-field" placeholder={`Search ${viewMode === 'bin' ? 'bin' : 'devices'}...`} value={search}
+                            onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ paddingLeft: '2rem', height: 36 }} />
+                    </div>
+
+                    <button className="btn-secondary" onClick={loadData} title="Refresh" style={{ height: 36 }}><RefreshCw size={14} /></button>
                 </div>
 
+                {/* Selection Counter & Batch Actions */}
+                {selectedIds.length > 0 && (
+                    <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(var(--color-brand-rgb), 0.1)', border: '1px solid rgba(var(--color-brand-rgb), 0.2)', padding: '0.625rem 1rem', borderRadius: 12 }}>
+                        <span style={{ color: 'var(--color-brand-400)', fontWeight: 700, fontSize: '0.8rem' }}>{selectedIds.length} Selected</span>
+                        <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.1)' }} />
+
+                        {viewMode === 'active' ? (
+                            <>
+                                <select
+                                    className="input-field"
+                                    style={{ width: 'auto', height: '28px', fontSize: '0.75rem', padding: '0 0.5rem', background: 'var(--color-surface-900)' }}
+                                    onChange={(e) => {
+                                        if (e.target.value) handleBulkAssignPlaylist(e.target.value)
+                                        e.target.value = ''
+                                    }}
+                                >
+                                    <option value="">Batch Assign Playlist...</option>
+                                    <option value="NULL">— No Playlist —</option>
+                                    {playlists.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                </select>
+                                <button onClick={handleBulkDelete} className="btn-danger" style={{ padding: '0.25rem 0.625rem', fontSize: '0.75rem' }}>
+                                    <Trash2 size={12} /> Move to Bin
+                                </button>
+                            </>
+                        ) : (
+                            <>
+                                <button onClick={handleBulkRestore} className="text-emerald-400 hover:text-emerald-300 text-sm font-bold flex items-center gap-1.5 transition-colors"><RotateCcw size={14} /> Restore Selected</button>
+                                <button onClick={handleBulkDelete} className="text-red-400 hover:text-red-300 text-sm font-bold flex items-center gap-1.5 transition-colors"><Trash2 size={14} /> Delete Selected Permanently</button>
+                            </>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            <div style={{ display: 'flex', gap: '0rem', alignItems: 'flex-start' }}>
                 {/* RIGHT: Devices content */}
                 <div style={{ flex: 1, minWidth: 0 }}>
 
-                    {/* Top toolbar */}
-                    <div className="card" style={{ marginBottom: '1rem', padding: '0.875rem 1rem' }}>
-                        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                            <div className="btn-group-glass">
-                                <button className={`btn-tab-glass ${viewMode === 'active' ? 'active' : ''}`} onClick={() => setViewMode('active')}>Active</button>
-                                <button className={`btn-tab-glass error-tab ${viewMode === 'bin' ? 'active' : ''}`} onClick={() => setViewMode('bin')}><Trash2 size={12} /> Bin</button>
-                            </div>
-                            <div style={{ position: 'relative', flex: '1 1 200px' }}>
-                                <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-3)' }} />
-                                <input type="text" className="input-field" placeholder={`Search ${viewMode === 'bin' ? 'bin' : 'devices'}...`} value={search}
-                                    onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ paddingLeft: '2rem' }} />
-                            </div>
-                            {viewMode === 'bin' && selectedIds.length > 0 && (
-                                <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 px-4 py-2 rounded-xl animate-in fade-in slide-in-from-left-4">
-                                    <span className="text-red-400 font-bold text-sm">{selectedIds.length} Selected</span>
-                                    <div className="h-4 w-px bg-red-500/20" />
-                                    <button onClick={handleBulkRestore} className="text-emerald-400 hover:text-emerald-300 text-sm font-bold flex items-center gap-1.5 transition-colors"><RotateCcw size={14} /> Restore</button>
-                                    <button onClick={handleBulkDelete} className="text-red-400 hover:text-red-300 text-sm font-bold flex items-center gap-1.5 transition-colors"><Trash2 size={14} /> Delete Permanently</button>
-                                </div>
-                            )}
-
-                            {viewMode === 'active' && selectedIds.length > 0 && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(var(--color-brand-rgb), 0.1)', border: '1px solid rgba(var(--color-brand-rgb), 0.2)', padding: '0.5rem 1rem', borderRadius: 12 }}>
-                                    <span style={{ color: 'var(--color-brand-400)', fontWeight: 700, fontSize: '0.8rem' }}>{selectedIds.length} Selected</span>
-                                    <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.1)' }} />
-                                    <select
-                                        className="input-field"
-                                        style={{ width: 'auto', height: '32px', fontSize: '0.8rem', padding: '0 0.5rem', background: 'var(--color-surface-900)' }}
-                                        onChange={(e) => {
-                                            if (e.target.value) handleBulkAssignPlaylist(e.target.value)
-                                            e.target.value = ''
-                                        }}
-                                    >
-                                        <option value="">Assign Playlist...</option>
-                                        <option value="NULL">— No Playlist —</option>
-                                        {playlists.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                    </select>
-                                    <button onClick={handleBulkDelete} className="btn-danger" style={{ padding: '0.375rem 0.75rem', fontSize: '0.8rem' }}>
-                                        <Trash2 size={12} /> Move to Bin
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    </div>
 
                     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
                         {loading ? (
@@ -680,15 +671,16 @@ export default function DevicesPage() {
                                                         className="w-4 h-4 rounded border-slate-700 bg-slate-900"
                                                     />
                                                 </th>
-                                                <th>Device Code</th>
-                                                <th>Display Name</th>
-                                                <th>Store</th>
-                                                <th>Role</th>
-                                                <th>Orientation</th>
-                                                <th>Status</th>
-                                                <th>Last Seen</th>
-                                                <th>Version</th>
-                                                <th>Actions</th>
+                                                <th style={{ textAlign: 'left', paddingLeft: '1rem' }}>Device Code</th>
+                                                <th style={{ textAlign: 'left' }}>Display Name</th>
+                                                <th style={{ textAlign: 'left' }}>Store</th>
+                                                <th style={{ textAlign: 'left' }}>Role</th>
+                                                <th style={{ textAlign: 'left' }}>Orientation</th>
+                                                <th style={{ textAlign: 'left' }}>Secret</th>
+                                                <th style={{ textAlign: 'center' }}>Connection</th>
+                                                <th style={{ textAlign: 'left' }}>Last Seen</th>
+                                                <th style={{ textAlign: 'center' }}>Version</th>
+                                                <th style={{ textAlign: 'center' }}>Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -707,16 +699,16 @@ export default function DevicesPage() {
                                                             />
                                                         </td>
                                                         <td><span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.875rem', color: isSelected ? 'var(--color-brand-500)' : 'var(--color-text-primary)', letterSpacing: '0.05em' }}>{d.device_code}</span></td>
-                                                        <td style={{ color: 'var(--color-text-primary)' }}>{d.display_name || '—'}</td>
-                                                        <td style={{ color: 'var(--color-text-2)', fontSize: '0.8125rem' }}>{(d as any).store?.name || '—'}</td>
+                                                        <td style={{ color: 'var(--color-text-primary)' }}>{d.display_name || 'â€”'}</td>
+                                                        <td style={{ color: 'var(--color-text-2)', fontSize: '0.8125rem' }}>{(d as any).store?.name || 'â€”'}</td>
                                                         <td>
                                                             {(d as any).role?.key
                                                                 ? <span className="badge badge-blue" style={{ fontFamily: 'monospace' }}>{(d as any).role.key}</span>
-                                                                : <span style={{ color: 'var(--color-text-3)' }}>—</span>
+                                                                : <span style={{ color: 'var(--color-text-3)' }}>â€”</span>
                                                             }
                                                         </td>
                                                         <td style={{ color: 'var(--color-text-2)', fontSize: '0.8125rem', textTransform: 'capitalize' }}>{d.orientation}</td>
-                                                        {/* ── Device Secret cell ── */}
+                                                        {/* â”€â”€ Device Secret cell â”€â”€ */}
                                                         <td>
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
                                                                 <span style={{
@@ -725,7 +717,7 @@ export default function DevicesPage() {
                                                                     maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                                                     letterSpacing: revealedId === d.id ? undefined : '0.1em',
                                                                 }}>
-                                                                    {revealedId === d.id ? d.device_secret : '••••••••••••'}
+                                                                    {revealedId === d.id ? d.device_secret : 'â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢'}
                                                                 </span>
                                                                 <button
                                                                     onClick={() => setRevealedId(revealedId === d.id ? null : d.id)}
@@ -743,22 +735,22 @@ export default function DevicesPage() {
                                                                 </button>
                                                             </div>
                                                         </td>
-                                                        <td>
-                                                            <span className={`badge ${online ? 'badge-green' : hb ? 'badge-red' : 'badge-gray'} `}>
-                                                                {online ? '● Online' : hb ? '● Offline' : '○ Never'}
+                                                        <td style={{ textAlign: 'center' }}>
+                                                            <span className={`badge ${online ? 'badge-green' : hb ? 'badge-red' : 'badge-gray'}`}>
+                                                                {online ? '• Online' : hb ? '• Offline' : 'Never'}
                                                             </span>
                                                         </td>
-                                                        <td style={{ fontSize: '0.8125rem', color: 'var(--color-text-2)' }}>
-                                                            {hb ? formatDistanceToNow(new Date(hb.last_seen_at), { addSuffix: true }) : '—'}
+                                                        <td style={{ textAlign: 'left', fontSize: '0.8125rem', color: 'var(--color-text-2)' }}>
+                                                            {formatShorthandTime(hb?.last_seen_at)}
                                                         </td>
-                                                        <td>
+                                                        <td style={{ textAlign: 'center' }}>
                                                             {hb?.current_version
                                                                 ? <span className="badge badge-blue">{hb.current_version}</span>
                                                                 : <span style={{ color: 'var(--color-text-3)' }}>—</span>
                                                             }
                                                         </td>
-                                                        <td>
-                                                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                        <td style={{ textAlign: 'center' }}>
+                                                            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
                                                                 {viewMode === 'active' ? (
                                                                     <>
                                                                         <button onClick={() => openEdit(d)} className="btn-secondary" style={{ padding: '0.375rem 0.625rem' }} title="Edit device">
@@ -854,11 +846,11 @@ export default function DevicesPage() {
                 <Modal title={editing ? 'Edit Device' : 'Register Device'} onClose={() => setShowModal(false)}>
                     {!editing ? (
                         <div style={{ padding: '0.75rem 1rem', marginBottom: '1rem', background: 'rgba(90,100,246,0.08)', border: '1px solid rgba(90,100,246,0.2)', borderRadius: 8, fontSize: '0.8125rem', color: '#94a3b8' }}>
-                            ✨ <strong style={{ color: '#c7d2fe' }}>Device Secret will be auto-generated</strong> — shown after creation for pairing.
+                            âœ¨ <strong style={{ color: '#c7d2fe' }}>Device Secret will be auto-generated</strong> â€” shown after creation for pairing.
                         </div>
                     ) : (
                         <div style={{ padding: '0.75rem 1rem', marginBottom: '1rem', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 8, fontSize: '0.8125rem', color: '#fbbf24' }}>
-                            ⚠️ <strong style={{ color: '#fbbf24' }}>Renaming the Device Code</strong> will require you to update the URL on the physical screen (TV).
+                            âš ï¸ <strong style={{ color: '#fbbf24' }}>Renaming the Device Code</strong> will require you to update the URL on the physical screen (TV).
                         </div>
                     )}
                     <form onSubmit={handleSave}>
@@ -882,14 +874,14 @@ export default function DevicesPage() {
                             <div className="form-group">
                                 <label className="label">Store</label>
                                 <select className="input-field" value={form.store_id} onChange={e => setForm(f => ({ ...f, store_id: e.target.value }))}>
-                                    <option value="">— Unassigned —</option>
+                                    <option value="">â€” Unassigned â€”</option>
                                     {stores.map(s => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}
                                 </select>
                             </div>
                             <div className="form-group">
                                 <label className="label">Role</label>
                                 <select className="input-field" value={form.role_id} onChange={e => setForm(f => ({ ...f, role_id: e.target.value }))}>
-                                    <option value="">— Unassigned —</option>
+                                    <option value="">â€” Unassigned â€”</option>
                                     {roles.map(r => <option key={r.id} value={r.id}>{r.name} {r.key ? `(${r.key})` : ''}</option>)}
                                 </select>
                             </div>
@@ -920,10 +912,10 @@ export default function DevicesPage() {
                             <div className="form-group">
                                 <label className="label">Resolution</label>
                                 <select className="input-field" value={form.resolution} onChange={e => setForm(f => ({ ...f, resolution: e.target.value }))}>
-                                    <option value="1920x1080">1920×1080 (Full HD)</option>
-                                    <option value="3840x2160">3840×2160 (4K)</option>
-                                    <option value="1280x720">1280×720 (HD)</option>
-                                    <option value="1080x1920">1080×1920 (Portrait FHD)</option>
+                                    <option value="1920x1080">1920Ã—1080 (Full HD)</option>
+                                    <option value="3840x2160">3840Ã—2160 (4K)</option>
+                                    <option value="1280x720">1280Ã—720 (HD)</option>
+                                    <option value="1080x1920">1080Ã—1920 (Portrait FHD)</option>
                                 </select>
                             </div>
                         </div>
@@ -937,7 +929,7 @@ export default function DevicesPage() {
                             <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
                             <button type="submit" className="btn-primary" disabled={saving}>
                                 {saving && <Loader2 size={14} />}
-                                {saving ? 'Saving…' : editing ? 'Update Device' : 'Register Device'}
+                                {saving ? 'Savingâ€¦' : editing ? 'Update Device' : 'Register Device'}
                             </button>
                         </div>
                     </form>
@@ -946,7 +938,7 @@ export default function DevicesPage() {
 
             {/* Pairing Instructions Modal */}
             {showPairingModal && pairingInfo && (
-                <Modal title="📺 Device Pairing Instructions" onClose={() => setShowPairingModal(false)}>
+                <Modal title="ðŸ“º Device Pairing Instructions" onClose={() => setShowPairingModal(false)}>
                     <div style={{ fontSize: '0.875rem', color: '#94a3b8', marginBottom: '1.25rem' }}>
                         Device registered! Use the credentials below to configure the Player app on the screen.
                     </div>
@@ -989,7 +981,7 @@ export default function DevicesPage() {
                         </div>
                     ))}
                     <div style={{ padding: '0.75rem 1rem', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 8, fontSize: '0.8125rem', color: '#92400e', marginTop: '0.5rem' }}>
-                        ⚠️ <strong style={{ color: '#fbbf24' }}>Save the Device Secret now.</strong> It will not be shown again. Manual entry is also supported on the Player.
+                        âš ï¸ <strong style={{ color: '#fbbf24' }}>Save the Device Secret now.</strong> It will not be shown again. Manual entry is also supported on the Player.
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
                         <button className="btn-primary" onClick={() => setShowPairingModal(false)}>Done</button>
@@ -998,7 +990,7 @@ export default function DevicesPage() {
             )}
             {/* Claim Device via PIN Modal */}
             {showClaimModal && (
-                <Modal title="🔗 Pair Screen with Code" onClose={() => setShowClaimModal(false)}>
+                <Modal title="ðŸ”— Pair Screen with Code" onClose={() => setShowClaimModal(false)}>
                     <div style={{ fontSize: '0.875rem', color: '#94a3b8', marginBottom: '1.5rem', lineHeight: 1.6 }}>
                         Enter the 6-digit code displayed on your player screen to securely link it to this account.
                     </div>
@@ -1027,13 +1019,13 @@ export default function DevicesPage() {
 
             {/* Screenshot Viewer Modal */}
             {screenshotModal && (
-                <Modal title={`📸 Screenshot — ${screenshotModal.deviceCode}`} onClose={() => setScreenshotModal(null)}>
+                <Modal title={`ðŸ“¸ Screenshot â€” ${screenshotModal.deviceCode}`} onClose={() => setScreenshotModal(null)}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.25rem', minHeight: 200 }}>
                         {screenshotModal.polling && !screenshotModal.imageUrl && (
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', paddingTop: '2rem' }}>
                                 <Loader2 size={40} style={{ animation: 'spin 1s linear infinite', color: '#6366f1' }} />
                                 <p style={{ color: '#94a3b8', fontSize: '0.875rem', textAlign: 'center' }}>
-                                    Waiting for the device to capture and upload the screenshot…<br />
+                                    Waiting for the device to capture and upload the screenshotâ€¦<br />
                                     <span style={{ color: '#64748b', fontSize: '0.75rem' }}>This may take up to 30 seconds.</span>
                                 </p>
                             </div>
@@ -1061,7 +1053,7 @@ export default function DevicesPage() {
                                         className="btn-secondary"
                                         style={{ fontSize: '0.8125rem', textDecoration: 'none' }}
                                     >
-                                        Open Full Size ↗
+                                        Open Full Size â†—
                                     </a>
                                     <a
                                         href={screenshotModal.imageUrl}

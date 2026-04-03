@@ -171,6 +171,16 @@ function DoubleBufferVideo({ items, assets, onAdvance, showDebug, deviceCode }: 
     const idxRef = useRef(0)
     const [debug, setDebug] = useState<string>('Init')
     const addLog = (window as any).addRemoteLog || ((m: string) => console.log(m))
+
+    // Helper for structured Proof of Play reporting
+    const reportPoP = useCallback((mediaId: string | null, itemId: string, status: 'START' | 'END' | 'ERROR') => {
+        const timestamp = new Date().toISOString()
+        const logMsg = `[PoP] ${status} | Media:${mediaId || 'URL'} | Item:${itemId}`
+        addLog(logMsg)
+
+        // Also send to Supabase for persistent audit trail if needed
+        // supabase.from('playback_logs').insert({ device_code, media_id: mediaId, playlist_item_id: itemId, event: status, timestamp })
+    }, [addLog])
     const watchdogRef = useRef<any>(null)
     const initialSyncDone = useRef(false)
     const [showNext, setShowNext] = useState(false)
@@ -259,17 +269,11 @@ function DoubleBufferVideo({ items, assets, onAdvance, showDebug, deviceCode }: 
                     setDebug(`${nextIdx} Play OK`)
                     const preloadIdx = (nextIdx + 1) % sorted.length
                     const preloadUrl = getUrl(sorted[preloadIdx])
-
-                    setTimeout(() => {
-                        setSlotUrls(prev => {
-                            const updated: [string, string] = [...prev] as [string, string]
-                            updated[currentSlot] = preloadUrl
-                            return updated
-                        })
-                    }, 500)
-                }).catch(e => {
-                    setDebug(`P.Err`)
-                    addLog(`[V-Slot] Play Failed: ${e.message || 'Unknown'}`, 'error')
+                    setDebug(`Play OK: ${idxRef.current + 1}/${sorted.length}`)
+                }).catch(err => {
+                    reportPoP(sorted[idxRef.current].media_id, sorted[idxRef.current].playlist_item_id, 'ERROR')
+                    setDebug(`Play Err: ${err.message}`)
+                    addLog(`[V-Slot] Play Failed: ${err.message || 'Unknown'}`, 'error')
                 })
             }
             setTimeout(attemptPlay, 50)
@@ -303,6 +307,31 @@ function DoubleBufferVideo({ items, assets, onAdvance, showDebug, deviceCode }: 
         })
     }, [])
 
+    // Sync slot URLs if manifest assets change (e.g. during offline hydration)
+    useEffect(() => {
+        if (sorted.length === 0) return
+
+        const currentUrl = getUrl(sorted[idxRef.current])
+        const nextIdx = (idxRef.current + 1) % sorted.length
+        const nextUrl = sorted.length > 1 ? getUrl(sorted[nextIdx]) : ''
+
+        setSlotUrls(prev => {
+            const nextUrls: [string, string] = [...prev]
+            // Update the active slot if its URL changed in the manifest
+            if (nextUrls[activeSlot] !== currentUrl) {
+                console.log(`[V-Engine] Syncing Active Slot ${activeSlot} URL change`)
+                nextUrls[activeSlot] = currentUrl
+            }
+            // Update the inactive slot (preload) if its URL changed
+            const inactiveSlot = activeSlot === 0 ? 1 : 0
+            if (nextUrls[inactiveSlot] !== nextUrl) {
+                console.log(`[V-Engine] Syncing Inactive Slot ${inactiveSlot} URL update (Preload)`)
+                nextUrls[inactiveSlot] = nextUrl
+            }
+            return nextUrls
+        })
+    }, [memoizedAssets, sorted, activeSlot, getUrl])
+
     // Initialize
     useEffect(() => {
         if (sorted.length > 0 && !initialSyncDone.current) {
@@ -317,7 +346,9 @@ function DoubleBufferVideo({ items, assets, onAdvance, showDebug, deviceCode }: 
             const v = v1.current
             if (v) {
                 const startPlay = () => {
-                    v.currentTime = 0
+                    const item = sorted[idxRef.current]
+                    reportPoP(item.media_id, item.playlist_item_id, 'START')
+
                     v.play().then(() => {
                         setDebug("Start OK")
                         addLog(`[V-Engine] Initial Play OK (${firstId.split('/').pop()})`)
@@ -502,6 +533,18 @@ function PlaybackEngine({ items, assets, region, showDebug, deviceCode }: Playba
             }
         }
     }, [idx, activeItems])
+
+    // Helper for non-video PoP (Images / Web)
+    useEffect(() => {
+        if (activeItems.length > 0) {
+            const item = activeItems[idx]
+            const isVideo = (assets.find(a => a.media_id === item.media_id)?.type || item.type || '').toLowerCase().includes('video')
+            if (!isVideo) {
+                const addLog = (window as any).addRemoteLog || ((m: string) => console.log(m))
+                addLog(`[PoP] START | Media:${item.media_id || 'URL'} | Item:${item.playlist_item_id}`)
+            }
+        }
+    }, [idx, activeItems, assets])
 
     const [prevIdx, setPrevIdx] = useState<number | null>(null)
     const [isTransitioning, setIsTransitioning] = useState(false)
@@ -795,8 +838,11 @@ function LoadingState({ device_code, tenantId }: { device_code: string; tenantId
             <div style={{ textAlign: 'center', zIndex: 1, position: 'relative' }}>
                 <Logo tenantId={tenantId} />
                 <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.1)', borderTopColor: '#00daf3', animation: 'spin 0.8s linear infinite', margin: '2.5rem auto 1rem' }} />
-                <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.8rem', letterSpacing: '0.05em' }}>Connecting…</div>
+                <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.8rem', letterSpacing: '0.05em' }}>Connecting to Cloud…</div>
                 <div style={{ fontFamily: 'monospace', color: 'rgba(255,255,255,0.2)', fontSize: '0.7rem', marginTop: '0.5rem' }}>{device_code}</div>
+                <div style={{ marginTop: '2rem' }}>
+                    <LiveClock />
+                </div>
             </div>
         </div>
     )
@@ -861,10 +907,27 @@ function ErrorState({ device_code, tenantId, msg, onRetry }: { device_code: stri
                 <Logo tenantId={tenantId} />
                 <div style={{ marginTop: '2.5rem', background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 16, padding: '1.5rem 2rem', maxWidth: 380 }}>
                     <WifiOff size={28} color="#ef4444" style={{ margin: '0 auto 0.75rem' }} />
-                    <div style={{ fontWeight: 600, color: '#ef4444', marginBottom: '0.5rem' }}>Connection Failed</div>
+                    <div style={{ fontWeight: 600, color: '#ef4444', marginBottom: '0.75rem', fontSize: '1.1rem' }}>Cloud Connection Failed</div>
                     <div style={{ color: '#94a3b8', fontSize: '0.8125rem', marginBottom: '1.25rem', lineHeight: 1.6 }}>
-                        {msg}
+                        {msg.toLowerCase().includes('fetch')
+                            ? "Network Error: Could not reach the cloud servers. Please check your internet connection, DNS, and verify the device time is correct."
+                            : msg}
                     </div>
+
+                    <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1rem', borderRadius: 12, marginBottom: '1.25rem', textAlign: 'left', border: '1px solid rgba(255,255,255,0.05)' }}>
+                        <div style={{ marginBottom: '0.5rem' }}>
+                            <LiveClock />
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: '#64748b', display: 'flex', justifyContent: 'space-between' }}>
+                            <span>Local IP:</span>
+                            <span style={{ color: '#94a3b8' }}>{(window as any).AndroidHealth?.getIp?.() || 'Detecting...'}</span>
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: '#64748b', display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
+                            <span>DNS Res:</span>
+                            <span style={{ color: navigator.onLine ? '#22c55e' : '#ef4444' }}>{navigator.onLine ? 'RESOLVED' : 'FAILED'}</span>
+                        </div>
+                    </div>
+
                     <button
                         onClick={onRetry}
                         style={{
@@ -874,7 +937,7 @@ function ErrorState({ device_code, tenantId, msg, onRetry }: { device_code: stri
                             color: '#f87171', fontWeight: 600, cursor: 'pointer', fontSize: '0.875rem',
                         }}
                     >
-                        <RefreshCw size={14} /> Retry
+                        <RefreshCw size={14} className={msg.includes('fetch') ? 'animate-spin' : ''} /> Retry Connection
                     </button>
                 </div>
             </div>
@@ -1414,6 +1477,7 @@ export default function PlayerPage() {
         return () => clearInterval(timer)
     }, [manifest?.device?.id, checkCommands])
 
+
     // ── Asset Sync (Offline Cache) ──
     const syncAssets = useCallback(async (assetsToSync: ManifestAsset[]) => {
         if (!assetsToSync || assetsToSync.length === 0) return
@@ -1507,6 +1571,12 @@ export default function PlayerPage() {
             }
 
             // ── Regular Load ──
+            // Pre-hydrate any assets we already have in cache to avoid black-flicker during re-sync
+            if (data.assets) {
+                const hydrated = await hydrateAssetsFromCache(data.assets)
+                data.assets = hydrated
+            }
+
             setManifest(data)
             setVersion(newVersion)
             versionRef.current = newVersion
@@ -1571,7 +1641,7 @@ export default function PlayerPage() {
             addRemoteLog(`Fetch Critical Error: ${err.message}`, 'error')
             return false
         }
-    }, [dc, version, phase, syncAssets, initPairing, addRemoteLog])
+    }, [dc, version, phase, initPairing, syncAssets, manifest])
 
     // ── Send heartbeat ──
     const sendHeartbeat = useCallback(async (sec: string) => {
@@ -1790,6 +1860,41 @@ export default function PlayerPage() {
     const handleRetry = () => {
         window.location.reload()
     }
+
+    // ── Self-Healing: Standby & Error Recovery ──
+    useEffect(() => {
+        // 1. Standby Refetch: If device is online but has no publication (standby), 
+        //    check every 5 minutes if something has been published.
+        let standbyInterval: any = null
+        if (phase === 'standby' && secret) {
+            standbyInterval = setInterval(() => {
+                console.log('[Self-Healing] STANDBY Check: Attempting to fetch new publication...')
+                fetchManifest(secretRef.current)
+            }, 300_000) // 5 minutes
+        }
+
+        // 2. Error Watchdog: If app is stuck in ERROR for > 10 minutes, force a browser reload
+        let errorTimeout: any = null
+        if (phase === 'error') {
+            errorTimeout = setTimeout(() => {
+                console.warn('[Self-Healing] ERROR Watchdog: Device stuck in error for 10m. Forcing full reload...')
+                window.location.reload()
+            }, 600_000) // 10 minutes
+        }
+
+        // 3. Network Recovery: If user brings device back online, immediately try to sync
+        const handleOnline = () => {
+            console.log('[Self-Healing] NETWORK: Device is back online. Refreshing manifest...')
+            if (secretRef.current) fetchManifest(secretRef.current)
+        }
+        window.addEventListener('online', handleOnline)
+
+        return () => {
+            if (standbyInterval) clearInterval(standbyInterval)
+            if (errorTimeout) clearTimeout(errorTimeout)
+            window.removeEventListener('online', handleOnline)
+        }
+    }, [phase, !!secret, fetchManifest])
 
     // ── Resolve playlist items for playback ──
     const getPlaylistItems = (): ManifestItem[] => {

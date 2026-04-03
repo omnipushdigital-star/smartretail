@@ -3,15 +3,26 @@ import { createClient } from '@supabase/supabase-js'
 export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
+// Detect if running on an Android WebView / Signage device to optimize network behavior
+const isHardwarePlayer = navigator.userAgent.toLowerCase().includes('android') ||
+    window.location.pathname.startsWith('/player/');
+
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     db: { schema: 'public' },
     auth: {
-        persistSession: true,
+        persistSession: !isHardwarePlayer, // Disable persistence on hardware players if storage is restricted
         autoRefreshToken: true,
         detectSessionInUrl: false,
     },
     global: {
         headers: { 'x-app-version': '1.0.0' },
+        // Custom fetch wrapper to help debug 'TypeError: Failed to fetch'
+        fetch: (...args) => {
+            return fetch(...args).catch(err => {
+                console.error('[Supabase Fetch Error]', err.message, 'URL:', args[0]);
+                throw err;
+            });
+        }
     },
 })
 

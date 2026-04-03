@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
-import { supabase, DEFAULT_TENANT_ID } from '../lib/supabase'
+import { supabase, DEFAULT_TENANT_ID, SUPABASE_URL } from '../lib/supabase'
 
 interface Tenant {
     id: string;
@@ -28,17 +28,49 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
 
     useEffect(() => {
         const initializeTenant = async () => {
-            // Priority 1: Check Supabase session first
-            const { data: { session } } = await supabase.auth.getSession()
-            const metaTenantId = session?.user?.user_metadata?.tenant_id || session?.user?.app_metadata?.tenant_id
-
-            if (metaTenantId) {
-                console.log('[TenantContext] Found tenant_id in user metadata:', metaTenantId)
-                setCurrentTenantId(metaTenantId)
-                localStorage.setItem('omnipush_tenant_id', metaTenantId)
+            // Priority 1: Check if this is a player route. 
+            // Players often boot before the network stack is fully ready on Android TV/WebViews.
+            const isPlayer = window.location.pathname.startsWith('/player/')
+            if (isPlayer) {
+                console.log('[TenantContext] Player detected. Stabilizing network stack...')
+                await new Promise(r => setTimeout(r, 2000)) // 2s stabilization delay
             }
 
-            await fetchTenants(metaTenantId)
+            // Retry logic for unstable connections
+            let attempts = 0
+            const maxAttempts = isPlayer ? 5 : 2
+            let lastErr = null
+
+            while (attempts < maxAttempts) {
+                try {
+                    // Priority 1: Check Supabase session first
+                    const { data: { session } } = await supabase.auth.getSession()
+                    const metaTenantId = session?.user?.user_metadata?.tenant_id || session?.user?.app_metadata?.tenant_id
+
+                    if (metaTenantId) {
+                        console.log('[TenantContext] Found tenant_id in user metadata:', metaTenantId)
+                        setCurrentTenantId(metaTenantId)
+                        localStorage.setItem('omnipush_tenant_id', metaTenantId)
+                    }
+
+                    await fetchTenants(metaTenantId)
+                    return // Success!
+                } catch (err: any) {
+                    attempts++
+                    lastErr = err
+                    console.warn(`[TenantContext] Connection attempt ${attempts} failed.`, err.message)
+                    if (attempts < maxAttempts) {
+                        await new Promise(r => setTimeout(r, 1500 * attempts)) // Backoff
+                    }
+                }
+            }
+
+            console.error('[TenantContext] All connection attempts failed. Using recovery mode.', lastErr)
+            const fallback = { id: DEFAULT_TENANT_ID, name: 'Recovery Mode', settings: {} }
+            setTenants([fallback])
+            setCurrentTenant(fallback)
+            setCurrentTenantId(DEFAULT_TENANT_ID)
+            setLoading(false)
         }
 
         initializeTenant()
@@ -92,7 +124,15 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
             }
         } catch (err: any) {
             console.error('[TenantContext] Load failed:', err)
-            const fallback = { id: DEFAULT_TENANT_ID, name: 'Recovery Mode', settings: {} }
+
+            // Special handling for the common signage 'TypeError: Failed to fetch'
+            // This usually means DNS block, CORS issue, or Mixed Content (HTTP vs HTTPS)
+            const isMixedContent = window.location.protocol === 'http:' && SUPABASE_URL.startsWith('https:')
+            if (isMixedContent) {
+                console.warn('[TenantContext] Caution: Running over HTTP while talking to HTTPS cloud. This may be blocked by some Android WebViews.')
+            }
+
+            const fallback = { id: DEFAULT_TENANT_ID, name: 'Signage Mode (Local)', settings: {} }
             setTenants([fallback])
             setCurrentTenant(fallback)
             setCurrentTenantId(DEFAULT_TENANT_ID)
