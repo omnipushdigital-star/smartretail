@@ -846,11 +846,11 @@ export default function DevicesPage() {
                 <Modal title={editing ? 'Edit Device' : 'Register Device'} onClose={() => setShowModal(false)}>
                     {!editing ? (
                         <div style={{ padding: '0.75rem 1rem', marginBottom: '1rem', background: 'rgba(90,100,246,0.08)', border: '1px solid rgba(90,100,246,0.2)', borderRadius: 8, fontSize: '0.8125rem', color: '#94a3b8' }}>
-                            âœ¨ <strong style={{ color: '#c7d2fe' }}>Device Secret will be auto-generated</strong> â€” shown after creation for pairing.
+                            ✨ <strong style={{ color: '#c7d2fe' }}>Device Secret will be auto-generated</strong> — shown after creation for pairing.
                         </div>
                     ) : (
                         <div style={{ padding: '0.75rem 1rem', marginBottom: '1rem', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 8, fontSize: '0.8125rem', color: '#fbbf24' }}>
-                            âš ï¸ <strong style={{ color: '#fbbf24' }}>Renaming the Device Code</strong> will require you to update the URL on the physical screen (TV).
+                            ⚠️ <strong style={{ color: '#fbbf24' }}>Renaming the Device Code</strong> will require you to update the URL on the physical screen (TV).
                         </div>
                     )}
                     <form onSubmit={handleSave}>
@@ -874,14 +874,14 @@ export default function DevicesPage() {
                             <div className="form-group">
                                 <label className="label">Store</label>
                                 <select className="input-field" value={form.store_id} onChange={e => setForm(f => ({ ...f, store_id: e.target.value }))}>
-                                    <option value="">â€” Unassigned â€”</option>
+                                    <option value="">— Unassigned —</option>
                                     {stores.map(s => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}
                                 </select>
                             </div>
                             <div className="form-group">
                                 <label className="label">Role</label>
                                 <select className="input-field" value={form.role_id} onChange={e => setForm(f => ({ ...f, role_id: e.target.value }))}>
-                                    <option value="">â€” Unassigned â€”</option>
+                                    <option value="">— Unassigned —</option>
                                     {roles.map(r => <option key={r.id} value={r.id}>{r.name} {r.key ? `(${r.key})` : ''}</option>)}
                                 </select>
                             </div>
@@ -912,10 +912,10 @@ export default function DevicesPage() {
                             <div className="form-group">
                                 <label className="label">Resolution</label>
                                 <select className="input-field" value={form.resolution} onChange={e => setForm(f => ({ ...f, resolution: e.target.value }))}>
-                                    <option value="1920x1080">1920Ã—1080 (Full HD)</option>
-                                    <option value="3840x2160">3840Ã—2160 (4K)</option>
-                                    <option value="1280x720">1280Ã—720 (HD)</option>
-                                    <option value="1080x1920">1080Ã—1920 (Portrait FHD)</option>
+                                    <option value="1920x1080">1920×1080 (Full HD)</option>
+                                    <option value="3840x2160">3840×2160 (4K)</option>
+                                    <option value="1280x720">1280×720 (HD)</option>
+                                    <option value="1080x1920">1080×1920 (Portrait FHD)</option>
                                 </select>
                             </div>
                         </div>
@@ -929,7 +929,7 @@ export default function DevicesPage() {
                             <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
                             <button type="submit" className="btn-primary" disabled={saving}>
                                 {saving && <Loader2 size={14} />}
-                                {saving ? 'Savingâ€¦' : editing ? 'Update Device' : 'Register Device'}
+                                {saving ? 'Saving...' : editing ? 'Update Device' : 'Register Device'}
                             </button>
                         </div>
                     </form>
@@ -938,7 +938,7 @@ export default function DevicesPage() {
 
             {/* Pairing Instructions Modal */}
             {showPairingModal && pairingInfo && (
-                <Modal title="ðŸ“º Device Pairing Instructions" onClose={() => setShowPairingModal(false)}>
+                <Modal title="📺 Device Pairing Instructions" onClose={() => setShowPairingModal(false)}>
                     <div style={{ fontSize: '0.875rem', color: '#94a3b8', marginBottom: '1.25rem' }}>
                         Device registered! Use the credentials below to configure the Player app on the screen.
                     </div>
@@ -981,7 +981,7 @@ export default function DevicesPage() {
                         </div>
                     ))}
                     <div style={{ padding: '0.75rem 1rem', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 8, fontSize: '0.8125rem', color: '#92400e', marginTop: '0.5rem' }}>
-                        âš ï¸ <strong style={{ color: '#fbbf24' }}>Save the Device Secret now.</strong> It will not be shown again. Manual entry is also supported on the Player.
+                        ⚠️ <strong style={{ color: '#fbbf24' }}>Save the Device Secret now.</strong> It will not be shown again. Manual entry is also supported on the Player.
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
                         <button className="btn-primary" onClick={() => setShowPairingModal(false)}>Done</button>
@@ -990,7 +990,7 @@ export default function DevicesPage() {
             )}
             {/* Claim Device via PIN Modal */}
             {showClaimModal && (
-                <Modal title="ðŸ”— Pair Screen with Code" onClose={() => setShowClaimModal(false)}>
+                <Modal title="🔗 Pair Screen with Code" onClose={() => setShowClaimModal(false)}>
                     <div style={{ fontSize: '0.875rem', color: '#94a3b8', marginBottom: '1.5rem', lineHeight: 1.6 }}>
                         Enter the 6-digit code displayed on your player screen to securely link it to this account.
                     </div>
@@ -1019,13 +1019,13 @@ export default function DevicesPage() {
 
             {/* Screenshot Viewer Modal */}
             {screenshotModal && (
-                <Modal title={`ðŸ“¸ Screenshot â€” ${screenshotModal.deviceCode}`} onClose={() => setScreenshotModal(null)}>
+                <Modal title={`📷 Screenshot — ${screenshotModal.deviceCode}`} onClose={() => setScreenshotModal(null)}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.25rem', minHeight: 200 }}>
                         {screenshotModal.polling && !screenshotModal.imageUrl && (
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', paddingTop: '2rem' }}>
                                 <Loader2 size={40} style={{ animation: 'spin 1s linear infinite', color: '#6366f1' }} />
                                 <p style={{ color: '#94a3b8', fontSize: '0.875rem', textAlign: 'center' }}>
-                                    Waiting for the device to capture and upload the screenshotâ€¦<br />
+                                    Waiting for the device to capture and upload the screenshot...<br />
                                     <span style={{ color: '#64748b', fontSize: '0.75rem' }}>This may take up to 30 seconds.</span>
                                 </p>
                             </div>
@@ -1053,7 +1053,7 @@ export default function DevicesPage() {
                                         className="btn-secondary"
                                         style={{ fontSize: '0.8125rem', textDecoration: 'none' }}
                                     >
-                                        Open Full Size â†—
+                                        Open Full Size ↗
                                     </a>
                                     <a
                                         href={screenshotModal.imageUrl}
