@@ -78,19 +78,30 @@ export const cacheDb = {
 }
 
 export async function downloadAndCache(asset: { media_id: string; url: string; checksum_sha256?: string | null; type: string }): Promise<string> {
-    const cached = await cacheDb.get(asset.media_id)
+    try {
+        const cached = await cacheDb.get(asset.media_id)
 
-    // If we have it and checksum matches (TODO: implement checksum check)
-    if (cached) {
-        console.log(`[Cache] Hit: ${asset.media_id}`)
-        return URL.createObjectURL(cached.blob)
+        // If we have it and checksum matches (TODO: implement checksum check)
+        if (cached && cached.blob && cached.blob.size > 0) {
+            console.log(`[Cache] Hit: ${asset.media_id} (${(cached.blob.size / 1024 / 1024).toFixed(2)} MB)`)
+            return URL.createObjectURL(cached.blob)
+        }
+    } catch (e: any) {
+        console.warn(`[Cache] Read error for ${asset.media_id}: ${e.message}`)
     }
 
     console.log(`[Cache] Downloading: ${asset.url}`)
     try {
-        const res = await fetch(asset.url)
-        if (!res.ok) throw new Error(`Download failed: ${res.statusText}`)
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 60000) // 1 min sync timeout
+
+        const res = await fetch(asset.url, { signal: controller.signal })
+        clearTimeout(timeoutId)
+
+        if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`)
         const blob = await res.blob()
+
+        if (!blob || blob.size === 0) throw new Error("Received empty blob")
 
         await cacheDb.save({
             media_id: asset.media_id,
@@ -102,7 +113,9 @@ export async function downloadAndCache(asset: { media_id: string; url: string; c
 
         return URL.createObjectURL(blob)
     } catch (err: any) {
-        console.error(`[Cache] Fetch failed for ${asset.media_id} (${asset.url}):`, err)
+        if (err.name === 'AbortError') {
+            throw new Error(`Download timed out after 60s`)
+        }
         // Check for specific CORS/Network indicators on old WebViews
         const isNetworkError = !err.message || err.message === 'Failed to fetch' || err.name === 'TypeError'
         const reason = isNetworkError ? 'Network/CORS blocked' : err.message

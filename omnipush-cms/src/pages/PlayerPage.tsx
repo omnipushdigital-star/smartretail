@@ -1519,27 +1519,31 @@ export default function PlayerPage() {
                 continue
             }
 
-            try {
-                // Determine if it's already a blob URL (unlikely at start)
-                if (asset.url.startsWith('blob:')) {
-                    completed++
-                    setSyncProgress({ current: completed, total: updatedAssets.length })
-                    continue
-                }
+            let attempts = 0
+            const maxAttempts = 2
+            let success = false
 
-                const blobUrl = await downloadAndCache({
-                    media_id: asset.media_id,
-                    url: asset.url,
-                    type: asset.type,
-                    checksum_sha256: asset.checksum_sha256
-                })
-                updatedAssets[i] = { ...asset, url: blobUrl }
-            } catch (err) {
-                console.error(`[Cache] Failed to sync ${asset.media_id}`, err)
-            } finally {
-                completed++
-                setSyncProgress({ current: completed, total: updatedAssets.length })
+            while (attempts < maxAttempts && !success) {
+                try {
+                    attempts++
+                    const blobUrl = await downloadAndCache({
+                        media_id: asset.media_id,
+                        url: asset.url,
+                        type: asset.type,
+                        checksum_sha256: asset.checksum_sha256
+                    })
+                    updatedAssets[i] = { ...asset, url: blobUrl }
+                    success = true
+                } catch (err: any) {
+                    const errMsg = err.message || (typeof err === 'string' ? err : JSON.stringify(err))
+                    console.error(`[Cache] Sync Attempt ${attempts} FAILED for ${asset.media_id}: ${errMsg}`)
+                    if (attempts < maxAttempts) {
+                        await new Promise(r => setTimeout(r, 2000)) // Wait before retry
+                    }
+                }
             }
+            completed++
+            setSyncProgress({ current: completed, total: updatedAssets.length })
         }
 
         // Update manifest with blob URLs
