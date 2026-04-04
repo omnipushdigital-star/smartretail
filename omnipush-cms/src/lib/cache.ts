@@ -96,14 +96,19 @@ export async function downloadAndCache(asset: { media_id: string; url: string; c
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 60000) // 1 min sync timeout
 
-        const res = await fetch(asset.url, {
-            headers: {
+        const isSupabase = asset.url.includes('supabase.co')
+        const fetchOptions: RequestInit = {
+            signal: controller.signal,
+            headers: isSupabase ? {
                 'apikey': SUPABASE_ANON_KEY,
                 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
                 'x-client-info': 'omnipush-player-cache'
-            },
-            signal: controller.signal
-        })
+            } : {
+                'x-client-info': 'omnipush-player-cache-ext'
+            }
+        }
+
+        const res = await fetch(asset.url, fetchOptions)
         clearTimeout(timeoutId)
 
         if (!res.ok) {
