@@ -44,6 +44,7 @@ export async function callEdgeFn(fn: string, body: object): Promise<any> {
                 'Content-Type': 'application/json',
                 'Authorization': authHeader,
                 'apikey': SUPABASE_ANON_KEY!,
+                'x-client-info': 'omnipush-player/1.0.0',
             },
             body: JSON.stringify(body),
             signal: controller.signal,
