@@ -149,6 +149,14 @@ export async function hydrateAssetsFromCache(
     return Promise.all(
         assets.map(async (asset) => {
             if (!asset.media_id || !asset.url) return asset
+
+            // Android WebView MediaPlayer cannot play `blob:` URIs.
+            // We skip blob hydration for video elements and rely on native caching
+            // or the original URL so the native MediaPlayer doesn't throw a format error.
+            if ((asset.type || '').includes('video')) {
+                return asset
+            }
+
             const blobUrl = await getCachedBlobUrl(asset.media_id)
             if (blobUrl) {
                 console.log(`[Cache] Offline hydrate ✅ ${asset.media_id}`)

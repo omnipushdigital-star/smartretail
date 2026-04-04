@@ -1532,10 +1532,11 @@ export default function PlayerPage() {
                     const blobUrl = await downloadAndCache({
                         media_id: asset.media_id,
                         url: asset.url,
-                        type: asset.type,
+                        type: asset.type || '',
                         checksum_sha256: asset.checksum_sha256
                     })
-                    updatedAssets[i] = { ...asset, url: blobUrl }
+                    const isVideo = (asset.type || '').includes('video')
+                    updatedAssets[i] = { ...asset, url: isVideo ? asset.url : blobUrl }
                     success = true
                 } catch (err: any) {
                     const errMsg = err.message || (typeof err === 'string' ? err : JSON.stringify(err))
