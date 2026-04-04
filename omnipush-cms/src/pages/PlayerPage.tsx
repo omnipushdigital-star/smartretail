@@ -1165,6 +1165,7 @@ export default function PlayerPage() {
     const [errorMsg, setErrorMsg] = useState('')
     const [version, setVersion] = useState<string | null>(null)
     const [syncProgress, setSyncProgress] = useState<{ current: number; total: number } | null>(null)
+    const [syncErrorCount, setSyncErrorCount] = useState<number>(0)
     const versionRef = useRef(version)
     const manifestTimerRef = useRef<any>(null)
     const hbTimerRef = useRef<any>(null)
@@ -1507,9 +1508,11 @@ export default function PlayerPage() {
 
         console.log(`[Cache] Syncing ${assetsToSync.length} assets...`)
         setSyncProgress({ current: 0, total: assetsToSync.length })
+        setSyncErrorCount(0)
 
         const updatedAssets = [...assetsToSync]
         let completed = 0
+        let errors = 0
 
         for (let i = 0; i < updatedAssets.length; i++) {
             const asset = updatedAssets[i]
@@ -1539,11 +1542,14 @@ export default function PlayerPage() {
                     console.error(`[Cache] Sync Attempt ${attempts} FAILED for ${asset.media_id}: ${errMsg}`)
                     if (attempts < maxAttempts) {
                         await new Promise(r => setTimeout(r, 2000)) // Wait before retry
+                    } else {
+                        errors++
                     }
                 }
             }
             completed++
             setSyncProgress({ current: completed, total: updatedAssets.length })
+            setSyncErrorCount(errors)
         }
 
         // Update manifest with blob URLs
@@ -1699,6 +1705,7 @@ export default function PlayerPage() {
             local_ip: null,
             platform: navigator.platform || 'unknown',
             screen: `${screen.width}x${screen.height}`,
+            sync_errors: syncErrorCount,
         }
 
         try {

@@ -99,6 +99,8 @@ export default function DashboardPage() {
                 const onlineList = latest.filter(h => isOnline(h.last_seen_at))
                 const online = onlineList.length
 
+                const activeAlerts = latest.filter(h => !isOnline(h.last_seen_at) || h.status === 'error' || (h.meta as any)?.sync_errors > 0)
+
                 setStats({
                     stores: totalStores, devices: totalDevicesCount, online,
                     playing: onlineList.filter(h => h.status === 'playing').length,
@@ -106,6 +108,7 @@ export default function DashboardPage() {
                     activePubs, roles: totalRoles,
                 })
                 setHeartbeats(latest)
+                setAlerts(activeAlerts)
             } catch (err: any) {
                 console.error('[Dashboard] Fetch error:', err)
             } finally {
@@ -278,15 +281,21 @@ export default function DashboardPage() {
                         </div>
                         {alerts.length > 0 ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                                {alerts.slice(0, 2).map((a, i) => (
-                                    <div key={i} style={{ padding: '0.875rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, display: 'flex', gap: '0.75rem' }}>
-                                        <AlertTriangle size={14} style={{ color: '#ef4444', flexShrink: 0, marginTop: 2 }} />
-                                        <div>
-                                            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#ef4444', marginBottom: '0.25rem' }}>{a.device_code} Offline</div>
-                                            <div style={{ fontSize: '0.6875rem', color: tk.textMuted }}>Last seen {formatDistanceToNow(new Date(a.last_seen_at), { addSuffix: true })}</div>
+                                {alerts.slice(0, 3).map((a, i) => {
+                                    const isOff = !isOnline(a.last_seen_at);
+                                    const hasSyncErr = (a.meta as any)?.sync_errors > 0;
+                                    const errText = isOff ? 'Offline' : hasSyncErr ? `${(a.meta as any).sync_errors} Sync Error(s)` : 'Error State';
+
+                                    return (
+                                        <div key={i} style={{ padding: '0.875rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, display: 'flex', gap: '0.75rem' }}>
+                                            <AlertTriangle size={14} style={{ color: '#ef4444', flexShrink: 0, marginTop: 2 }} />
+                                            <div>
+                                                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#ef4444', marginBottom: '0.25rem' }}>{a.device_code} &middot; {errText}</div>
+                                                <div style={{ fontSize: '0.6875rem', color: tk.textMuted }}>Last seen {formatDistanceToNow(new Date(a.last_seen_at), { addSuffix: true })}</div>
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    )
+                                })}
                             </div>
                         ) : (
                             <div style={{ textAlign: 'center', padding: '1.5rem 0' }}>
@@ -363,8 +372,18 @@ function DeviceGridItem({ hb, online, tk, onEdit }: { hb: ProjectHeartbeat, onli
                         {hb.device_code}
                     </div>
                     <div style={{ fontSize: '0.6875rem', color: tk.textMuted, display: 'flex', alignItems: 'center', gap: '0.375rem', marginTop: '0.125rem' }}>
-                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: online ? tk.brand : '#ef4444', boxShadow: online ? `0 0 8px ${tk.brand}` : 'none' }} />
-                        {hb.device?.store?.name || 'Main Office'}
+                        {(() => {
+                            const hasSyncErr = (hb.meta as any)?.sync_errors > 0;
+                            const isOff = !online;
+                            const dotColor = isOff ? '#ef4444' : hasSyncErr ? '#f59e0b' : tk.brand;
+                            const statText = isOff ? 'Offline' : hasSyncErr ? `${(hb.meta as any).sync_errors} Sync Error(s)` : 'Online';
+                            return (
+                                <>
+                                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: dotColor, boxShadow: `0 0 8px ${dotColor}` }} />
+                                    {hb.device?.store?.name || 'Main Office'} &middot; {statText}
+                                </>
+                            )
+                        })()}
                     </div>
                 </div>
                 <button
