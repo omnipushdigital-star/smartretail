@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 
-export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
-export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
+export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://qxialnmorewjgpmpcswr.supabase.co'
+export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF4aWFsbm1vcmV3amdwbXBjc3dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE3ODE0MTcsImV4cCI6MjA4NzM1NzQxN30.lVAQwqlWNURA2b7jfaL46OaU69BG5h1VOBQLT-8ZzJw'
 
 // Detect if running on an Android WebView / Signage device to optimize network behavior
 const isHardwarePlayer = navigator.userAgent.toLowerCase().includes('android') ||
