@@ -43,6 +43,7 @@ export async function callEdgeFn(fn: string, body: object): Promise<any> {
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': authHeader,
+                'apikey': SUPABASE_ANON_KEY!,
             },
             body: JSON.stringify(body),
             signal: controller.signal,
