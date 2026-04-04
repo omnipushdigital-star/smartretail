@@ -1317,7 +1317,7 @@ export default function PlayerPage() {
                 }
             } catch (err: any) {
                 const reason = err?.message || (typeof err === 'string' ? err : 'Network/CORS blocked')
-                console.error(`[Cache] Sync FAILED for ${asset.media_id}: ${reason}`)
+                console.error(`[Cache] Sync FAILED for ${asset.media_id} (${asset.type}): ${reason} | URL: ${asset.url}`)
                 // No alert - just log it and move on to allow playback of other items
             } finally {
                 completed++
