@@ -1365,7 +1365,7 @@ export default function PlayerPage() {
             // ── Auto version-change detection (mid-playback) ──
             if (wasPlaying && newVersion && versionRef.current && newVersion !== versionRef.current) {
                 console.log(`[Player] 🔄 New version detected: ${versionRef.current} → ${newVersion}`)
-                if (data.assets) syncAssets(data.assets)
+                // if (data.assets) syncAssets(data.assets)
                 setManifest(data)
                 setVersion(newVersion)
                 versionRef.current = newVersion
@@ -1381,7 +1381,7 @@ export default function PlayerPage() {
             localStorage.setItem(manifestKey(dc), JSON.stringify(data))
             setOffline(false)
 
-            if (data.assets) syncAssets(data.assets)
+            // if (data.assets) syncAssets(data.assets)
 
             const win = window as any
             if (win.AndroidHealth?.setStoreInfo) {
