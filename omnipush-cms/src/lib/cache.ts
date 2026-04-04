@@ -103,9 +103,7 @@ export async function downloadAndCache(asset: { media_id: string; url: string; c
                 'apikey': SUPABASE_ANON_KEY,
                 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
                 'x-client-info': 'omnipush-player-cache'
-            } : {
-                'x-client-info': 'omnipush-player-cache-ext'
-            }
+            } : {}
         }
 
         const res = await fetch(asset.url, fetchOptions)
