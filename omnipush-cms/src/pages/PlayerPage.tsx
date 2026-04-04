@@ -1443,7 +1443,7 @@ export default function PlayerPage() {
             try {
                 const blobUrl = await downloadAndCache({
                     media_id: asset.media_id,
-                    url: asset.url,
+                    url: asset.url!, // filter above guarantees non-null
                     type: asset.type,
                     checksum_sha256: asset.checksum_sha256
                 })
