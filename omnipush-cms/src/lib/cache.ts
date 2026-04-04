@@ -95,7 +95,13 @@ export async function downloadAndCache(asset: { media_id: string; url: string; c
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 60000) // 1 min sync timeout
 
-        const res = await fetch(asset.url, { signal: controller.signal })
+        const res = await fetch(asset.url, {
+            headers: {
+                'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY!,
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY!}`
+            },
+            signal: controller.signal
+        })
         clearTimeout(timeoutId)
 
         if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`)
