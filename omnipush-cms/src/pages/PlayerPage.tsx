@@ -4,12 +4,13 @@ import { WifiOff, Tv2, Lock, RefreshCw, Clock, Image as ImageIcon } from 'lucide
 import { QRCodeSVG } from 'qrcode.react'
 import { supabase, DEFAULT_TENANT_ID, callEdgeFn } from '../lib/supabase'
 import { downloadAndCache, hydrateAssetsFromCache } from '../lib/cache'
+import html2canvas from 'html2canvas'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface ManifestAsset {
     media_id: string
-    type: 'image' | 'video' | 'web_url'
+    type: 'image' | 'video' | 'web_url' | 'ppt' | 'presentation'
     url: string | null
     checksum_sha256: string | null
     bytes: number | null
@@ -30,7 +31,6 @@ interface ManifestItem {
     start_time?: string | null
     end_time?: string | null
     days_of_week?: number[]
-    settings?: { transition?: 'slide' | 'zoom' | 'fade' | 'none' }
 }
 
 interface Manifest {
@@ -62,8 +62,11 @@ interface Manifest {
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const HEARTBEAT_INTERVAL_MS = 30_000
-const DEFAULT_IMAGE_DURATION = 10 // 10s default for images
-const DEFAULT_WEB_DURATION = 30   // 30s default for web content
+const DEFAULT_IMAGE_DURATION = 10
+const DEFAULT_WEB_DURATION = 30
+const DEFAULT_VIDEO_DURATION = 300
+const TRANSITION_DURATION = 800 // 0.8s smooth transition
+const READY_TIMING = 500 // 500ms safety buffer for Android hardware
 
 function secretKey(code: string) { return `omnipush_device_secret:${code}` }
 function manifestKey(code: string) { return `omnipush_manifest:${code}` }
@@ -121,10 +124,32 @@ const globalStyle = `
     transform: translate3d(0,0,0);
   }
 
-  /* 3. Kill all default browser controls/icons */
-  video::-webkit-media-controls { display:none !important; }
-  video::-webkit-media-controls-enclosure { display:none !important; }
-  video::-webkit-media-controls-panel { display:none !important; }
+  /* 3. Kill all default browser controls/icons - CRITICAL for Chromium 87 / Android TV */
+  video::-webkit-media-controls { display:none !important; -webkit-appearance: none !important; }
+  video::-webkit-media-controls-enclosure { display:none !important; -webkit-appearance: none !important; }
+  video::-webkit-media-controls-panel { display:none !important; -webkit-appearance: none !important; }
+  video::-webkit-media-controls-play-button { display:none !important; -webkit-appearance: none !important; }
+  video::-webkit-media-controls-overlay-play-button { display:none !important; -webkit-appearance: none !important; }
+  video::-webkit-media-controls-start-playback-button { display:none !important; -webkit-appearance: none !important; }
+  video::-webkit-media-controls-shim { display:none !important; }
+  video::-internal-media-controls-overlay-play-button { display:none !important; }
+  video::-internal-media-controls-download-button { display:none !important; }
+  video::-internal-media-controls-loading-indicator { display:none !important; }
+  video::-webkit-media-controls-current-time-display { display:none !important; }
+  video::-webkit-media-controls-time-remaining-display { display:none !important; }
+  video::-webkit-media-controls-timeline { display:none !important; }
+  video::-webkit-media-controls-volume-control-container { display:none !important; }
+  video::-webkit-media-controls-toggle-closed-captions-button { display:none !important; }
+  
+  /* Additional hardware layer hide for Android 11 Droidlogic / System indicators */
+  video { 
+    pointer-events: none !important; 
+    outline: none !important; 
+    background: #000 !important;
+    mask-image: none !important;
+    -webkit-mask-image: none !important;
+    -webkit-tap-highlight-color: transparent !important;
+  }
   
   /* 4. Kill scrollbars */
   ::-webkit-scrollbar { display: none !important; }
@@ -139,8 +164,6 @@ interface PlaybackProps {
     items: ManifestItem[]
     assets: ManifestAsset[]
     region: { id: string; x: number; y: number; width: number; height: number }
-    showDebug?: boolean
-    deviceCode?: string
 }
 
 // ─── Double-Buffer Video Player ──────────────────────────────────────────────
@@ -155,34 +178,24 @@ interface VideoBufferProps {
     style?: React.CSSProperties
 }
 
-function DoubleBufferVideo({ items, assets, onAdvance, showDebug, deviceCode }: {
+type TransitionEffect = 'fade' | 'slide' | 'zoom' | 'none' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right'
+
+function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
     items: ManifestItem[]
     assets: ManifestAsset[]
     onAdvance: () => void
-    showDebug?: boolean
-    deviceCode?: string
+    effect?: TransitionEffect
 }) {
     const [activeSlot, setActiveSlot] = useState<0 | 1>(0)
+    const [isTransitioning, setIsTransitioning] = useState(false)
     const v1 = useRef<HTMLVideoElement>(null)
     const v2 = useRef<HTMLVideoElement>(null)
     const videoRefs = [v1, v2]
     const [slotUrls, setSlotUrls] = useState<[string, string]>(['', ''])
-    const [isSwapping, setIsSwapping] = useState(false)
     const idxRef = useRef(0)
     const [debug, setDebug] = useState<string>('Init')
-    const addLog = (window as any).addRemoteLog || ((m: string) => console.log(m))
     const watchdogRef = useRef<any>(null)
     const initialSyncDone = useRef(false)
-    const [showNext, setShowNext] = useState(false)
-
-    useEffect(() => {
-        if (isSwapping) {
-            const t = setTimeout(() => setShowNext(true), 50)
-            return () => clearTimeout(t)
-        } else {
-            setShowNext(false)
-        }
-    }, [isSwapping])
 
     const sorted = React.useMemo(
         () => [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
@@ -195,25 +208,26 @@ function DoubleBufferVideo({ items, assets, onAdvance, showDebug, deviceCode }: 
         return asset?.url || item.web_url || ''
     }, [memoizedAssets])
 
-    function triggerWatchdog(delay = 10000) {
+    const advanceBufferRef = useRef<(force?: boolean) => void>(() => { })
+
+    const triggerWatchdog = useCallback((delay = 10000) => {
         if (watchdogRef.current) clearTimeout(watchdogRef.current)
         watchdogRef.current = setTimeout(() => {
             if (sorted.length > 1) {
                 setDebug("WD Skip")
-                advanceBuffer(true)
+                advanceBufferRef.current(true)
             }
         }, delay)
-    }
+    }, [sorted.length])
 
-    function advanceBuffer(forceNext = false) {
+    const advanceBuffer = useCallback((forceNext = false) => {
         if (sorted.length === 0) return
 
-        // Single video loop optimization
         if (sorted.length === 1) {
             const v = videoRefs[activeSlot].current
             if (v) {
                 v.currentTime = 0
-                v.play().catch(e => setDebug(`Loop Err`))
+                v.play().catch(e => setDebug(`Loop Err: ${e.message.slice(0, 10)}`))
             }
             onAdvance()
             return
@@ -221,10 +235,10 @@ function DoubleBufferVideo({ items, assets, onAdvance, showDebug, deviceCode }: 
 
         const currentSlot = activeSlot
         const nextSlot: 0 | 1 = activeSlot === 0 ? 1 : 0
-        const nextIdx = (idxRef.current + 1) % sorted.length
+        const currentVideo = videoRefs[currentSlot].current
         const nextVideo = videoRefs[nextSlot].current
+        const nextIdx = (idxRef.current + 1) % sorted.length
 
-        // PROACTIVE RECOVERY
         if (nextVideo && nextVideo.error && !forceNext) {
             setDebug(`Err Skip V${nextIdx}`)
             idxRef.current = nextIdx
@@ -236,43 +250,65 @@ function DoubleBufferVideo({ items, assets, onAdvance, showDebug, deviceCode }: 
         const performSwitch = () => {
             if (!nextVideo) return
 
-            setDebug(`${idxRef.current}→${nextIdx} | SWAP`)
-            nextVideo.playbackRate = sorted[nextIdx].playback_speed || 1
+            setDebug(`${idxRef.current}→${nextIdx} | SAFE SWAP`)
 
-            const transitionType = sorted[nextIdx].settings?.transition || 'fade';
+            const releaseOld = () => {
+                if (!currentVideo) return;
+                try {
+                    console.log('[Player] Releasing O-Slot decoder:', currentSlot);
+                    // Crucial: hide old video instantly BEFORE mutating src so native play icon cannot render
+                    currentVideo.style.opacity = '0';
+                    currentVideo.style.visibility = 'hidden';
+                    currentVideo.pause();
+                    currentVideo.removeAttribute('src');
+                    currentVideo.load();
+                } catch (e) { /* ignore */ }
+            };
 
-            setIsSwapping(true);
-            setShowNext(false);
-            setActiveSlot(nextSlot);
+            // Start the next one FIRST, while it is still completely hidden!
+            triggerWatchdog(15000)
+            nextVideo.muted = true
+            nextVideo.currentTime = 0
+            if (sorted[nextIdx]) {
+                nextVideo.playbackRate = sorted[nextIdx].playback_speed || 1
+            }
 
-            idxRef.current = nextIdx
-            onAdvance()
+            nextVideo.play().then(() => {
+                console.log('[Player] Playing N-Slot:', nextIdx)
+                setDebug(`${nextIdx} PLAYING`)
 
-            setTimeout(() => {
-                setIsSwapping(false);
-            }, 650);
+                // Now that it's confirmed playing, reveal it and trigger the transition CSS
+                setIsTransitioning(true)
+                setActiveSlot(nextSlot)
+                idxRef.current = nextIdx
+                onAdvance()
 
-            const attemptPlay = () => {
-                triggerWatchdog(12000)
-                nextVideo.currentTime = 0
-                nextVideo.play().then(() => {
-                    setDebug(`${nextIdx} Play OK`)
-                    const preloadIdx = (nextIdx + 1) % sorted.length
-                    const preloadUrl = getUrl(sorted[preloadIdx])
+                // Release old video slightly after new one is successfully active and covering the screen
+                setTimeout(releaseOld, 250);
 
+                // Keep transition flag true slightly longer for hardware to visually stabilize
+                setTimeout(() => {
+                    setIsTransitioning(false)
+
+                    // Queue next buffer
+                    const pIdx = (nextIdx + 1) % sorted.length
+                    const pUrl = getUrl(sorted[pIdx])
                     setTimeout(() => {
                         setSlotUrls(prev => {
-                            const updated: [string, string] = [...prev] as [string, string]
-                            updated[currentSlot] = preloadUrl
-                            return updated
+                            const up: [string, string] = [...prev] as [string, string]
+                            up[currentSlot] = pUrl
+                            return up
                         })
-                    }, 500)
-                }).catch(e => {
-                    setDebug(`P.Err`)
-                    addLog(`[V-Slot] Play Failed: ${e.message || 'Unknown'}`, 'error')
-                })
-            }
-            setTimeout(attemptPlay, 50)
+                    }, 300)
+                }, 850)
+
+            }).catch(e => {
+                console.error('[Player] Play Error:', e.message)
+                setDebug(`P.Err: ${e.message?.slice(0, 15)}`)
+                setIsTransitioning(false)
+                releaseOld();
+                setTimeout(() => advanceBuffer(true), 1500)
+            })
         }
 
         if (nextVideo && nextVideo.readyState >= 2) {
@@ -289,100 +325,108 @@ function DoubleBufferVideo({ items, assets, onAdvance, showDebug, deviceCode }: 
                 if (activeSlot === currentSlot) performSwitch()
             }, 5000)
         }
-    }
+    }, [activeSlot, sorted, getUrl, onAdvance, triggerWatchdog])
 
-    // Reliance on native browser preload for src swaps
-
-    // Browser priming
     useEffect(() => {
-        videoRefs.forEach(ref => {
-            if (ref.current) {
-                ref.current.muted = true
-                ref.current.volume = 0
-            }
-        })
-    }, [])
+        advanceBufferRef.current = advanceBuffer
+    }, [advanceBuffer])
 
-    // Initialize
     useEffect(() => {
-        if (sorted.length > 0 && !initialSyncDone.current) {
+        if (sorted.length > 0) {
             const firstId = getUrl(sorted[0])
             const nextId = sorted.length > 1 ? getUrl(sorted[1]) : ''
-            setSlotUrls([firstId, nextId])
-
-            if (videoRefs[0].current) videoRefs[0].current.playbackRate = sorted[0].playback_speed || 1
-            if (videoRefs[1].current && sorted.length > 1) videoRefs[1].current.playbackRate = sorted[1].playback_speed || 1
-
-            initialSyncDone.current = true
-            const v = v1.current
-            if (v) {
-                const startPlay = () => {
-                    v.currentTime = 0
-                    v.play().then(() => {
-                        setDebug("Start OK")
-                        addLog(`[V-Engine] Initial Play OK (${firstId.split('/').pop()})`)
-                    }).catch(e => {
-                        setDebug(`Start Err`)
-                        addLog(`[V-Engine] Play Error: ${e.message}`, 'error')
-                    })
-                    triggerWatchdog(15000)
-                }
-                if (v.readyState >= 2) startPlay()
-                else v.addEventListener('canplay', startPlay, { once: true })
+            if (initialSyncDone.current) {
+                const stillExists = sorted.some(s => getUrl(s) === slotUrls[activeSlot])
+                if (stillExists) return
             }
+            setSlotUrls([firstId, nextId])
+            initialSyncDone.current = true
+            setTimeout(() => {
+                const v = activeSlot === 0 ? v1.current : v2.current
+                if (v) {
+                    v.currentTime = 0
+                    v.play().catch(() => { })
+                }
+            }, 100)
         }
-    }, [sorted, getUrl, triggerWatchdog, addLog])
+    }, [sorted, getUrl])
 
-    // Autoplay heartbeat
     useEffect(() => {
         const interval = setInterval(() => {
             const v = videoRefs[activeSlot].current
-            if (v && v.paused && v.readyState >= 2 && !v.ended) {
+            if (v && v.paused && v.readyState >= 3 && !v.ended) {
                 v.play().catch(() => { })
             }
         }, 1500)
         return () => clearInterval(interval)
     }, [activeSlot])
 
-    if (sorted.length === 0) return null
+    const [isReady, setIsReady] = useState<[boolean, boolean]>([false, false])
+    const isReadyRef = useRef<boolean[]>([false, false])
 
-    // Determine derived styles for the 2 slots based on activeSlot vs showNext
-    const getSlotStyle = (slotIdx: number): React.CSSProperties => {
-        const item = sorted[idxRef.current];
-        const transitionType = item?.settings?.transition || 'fade';
-        const isActive = slotIdx === activeSlot;
-        const isPrev = !isActive;
-
-        const baseStyle: React.CSSProperties = {
-            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-            objectFit: 'fill', background: '#000', display: 'block',
+    const getTransitionStyle = (slot: number): React.CSSProperties => {
+        const isActive = activeSlot === slot
+        const ready = isReady[slot]
+        const e: TransitionEffect = effect ?? 'slide-up'
+        const style: React.CSSProperties = {
+            position: 'absolute',
+            top: 0, left: 0,
+            width: '100%', height: '100%',
+            objectFit: 'fill',
+            background: 'transparent', // Crucial: no black background hidden behind frames
+            transition: 'transform 800ms cubic-bezier(0.4, 0, 0.2, 1), opacity 600ms ease, visibility 0s',
+            zIndex: isActive ? 10 : 5,
             pointerEvents: 'none',
-            zIndex: isActive ? 10 : 1,
-            transition: isSwapping ? 'all 0.6s ease-in-out' : 'none'
-        };
-
-        if (isSwapping) {
-            if (isPrev) {
-                // Outgoing slot
-                if (transitionType === 'slide') baseStyle.transform = showNext ? 'translateX(-100%)' : 'translateX(0%)';
-                else if (transitionType === 'zoom') { baseStyle.transform = showNext ? 'scale(1.2)' : 'scale(1)'; baseStyle.opacity = showNext ? 0 : 1; }
-                else if (transitionType === 'fade') baseStyle.opacity = showNext ? 0 : 1;
-                else if (transitionType === 'none') baseStyle.opacity = 0;
-            } else {
-                // Incoming slot
-                if (transitionType === 'slide') baseStyle.transform = showNext ? 'translateX(0%)' : 'translateX(100%)';
-                else if (transitionType === 'zoom') { baseStyle.transform = showNext ? 'scale(1)' : 'scale(0.8)'; baseStyle.opacity = showNext ? 1 : 0; }
-                else if (transitionType === 'fade') baseStyle.opacity = showNext ? 1 : 0;
-                else if (transitionType === 'none') { baseStyle.opacity = 1; baseStyle.transition = 'none'; }
-            }
-        } else {
-            baseStyle.opacity = isActive ? 1 : 0;
-            baseStyle.transform = 'scale(1) translateX(0%)';
-            baseStyle.visibility = isActive ? 'visible' : 'hidden';
+            visibility: (isActive || isTransitioning) ? 'visible' : 'hidden',
+            transform: 'translate3d(0, 0, 0)',
+            opacity: ready ? 1 : 0, // Keep invisible until first frame
+            willChange: 'transform, opacity'
         }
 
-        return baseStyle;
-    };
+        if (!isActive) {
+            switch (e) {
+                case 'fade':
+                    style.opacity = 0
+                    break
+                case 'slide':
+                case 'slide-left':
+                    style.transform = 'translate3d(-100%, 0, 0)'
+                    break
+                case 'slide-right':
+                    style.transform = 'translate3d(100%, 0, 0)'
+                    break
+                case 'slide-up':
+                    style.transform = 'translate3d(0, -100%, 0)'
+                    break
+                case 'slide-down':
+                    style.transform = 'translate3d(0, 100%, 0)'
+                    break
+                case 'zoom':
+                    style.transform = 'scale(0.95)'
+                    style.opacity = 0
+                    break
+                case 'none':
+                    style.transition = 'none'
+                    style.opacity = 0
+                    break
+            }
+        } else if (!ready) {
+            // Initial state for the ACTIVE item before it is "ready" (transitioning in)
+            switch (e) {
+                case 'slide':
+                case 'slide-left':
+                    style.transform = 'translate3d(100%, 0, 0)'
+                    break
+                case 'slide-right':
+                    style.transform = 'translate3d(-100%, 0, 0)'
+                    break
+                case 'zoom':
+                    style.transform = 'scale(1.05)'
+                    break
+            }
+        }
+        return style
+    }
 
     return (
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: '#000', overflow: 'hidden' }}>
@@ -391,32 +435,46 @@ function DoubleBufferVideo({ items, assets, onAdvance, showDebug, deviceCode }: 
                     key={i}
                     ref={videoRefs[i]}
                     src={slotUrls[i]}
-                    style={getSlotStyle(i)}
-                    muted playsInline preload="auto"
-                    onTimeUpdate={() => { if (i === activeSlot) triggerWatchdog(12000) }}
-                    onEnded={() => { if (i === activeSlot) advanceBuffer() }}
-                    onError={(e: any) => {
-                        if (i === activeSlot) {
-                            const err = e.currentTarget.error;
-                            const msg = err ? `CODE:${err.code} ${err.message}` : 'Unknown';
-                            addLog(`[Video Slot ${i}] Error: ${msg}`, 'error');
-                            setTimeout(() => advanceBuffer(true), 1500)
-                        }
+                    style={getTransitionStyle(i)}
+                    controls={false}
+                    tabIndex={-1}
+                    disableRemotePlayback
+                    muted
+                    playsInline
+                    preload="auto"
+                    autoPlay={false}
+                    disablePictureInPicture={true}
+                    poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+                    {...{
+                        'webkit-playsinline': 'true',
+                        'x-webkit-airplay': 'deny',
+                        'controlsList': 'nodownload nofullscreen noremoteplayback'
                     }}
+                    onPlaying={() => {
+                        console.log(`[DoubleBufferVideo] Video Slot ${i} Playing, waiting ${READY_TIMING}ms buffer...`)
+                        // Delay ready state slightly to ensure first frame hardware swap is stable
+                        setTimeout(() => {
+                            setIsReady(prev => {
+                                const up = [...prev] as [boolean, boolean]
+                                up[i] = true
+                                return up
+                            })
+                        }, READY_TIMING)
+                    }}
+                    onEnded={() => {
+                        setIsReady(prev => {
+                            const up = [...prev] as [boolean, boolean]
+                            up[i] = false
+                            return up
+                        })
+                        if (i === activeSlot) advanceBuffer()
+                    }}
+                    onTimeUpdate={() => { if (i === activeSlot) triggerWatchdog(12000) }}
                 />
             ))}
-            {/* Debug Overlay */}
-            {showDebug && (
-                <div style={{
-                    position: 'absolute', bottom: 5, right: 5, zIndex: 9999,
-                    fontSize: '9px', color: 'rgba(255,255,255,1)', fontFamily: 'monospace',
-                    background: 'rgba(15, 23, 42, 0.8)', padding: '2px 6px', borderRadius: '4px',
-                    pointerEvents: 'none', border: '1px solid rgba(255,255,255,0.1)',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.5)'
-                }}>
-                    ID:{idxRef.current + 1}/{sorted.length} | {debug}
-                </div>
-            )}
+            <div style={{ position: 'absolute', bottom: 4, left: 4, fontSize: 9, color: 'rgba(255,255,255,0.2)', zIndex: 110 }}>
+                {debug} | {activeSlot === 0 ? 'V1' : 'V2'} | {effect}
+            </div>
         </div>
     )
 }
@@ -424,78 +482,118 @@ function DoubleBufferVideo({ items, assets, onAdvance, showDebug, deviceCode }: 
 
 // ─── Playback Engine ──────────────────────────────────────────────────────────
 
-
-function PlaybackEngine({ items, assets, region, showDebug, deviceCode }: PlaybackProps) {
+function PlaybackEngine({ items, assets, region }: PlaybackProps) {
     const [idx, setIdx] = useState(0)
-    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const [prevIdx, setPrevIdx] = useState<number | null>(null)
+    const [isSwapping, setIsSwapping] = useState(false)
+    const [readyIdx, setReadyIdx] = useState<number | null>(null)
     const [currentTime, setCurrentTime] = useState(new Date())
 
-    // Perodic re-evaluation for schedules
+    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const idxRef = useRef(0)
+    idxRef.current = idx
+
+    // Periodic re-evaluation for schedules
     useEffect(() => {
-        const t = setInterval(() => setCurrentTime(new Date()), 10000)
+        const t = setInterval(() => setCurrentTime(new Date()), 15000)
         return () => clearInterval(t)
     }, [])
 
     const activeItems = useMemo(() => {
-        const filtered = items
-            .filter(item => {
-                if (!item.is_scheduled) return true
+        const filtered = items.filter(item => {
+            if (!item.is_scheduled) return true
 
-                // 1. Date Range Check
-                if (item.start_date) {
-                    const start = new Date(item.start_date)
-                    // If device time is way off (e.g. 1970), ignore date filter to prevent 永久 black screen
-                    if (currentTime.getFullYear() > 2000 && currentTime < start) return false
+            // 1. Date Range Check
+            if (item.start_date) {
+                const start = new Date(item.start_date + 'T00:00:00')
+                if (currentTime < start) return false
+            }
+            if (item.end_date) {
+                const end = new Date(item.end_date + 'T23:59:59')
+                if (currentTime > end) return false
+            }
+
+            // 2. Day of Week Check
+            if (item.days_of_week && item.days_of_week.length > 0) {
+                if (!item.days_of_week.includes(currentTime.getDay())) return false
+            }
+
+            // 3. Time Check (Dayparting)
+            if (item.start_time || item.end_time) {
+                const nowSecs = currentTime.getHours() * 3600 + currentTime.getMinutes() * 60 + currentTime.getSeconds()
+                if (item.start_time) {
+                    const [h, m, s] = item.start_time.split(':').map(Number)
+                    if (nowSecs < (h * 3600 + (m || 0) * 60 + (s || 0))) return false
                 }
-                if (item.end_date) {
-                    const end = new Date(item.end_date)
-                    end.setHours(23, 59, 59, 999)
-                    if (currentTime.getFullYear() > 2000 && currentTime > end) return false
+                if (item.end_time) {
+                    const [h, m, s] = item.end_time.split(':').map(Number)
+                    if (nowSecs > (h * 3600 + (m || 0) * 60 + (s || 0))) return false
                 }
+            }
 
-                // 2. Day of Week Check
-                if (item.days_of_week && item.days_of_week.length > 0) {
-                    if (!item.days_of_week.includes(currentTime.getDay())) return false
-                }
+            return true
+        })
 
-                // 3. Time Check (Dayparting)
-                if (item.start_time || item.end_time) {
-                    const nowSecs = currentTime.getHours() * 3600 + currentTime.getMinutes() * 60 + currentTime.getSeconds()
-                    if (item.start_time) {
-                        const [h, m, s] = item.start_time.split(':').map(Number)
-                        if (nowSecs < (h * 3600 + (m || 0) * 60 + (s || 0))) return false
-                    }
-                    if (item.end_time) {
-                        const [h, m, s] = item.end_time.split(':').map(Number)
-                        if (nowSecs > (h * 3600 + (m || 0) * 60 + (s || 0))) return false
-                    }
-                }
-
-                return true
-            })
-            .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-
-        // SAFETY: If we filtered everything out but there WERE items, 
-        // fallback to the first item rather than showing a black screen 
-        // unless it's a strict schedule (user can override this later)
-        if (filtered.length === 0 && items.length > 0) {
-            console.warn('[PlaybackEngine] All items filtered by schedule. Falling back to first item to avoid black screen.')
-            return [items[0]]
-        }
-        return filtered
+        return filtered.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
     }, [items, currentTime])
 
-    // Safety: Reset index if active list changes significantly
+    // Safety: Reset index if active list changes significanly
     useEffect(() => {
         if (idx >= activeItems.length && activeItems.length > 0) {
             setIdx(0)
         }
     }, [activeItems.length, idx])
 
-    // Update Android Status on content change
+    const advance = useCallback(() => {
+        const len = activeItems.length
+        if (len === 0) return
+        const nextIdx = len === 1 ? 0 : (idxRef.current + 1) % len
+        setIdx(nextIdx)
+        setReadyIdx(null) // Reset ready state for next item
+    }, [activeItems.length])
+
+    // Track state for transitions
+    useEffect(() => {
+        if (idx !== prevIdx) {
+            setIsSwapping(true)
+            const t = setTimeout(() => {
+                setIsSwapping(false)
+                setPrevIdx(idx)
+            }, 2500) // Increased to ensure transition finishes on slow hardware
+            return () => clearTimeout(t)
+        }
+    }, [idx, prevIdx])
+
+    // Timing effect
+    useEffect(() => {
+        if (activeItems.length === 0) return
+        if (timerRef.current) clearTimeout(timerRef.current)
+
+        const safeIdx = idx >= activeItems.length ? 0 : idx
+        const item = activeItems[safeIdx]
+        const asset = assets.find(a => a.media_id === item?.media_id)
+        const type = asset?.type || item?.type || (item?.media_id ? 'video' : 'image')
+
+        // Videos in all-video playlists are handled by DoubleBufferVideo's onEnded
+        if (type === 'video' && activeItems.every(i => {
+            const a = assets.find(as => as.media_id === i.media_id)
+            return (a?.type || i.type) === 'video'
+        })) return
+
+        const dur = ((item?.duration_seconds ?? 0) > 0
+            ? item!.duration_seconds!
+            : (type === 'video' ? DEFAULT_VIDEO_DURATION : (type === 'web_url' ? DEFAULT_WEB_DURATION : DEFAULT_IMAGE_DURATION))) * 1000
+
+        timerRef.current = setTimeout(advance, dur)
+        return () => { if (timerRef.current) clearTimeout(timerRef.current) }
+    }, [idx, activeItems, assets, advance])
+
+    // Android Status Sync
     useEffect(() => {
         if (activeItems.length > 0) {
-            const currentItem = activeItems[idx]
+            const safeIdx = idx >= activeItems.length ? 0 : idx
+            const currentItem = activeItems[safeIdx]
+            if (!currentItem) return
             const label = currentItem.web_url || currentItem.media_id || 'unnamed'
             const win = window as any
             if (win.AndroidHealth?.setPlayerState) {
@@ -504,76 +602,125 @@ function PlaybackEngine({ items, assets, region, showDebug, deviceCode }: Playba
         }
     }, [idx, activeItems])
 
-    const [prevIdx, setPrevIdx] = useState<number | null>(null)
-    const [isTransitioning, setIsTransitioning] = useState(false)
-    const [showNext, setShowNext] = useState(false)
-
-    useEffect(() => {
-        if (isTransitioning) {
-            // Use double requestAnimationFrame to ensure the browser paints the starting frame
-            // BEFORE we apply the showNext=true target styles. This prevents slow Android TV boxes
-            // from batching the renders and completely skipping the CSS transition.
-            let r2: number;
-            const r1 = requestAnimationFrame(() => {
-                r2 = requestAnimationFrame(() => {
-                    setShowNext(true)
-                })
-            })
-            return () => {
-                cancelAnimationFrame(r1)
-                if (r2) cancelAnimationFrame(r2)
+    // Specialized All-Video Check
+    const allVideos = useMemo(() => {
+        return activeItems.length > 0 && activeItems.every(i => {
+            const asset = assets.find(a => a.media_id === i.media_id)
+            let t = asset?.type || i.type || (i.media_id ? 'video' : 'image')
+            const u = asset?.url || i.web_url
+            if (u) {
+                const ext = u.split('?')[0].split('.').pop()?.toLowerCase()
+                if (['mp4', 'webm', 'mov', 'ogg'].includes(ext || '')) t = 'video'
             }
-        } else {
-            setShowNext(false)
+            return t === 'video'
+        })
+    }, [activeItems, assets])
+
+    function getYouTubeId(url: string) {
+        const m = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/|youtube\.com\/v\/)+([\w-]{11})/)
+        return m ? m[1] : null
+    }
+
+    function getEmbedUrl(url: string) {
+        const id = getYouTubeId(url)
+        if (id) {
+            const origin = encodeURIComponent(window.location.origin)
+            return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&loop=1&playlist=${id}&controls=0&rel=0&modestbranding=1&enablejsapi=1&origin=${origin}`
         }
-    }, [isTransitioning])
+        return url
+    }
 
-    const advance = useCallback(() => {
-        if (activeItems.length <= 1) return
+    function getTransitionStyles(isActive: boolean, transitionType?: string): React.CSSProperties {
+        // We are ready to move if the new item is ready OR we're not in a swapping state (startup)
+        const isTargetReady = readyIdx === idx || !isSwapping
 
-        const nextIdx = (idx + 1) % activeItems.length
-        if (nextIdx === idx) return
+        const styles: React.CSSProperties = {
+            opacity: isActive ? (isTargetReady ? 1 : 0) : (isTargetReady ? 0 : 1),
+            transform: 'translate3d(0, 0, 0)',
+            transition: transitionType === 'none' ? 'none' : `all ${TRANSITION_DURATION}ms cubic-bezier(0.4, 0, 0.2, 1)`,
+            willChange: 'transform, opacity',
+            backfaceVisibility: 'hidden',
+            pointerEvents: isActive ? 'auto' : 'none'
+        }
 
-        setPrevIdx(idx)
-        setIdx(nextIdx)
-        setIsTransitioning(true)
-        setShowNext(false)
+        if (transitionType === 'slide') {
+            styles.transform = isActive
+                ? (isTargetReady ? 'translate3d(0, 0, 0)' : 'translate3d(100%, 0, 0)')
+                : (isTargetReady ? 'translate3d(-100%, 0, 0)' : 'translate3d(0, 0, 0)')
+        } else if (transitionType === 'zoom') {
+            styles.transform = isActive
+                ? (isTargetReady ? 'scale(1)' : 'scale(1.05)')
+                : (isTargetReady ? 'scale(0.95)' : 'scale(1)')
+        }
 
-        // After transition delay and rAF buffer, hide the old slot
-        setTimeout(() => {
-            setPrevIdx(null)
-            setIsTransitioning(false)
-            setShowNext(false)
-        }, 650)
-    }, [idx, activeItems.length])
+        return styles
+    }
 
-    const memoizedAssets = React.useMemo(() => assets, [JSON.stringify(assets)])
-
-    useEffect(() => {
-        if (activeItems.length === 0) return
-        if (timerRef.current) clearTimeout(timerRef.current)
-
-        const item = activeItems[idx]
-        const asset = memoizedAssets.find(a => a.media_id === item.media_id)
+    function renderItem(targetIdx: number, isActive: boolean) {
+        const item = activeItems[targetIdx]
+        if (!item) return null
+        const asset = assets.find(a => a.media_id === item.media_id)
         const url = asset?.url || item.web_url
-        const rawType = (asset?.type || item.type || '').toLowerCase()
-        const type = rawType.includes('video') ? 'video' : (rawType.includes('image') ? 'image' : rawType || 'image')
+        let type = asset?.type || item.type || (item.media_id ? 'video' : 'image')
 
-        if (!url) {
-            if (activeItems.length > 1) advance()
-            return
+        if (url) {
+            const ext = url.split('?')[0].split('.').pop()?.toLowerCase()
+            if (['mp4', 'webm', 'mov', 'ogg'].includes(ext || '')) type = 'video'
+            if (['ppt', 'pptx'].includes(ext || '')) type = 'presentation'
         }
 
-        // Videos are handled by DoubleBufferVideo's own onEnded
-        if (type === 'video') return
+        const visible = isActive || (isSwapping && targetIdx === prevIdx)
 
-        // If only 1 item, we don't set a timer to advance
-        if (activeItems.length <= 1) return
+        // Fetch transition from item settings or default to slide
+        const transitionType = (item as any)?.settings?.transition || 'slide'
 
-        const dur = (item.duration_seconds ?? (type === 'web_url' ? DEFAULT_WEB_DURATION : DEFAULT_IMAGE_DURATION)) * 1000
-        timerRef.current = setTimeout(advance, dur)
-        return () => { if (timerRef.current) clearTimeout(timerRef.current) }
-    }, [idx, activeItems.length, advance, memoizedAssets, region.id])
+        return (
+            <div key={`${item.playlist_item_id}-${targetIdx}`} style={{
+                position: 'absolute',
+                top: 0, left: 0, width: '100%', height: '100%',
+                zIndex: isActive ? 10 : 5,
+                background: '#000',
+                margin: 0, padding: 0, overflow: 'hidden',
+                visibility: visible ? 'visible' : 'hidden',
+                ...getTransitionStyles(isActive, transitionType),
+                willChange: 'transform, opacity'
+            }}>
+                {type === 'image' && url && (
+                    <img
+                        src={url}
+                        style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }}
+                        onLoad={() => setTimeout(() => setReadyIdx(targetIdx), READY_TIMING)}
+                    />
+                )}
+                {type === 'video' && url && (
+                    <video
+                        src={url}
+                        style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }}
+                        autoPlay muted playsInline
+                        poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+                        onPlaying={() => {
+                            console.log(`[PlaybackEngine] Video Playing, waiting ${READY_TIMING}ms buffer...`)
+                            setTimeout(() => setReadyIdx(targetIdx), READY_TIMING)
+                        }}
+                        onEnded={advance}
+                        onError={() => {
+                            setReadyIdx(targetIdx)
+                            setTimeout(advance, 3000)
+                        }}
+                    />
+                )}
+                {type === 'web_url' && url && (
+                    <iframe src={getEmbedUrl(url)} style={{ width: '100%', height: '100%', border: 'none', display: 'block' }} allow="autoplay" />
+                )}
+                {type === 'presentation' && url && (
+                    <iframe
+                        src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`}
+                        style={{ width: '100%', height: '100%', border: 'none', background: '#fff', display: 'block' }}
+                    />
+                )}
+            </div>
+        )
+    }
 
     if (activeItems.length === 0) return (
         <div style={{
@@ -588,227 +735,86 @@ function PlaybackEngine({ items, assets, region, showDebug, deviceCode }: Playba
         </div>
     )
 
-    const item = activeItems[idx]
-    const asset = memoizedAssets.find(a => a.media_id === item.media_id)
-    const url = asset?.url || item.web_url
-    const rawType = (asset?.type || item.type || '').toLowerCase()
-    const type = rawType.includes('video') ? 'video' : (rawType.includes('image') ? 'image' : rawType || 'image')
-
-    // Use double buffer for videos to ensure smooth looping and better recovery
-    const allVideos = useMemo(() => {
-        if (activeItems.length === 0) return false
-        return activeItems.every(item => {
-            const asset = memoizedAssets.find(a => a.media_id === item.media_id)
-            const rawType = (asset?.type || item.type || '').toLowerCase()
-            const type = rawType.includes('video') ? 'video' : (rawType.includes('image') ? 'image' : rawType || 'image')
-            return type === 'video'
-        })
-    }, [activeItems, memoizedAssets])
-
-    // Preload next image
-    const nextItem = activeItems[(idx + 1) % activeItems.length]
-    const nextAsset = memoizedAssets.find(a => a.media_id === nextItem?.media_id)
-    const nextUrl = nextAsset?.url || nextItem?.web_url
-    const nextType = nextAsset?.type || nextItem?.type
-
-    const videoRef = useRef<HTMLVideoElement>(null)
-
-    // Explicitly handle video playback startup for mixed content
-    useEffect(() => {
-        if (type === 'video' && videoRef.current) {
-            const v = videoRef.current
-            const attempt = () => {
-                v.currentTime = 0
-                v.play().catch(e => console.warn("[PlaybackEngine] Video play failed:", e))
-            }
-            if (v.readyState >= 2) {
-                attempt()
-            } else {
-                v.addEventListener('canplay', attempt, { once: true })
-            }
-        }
-    }, [idx, type, url])
-
-    if (!url) return (
+    return (
         <div style={{
             position: 'absolute',
             top: `${region.y}%`, left: `${region.x}%`,
             width: `${region.width}%`, height: `${region.height}%`,
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            background: '#1a1a2e', border: '2px dashed #334155'
-        }}>
-            <div style={{ color: '#475569', fontSize: '0.65rem', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Region: {region.id}</div>
-            <div style={{ color: '#f87171', fontSize: '0.8rem' }}>Missing Content URL</div>
-            <div style={{ color: '#475569', fontSize: '0.6rem', marginTop: '0.4rem' }}>{item.playlist_item_id}</div>
-        </div>
-    )
-
-    return (
-        <div style={{
-            position: 'absolute',
-            top: `${region.y}%`,
-            left: `${region.x}%`,
-            width: `${region.width}%`,
-            height: `${region.height}%`,
             background: '#000',
             overflow: 'hidden',
             margin: 0, padding: 0,
+            transform: 'translate3d(0, 0, 0)', // Create containment layer
+            backfaceVisibility: 'hidden',
+            transformStyle: 'preserve-3d'
         }}>
-            {/* ✅ All-video playlist: use double buffer for flash-free looping */}
             {allVideos ? (
                 <DoubleBufferVideo
-                    key={activeItems.map(i => i.playlist_item_id + i.media_id).join(',')}
+                    key={activeItems.map(i => i.playlist_item_id).join(',')}
                     items={activeItems}
-                    assets={memoizedAssets}
+                    assets={assets}
                     onAdvance={advance}
-                    showDebug={showDebug}
-                    deviceCode={deviceCode}
+                    effect={(activeItems[idx] as any)?.settings?.transition || 'slide'}
                 />
             ) : (
-                /* Mixed content: use two-slot cross-fade */
-                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
-                    {[prevIdx, idx].map((displayIdx, slotPosition) => {
-                        if (displayIdx === null || displayIdx === undefined) return null;
-                        const dItem = activeItems[displayIdx];
-                        const dAsset = memoizedAssets.find(a => a.media_id === dItem.media_id);
-                        const dUrl = dAsset?.url || dItem.web_url;
-                        const dRawType = (dAsset?.type || dItem.type || '').toLowerCase();
-                        const dType = dRawType.includes('video') ? 'video' : (dRawType.includes('image') ? 'image' : dRawType || 'image');
-                        const isPrev = displayIdx === prevIdx;
-                        // Always use the incoming item's transition settings for both slots
-                        const transitionItem = activeItems[idx];
-                        const transitionType = transitionItem?.settings?.transition || 'fade';
-
-                        let transitionStyles: React.CSSProperties = {
-                            transition: isTransitioning ? 'all 0.6s ease-in-out' : 'none',
-                        };
-
-                        if (isTransitioning) {
-                            if (isPrev) {
-                                // Old item behavior
-                                if (transitionType === 'slide') {
-                                    transitionStyles.transform = showNext ? 'translateX(-100%)' : 'translateX(0%)';
-                                } else if (transitionType === 'zoom') {
-                                    transitionStyles.transform = showNext ? 'scale(1.2)' : 'scale(1)';
-                                    transitionStyles.opacity = showNext ? 0 : 1;
-                                } else if (transitionType === 'fade') {
-                                    transitionStyles.opacity = showNext ? 0 : 1;
-                                }
-                            } else {
-                                // New item behavior
-                                if (transitionType === 'slide') {
-                                    transitionStyles.transform = showNext ? 'translateX(0%)' : 'translateX(100%)';
-                                } else if (transitionType === 'zoom') {
-                                    transitionStyles.transform = showNext ? 'scale(1)' : 'scale(0.8)';
-                                    transitionStyles.opacity = showNext ? 1 : 0;
-                                } else if (transitionType === 'fade') {
-                                    transitionStyles.opacity = showNext ? 1 : 0;
-                                } else if (transitionType === 'none') {
-                                    transitionStyles.opacity = showNext ? 1 : 0;
-                                    transitionStyles.transition = 'none';
-                                }
-                            }
-                        } else {
-                            transitionStyles.opacity = 1;
-                            transitionStyles.transform = 'scale(1) translateX(0%)';
-                        }
-
-                        return (
-                            <div
-                                key={`${dItem.playlist_item_id}-${displayIdx}`}
-                                style={{
-                                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                                    zIndex: isPrev ? 1 : 2,
-                                    visibility: (isPrev && !isTransitioning) ? 'hidden' : 'visible',
-                                    ...transitionStyles
-                                }}
-                            >
-                                {dType === 'image' && dUrl && (
-                                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                        <img
-                                            src={dUrl}
-                                            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'fill', display: 'block' }}
-                                        />
-                                    </div>
-                                )}
-                                {dType === 'video' && dUrl && (
-                                    <video
-                                        ref={!isPrev ? videoRef : null}
-                                        src={dUrl}
-                                        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'fill', display: 'block' }}
-                                        muted playsInline disableRemotePlayback preload="auto"
-                                        loop={activeItems.length === 1}
-                                        onPlay={(e) => e.currentTarget.playbackRate = dItem.playback_speed || 1}
-                                        onEnded={advance}
-                                        onError={() => setTimeout(advance, 5000)}
-                                    />
-                                )}
-                                {dType === 'web_url' && dUrl && (
-                                    <iframe
-                                        src={dUrl}
-                                        style={{
-                                            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-                                            border: 'none', display: 'block', background: '#0a0a1f'
-                                        }}
-                                        title="content"
-                                    />
-                                )}
-                            </div>
-                        );
-                    })}
-
-                    {/* Per-Region Debug Info for Mixed content */}
-                    {showDebug && (
-                        <div style={{
-                            position: 'absolute', bottom: 5, right: 5, zIndex: 9999,
-                            fontSize: '9px', color: '#fff', fontFamily: 'monospace',
-                            background: 'rgba(15, 23, 42, 0.8)', padding: '2px 6px', borderRadius: '4px',
-                            pointerEvents: 'none', border: '1px solid rgba(255,255,255,0.1)',
-                            boxShadow: '0 2px 8px rgba(0,0,0,0.5)'
-                        }}>
-                            Reg:{region.id} | ID:{idx + 1}/{activeItems.length}
-                        </div>
-                    )}
-                </div>
+                <>
+                    {/* Layer 1: Previous item (for fading out) */}
+                    {prevIdx !== null && prevIdx !== idx && renderItem(prevIdx, false)}
+                    {/* Layer 2: Current item (fading in) */}
+                    {renderItem(idx, true)}
+                </>
             )}
-            {type === 'ppt' && url && (
-                <iframe
-                    key={item.playlist_item_id}
-                    src={`https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`}
-                    style={{
-                        position: 'absolute', top: 0, left: 0,
-                        width: '100%', height: '100%',
-                        border: 'none', display: 'block',
-                        background: '#fff',
-                    }}
-                    title="ppt"
-                />
-            )}
+
+            {/* Preload next item if it's an image */}
+            {(() => {
+                const nextItem = activeItems[(idx + 1) % activeItems.length]
+                const nextAsset = assets.find(a => a.media_id === nextItem?.media_id)
+                const nextUrl = nextAsset?.url || nextItem?.web_url
+                const nextType = nextAsset?.type || nextItem?.type || (nextItem?.media_id ? 'video' : 'image')
+                if (nextType === 'image' && nextUrl && !allVideos) {
+                    return <img src={nextUrl} alt="" style={{ display: 'none' }} />
+                }
+                return null
+            })()}
         </div>
     )
 }
 
 // ─── UI States ────────────────────────────────────────────────────────────────
 
-function LoadingState({ device_code, tenantId }: { device_code: string; tenantId?: string }) {
+function LoadingState({ device_code }: { device_code: string }) {
+    const [trouble, setTrouble] = useState(false)
+    useEffect(() => {
+        const t = setTimeout(() => setTrouble(true), 25000)
+        return () => clearTimeout(t)
+    }, [])
     return (
         <div style={bgStyle}>
+            <AmbientOrbs />
             <div style={{ textAlign: 'center', zIndex: 1, position: 'relative' }}>
-                <Logo tenantId={tenantId} />
-                <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.1)', borderTopColor: '#00daf3', animation: 'spin 0.8s linear infinite', margin: '2.5rem auto 1rem' }} />
-                <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.8rem', letterSpacing: '0.05em' }}>Connecting…</div>
-                <div style={{ fontFamily: 'monospace', color: 'rgba(255,255,255,0.2)', fontSize: '0.7rem', marginTop: '0.5rem' }}>{device_code}</div>
+                <Logo />
+                <div style={{ width: 40, height: 40, borderRadius: '50%', border: '3px solid #1e293b', borderTopColor: 'var(--color-brand-500)', animation: 'spin 0.8s linear infinite', margin: '2rem auto 1rem' }} />
+                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>Connecting to network…</div>
+                <div style={{ fontFamily: 'monospace', color: '#f87171', fontSize: '0.8rem', marginTop: '0.5rem' }}>{device_code}</div>
+                {trouble && (
+                    <div style={{ marginTop: '2rem', animation: 'slideIn 0.5s ease' }}>
+                        <button onClick={() => window.location.reload()} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#64748b', padding: '0.5rem 1rem', borderRadius: 8, fontSize: '0.75rem', cursor: 'pointer' }}>
+                            Taking too long? Reload
+                        </button>
+                    </div>
+                )}
             </div>
+            <BottomBar device_code={device_code} />
         </div>
     )
 }
 
-function SecretPrompt({ device_code, tenantId, onSubmit }: { device_code: string; tenantId?: string; onSubmit: (s: string) => void }) {
+function SecretPrompt({ device_code, onSubmit }: { device_code: string; onSubmit: (s: string) => void }) {
     const [val, setVal] = useState('')
     return (
         <div style={bgStyle}>
+            <AmbientOrbs />
             <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem', maxWidth: 420 }}>
-                <Logo tenantId={tenantId} />
+                <Logo />
                 <div style={{ marginTop: '2.5rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 16, padding: '2rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '1rem', color: '#f87171' }}>
                         <Lock size={18} />
@@ -855,14 +861,26 @@ function SecretPrompt({ device_code, tenantId, onSubmit }: { device_code: string
     )
 }
 
-function ErrorState({ device_code, tenantId, msg, onRetry }: { device_code: string; tenantId?: string; msg: string; onRetry: () => void }) {
+function ErrorState({ device_code, msg, onRetry }: { device_code: string; msg: string; onRetry: () => void }) {
+    // Auto-retry every 15 seconds so signage players don't stay dead forever after a short WiFi drop
+    useEffect(() => {
+        const t = setTimeout(() => {
+            onRetry()
+        }, 15000)
+        return () => clearTimeout(t)
+    }, [onRetry])
+
     return (
         <div style={bgStyle}>
+            <AmbientOrbs />
             <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem' }}>
-                <Logo tenantId={tenantId} />
-                <div style={{ marginTop: '2.5rem', background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 16, padding: '1.5rem 2rem', maxWidth: 380 }}>
+                <Logo />
+                <div style={{ marginTop: '2.5rem', background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 16, padding: '1.5rem 2rem', maxWidth: 450 }}>
                     <WifiOff size={28} color="#ef4444" style={{ margin: '0 auto 0.75rem' }} />
                     <div style={{ fontWeight: 600, color: '#ef4444', marginBottom: '0.5rem' }}>Connection Failed</div>
+                    <div style={{ fontSize: '0.7rem', color: '#64748b', fontFamily: 'monospace', marginBottom: '1rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem', borderRadius: 8 }}>
+                        DEVICE_CODE: {device_code}
+                    </div>
                     <div style={{ color: '#94a3b8', fontSize: '0.8125rem', marginBottom: '1.25rem', lineHeight: 1.6 }}>
                         {msg}
                     </div>
@@ -902,45 +920,53 @@ function AmbientOrbs() {
     )
 }
 
-// Props now include tenantId so we always query the RIGHT tenant, not a hardcoded default.
-function Logo({ tenantId }: { tenantId?: string }) {
+function Logo() {
     const [logoUrl, setLogoUrl] = useState<string | null>(null)
-    const [primaryColor, setPrimaryColor] = useState<string>('#00daf3')
 
     useEffect(() => {
-        const id = tenantId || DEFAULT_TENANT_ID
         supabase
             .from('tenants')
-            .select('settings, primary_color')
-            .eq('id', id)
+            .select('settings')
+            .eq('id', DEFAULT_TENANT_ID)
             .single()
             .then(({ data }) => {
-                if (data?.settings?.logo_url) setLogoUrl(data.settings.logo_url)
-                if (data?.primary_color) setPrimaryColor(data.primary_color)
+                if (data?.settings?.logo_url) {
+                    setLogoUrl(data.settings.logo_url)
+                }
             })
-    }, [tenantId])
+    }, [])
 
-    // If no tenant logo configured — show empty (nothing, no OmniPush branding on client screens)
-    if (!logoUrl) return (
-        <div style={{ width: 120, height: 40 }} />
-    )
+    if (logoUrl) {
+        return (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' }}>
+                <div style={{
+                    height: 52,
+                    padding: '8px',
+                    background: 'white',
+                    borderRadius: 12,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
+                }}>
+                    <img src={logoUrl} alt="Logo" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
+                </div>
+            </div>
+        )
+    }
 
     return (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <img
-                src={logoUrl}
-                alt="Logo"
-                style={{
-                    maxHeight: 80,
-                    maxWidth: 280,
-                    objectFit: 'contain',
-                    filter: 'drop-shadow(0 4px 24px rgba(0,0,0,0.5))'
-                }}
-            />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, background: 'linear-gradient(135deg, var(--color-brand-500), var(--color-brand-600))', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 32px rgba(239, 68, 68, 0.5)' }}>
+                <Tv2 size={24} color="white" />
+            </div>
+            <div style={{ textAlign: 'left' }}>
+                <div style={{ fontWeight: 800, fontSize: '1.25rem', color: '#f1f5f9' }}>OmniPush</div>
+                <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>Retail Display System</div>
+            </div>
         </div>
     )
 }
-
 
 function BottomBar({ device_code, version, offline }: { device_code: string; version?: string | null; offline?: boolean }) {
     return (
@@ -1037,7 +1063,7 @@ console.warn = (...args) => {
 
 export default function PlayerPage() {
     const { device_code } = useParams<{ device_code: string }>()
-    const dc = device_code || ''
+    const dc = (device_code || '').trim()
 
     // Dynamic Viewport Sync for Browser and WebViews
     useEffect(() => {
@@ -1051,8 +1077,8 @@ export default function PlayerPage() {
             meta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no, viewport-fit=cover')
 
             // Force browser to visible area only
-            document.documentElement.style.height = '100vh';
-            document.body.style.height = '100vh';
+            document.documentElement.style.height = '100dvh';
+            document.body.style.height = '100dvh';
         }
 
         syncViewport()
@@ -1064,19 +1090,6 @@ export default function PlayerPage() {
     const [secret, setSecret] = useState<string>('')
     const [manifest, setManifest] = useState<Manifest | null>(null)
     const [offline, setOffline] = useState(false)
-    const [remoteLogs, setRemoteLogs] = useState<{ msg: string, type: string, time: string }[]>([])
-
-    const addRemoteLog = useCallback((msg: string, type: 'info' | 'error' = 'info') => {
-        setRemoteLogs(prev => [{
-            msg,
-            type,
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-        }, ...prev].slice(0, 10))
-    }, [])
-
-    useEffect(() => {
-        (window as any).addRemoteLog = addRemoteLog
-    }, [addRemoteLog])
     const [errorMsg, setErrorMsg] = useState('')
     const [version, setVersion] = useState<string | null>(null)
     const [syncProgress, setSyncProgress] = useState<{ current: number; total: number } | null>(null)
@@ -1090,23 +1103,6 @@ export default function PlayerPage() {
 
     const [pairingPin, setPairingPin] = useState('')
     const [showDiagnostics, setShowDiagnostics] = useState(false)
-    const [showDebugOverlay, setShowDebugOverlay] = useState(false)
-    const [lastSyncTime, setLastSyncTime] = useState<string>(new Date().toLocaleTimeString())
-
-    // Debug Toggle Tap Sequence (Top-Right)
-    const debugTapCountRef = useRef(0)
-    const debugTapTimerRef = useRef<any>(null)
-
-    const handleDebugCornerTap = () => {
-        debugTapCountRef.current += 1
-        if (debugTapTimerRef.current) clearTimeout(debugTapTimerRef.current)
-        debugTapTimerRef.current = setTimeout(() => { debugTapCountRef.current = 0 }, 1500) // Reset after 1.5s
-
-        if (debugTapCountRef.current >= 3) {
-            debugTapCountRef.current = 0
-            setShowDebugOverlay(prev => !prev)
-        }
-    }
     const secretRef = useRef(secret)
     useEffect(() => { secretRef.current = secret }, [secret])
 
@@ -1128,16 +1124,19 @@ export default function PlayerPage() {
     const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const [showPinPrompt, setShowPinPrompt] = useState(false)
     const [showAdminPanel, setShowAdminPanel] = useState(false)
-    const [showManifestJSON, setShowManifestJSON] = useState(false)
     const [pinInput, setPinInput] = useState('')
     const [pinError, setPinError] = useState(false)
+    const [showDebugManifest, setShowDebugManifest] = useState(false)
+    const [debugJSON, setDebugJSON] = useState('')
 
     const handleCornerTap = () => {
         tapCountRef.current += 1
+        console.log(`[Admin] Corner Tap ${tapCountRef.current}/5`)
         if (tapTimerRef.current) clearTimeout(tapTimerRef.current)
         // Reset counter after 3s of inactivity
         tapTimerRef.current = setTimeout(() => { tapCountRef.current = 0 }, 3000)
         if (tapCountRef.current >= 5) {
+            console.log(`[Admin] Opening PIN Prompt`)
             tapCountRef.current = 0
             setShowPinPrompt(true)
             setPinInput('')
@@ -1165,198 +1164,74 @@ export default function PlayerPage() {
         return () => window.removeEventListener('keydown', handleKeys)
     }, [])
 
-    // ── Admin panel button style helper ──
-    const btnStyle = (bg: string, color = '#f1f5f9'): React.CSSProperties => ({
-        padding: '0.875rem 1.25rem', borderRadius: 12, fontSize: '0.9rem',
-        fontWeight: 600, background: bg, border: '1px solid rgba(255,255,255,0.08)',
-        color, cursor: 'pointer', textAlign: 'center' as const,
-    })
-
-    // ── Hidden Admin Panel overlay ──
-    const AdminPanel = () => (
-        <>
-            {/* PIN Prompt */}
-            {showPinPrompt && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999,
-                    background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center'
-                }}>
-                    <div style={{
-                        background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)',
-                        borderRadius: 20, padding: '2rem', width: 280, textAlign: 'center'
-                    }}>
-                        <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>🔐</div>
-                        <div style={{ fontWeight: 700, color: '#f1f5f9', marginBottom: '0.25rem' }}>Admin Access</div>
-                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '1.25rem' }}>Enter PIN to continue</div>
-                        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-                            {[0, 1, 2, 3].map(i => (
-                                <div key={i} style={{
-                                    width: 14, height: 14, borderRadius: '50%',
-                                    background: pinInput.length > i ? '#ef4444' : '#1e293b',
-                                    border: '2px solid ' + (pinError ? '#ef4444' : '#334155'),
-                                    transition: 'all 0.2s'
-                                }} />
-                            ))}
-                        </div>
-                        {pinError && <div style={{ fontSize: '0.75rem', color: '#ef4444', marginBottom: '0.75rem' }}>Incorrect PIN</div>}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
-                            {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].map((k, i) => (
-                                <button key={i} onClick={() => {
-                                    if (!k) return
-                                    if (k === '⌫') { setPinInput(p => p.slice(0, -1)); setPinError(false); return }
-                                    const next = pinInput + k
-                                    setPinInput(next)
-                                    if (next.length === 4) handlePinSubmit(next)
-                                }} style={{
-                                    padding: '0.85rem', borderRadius: 10, fontSize: '1.1rem', fontWeight: 600,
-                                    background: k ? '#1e293b' : 'transparent',
-                                    border: '1px solid ' + (k ? '#334155' : 'transparent'),
-                                    color: '#f1f5f9', cursor: k ? 'pointer' : 'default'
-                                }}>{k}</button>
-                            ))}
-                        </div>
-                        <button onClick={() => { setShowPinPrompt(false); setPinInput('') }}
-                            style={{ marginTop: '1rem', width: '100%', padding: '0.5rem', background: 'transparent', border: '1px solid #334155', borderRadius: 8, color: '#64748b', cursor: 'pointer', fontSize: '0.875rem' }}>
-                            Cancel
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {showAdminPanel && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999,
-                    background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(16px)',
-                    display: 'flex', flexDirection: 'column',
-                }}>
-                    <div style={{ padding: '1.5rem 2rem', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <div>
-                            <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#f1f5f9' }}>⚙️ Admin Panel</div>
-                            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.2rem' }}>Device: {dc} · v{version || 'unknown'}</div>
-                        </div>
-                        <button onClick={() => setShowAdminPanel(false)}
-                            style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#94a3b8', padding: '0.5rem 1rem', cursor: 'pointer', fontSize: '0.875rem' }}>
-                            ✕ Close
-                        </button>
-                    </div>
-
-                    <div style={{ padding: '1.5rem 2rem', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
-                        {[
-                            { label: 'Device Code', value: dc },
-                            { label: 'Connection', value: offline ? '🔴 Offline' : '🟢 Online' },
-                            { label: 'Content Version', value: version || '—' },
-                            { label: 'Assets Cached', value: String(manifest?.assets?.length || 0) },
-                            { label: 'Regions', value: manifest?.layout?.regions?.map((r: any) => r.id).join(', ') || '—' },
-                            { label: 'Pub Scope', value: manifest?.resolved?.scope || 'Global' },
-                        ].map(({ label, value }) => (
-                            <div key={label} style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: '0.875rem 1rem' }}>
-                                <div style={{ fontSize: '0.65rem', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>{label}</div>
-                                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#f1f5f9', wordBreak: 'break-all' }}>{value}</div>
-                            </div>
-                        ))}
-                    </div>
-
-                    <div style={{ padding: '0 2rem', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
-                        <button onClick={() => { setShowAdminPanel(false); window.location.reload() }} style={btnStyle('#1e293b')}>
-                            🔄 Force Reload
-                        </button>
-                        <button onClick={() => {
-                            localStorage.removeItem(manifestKey(dc))
-                            setShowAdminPanel(false)
-                            window.location.reload()
-                        }} style={btnStyle('#1e293b')}>
-                            🗑️ Clear Cache &amp; Reload
-                        </button>
-                        <button onClick={() => {
-                            localStorage.removeItem(secretKey(dc))
-                            localStorage.removeItem(manifestKey(dc))
-                            setShowAdminPanel(false)
-                            window.location.reload()
-                        }} style={btnStyle('#7f1d1d', '#fca5a5')}>
-                            ⚠️ Unpair Device
-                        </button>
-                        <button onClick={() => setShowManifestJSON(true)} style={btnStyle('#1e293b')}>
-                            📄 View Raw Manifest
-                        </button>
-                        <button onClick={() => {
-                            window.dispatchEvent(new CustomEvent('omnipush_force_play'))
-                            setShowAdminPanel(false)
-                        }} style={btnStyle('#14532d', '#86efac')}>
-                            ▶ Force Play
-                        </button>
-                    </div>
-                    <div style={{ padding: '1.5rem 2rem', fontSize: '0.7rem', color: '#334155', textAlign: 'center' }}>
-                        OmniPush Admin · Tap anywhere outside or press Close to exit
-                    </div>
-                </div>
-            )}
-
-            {showManifestJSON && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 100000,
-                    background: '#0a0a1f', padding: '1rem', overflow: 'auto'
-                }}>
-                    <button onClick={() => setShowManifestJSON(false)}
-                        style={{ position: 'sticky', top: 0, right: 0, background: '#ef4444', border: 'none', color: '#fff', padding: '0.5rem 1rem', borderRadius: 6, cursor: 'pointer', zIndex: 100001, float: 'right' }}>
-                        ✕ Close
-                    </button>
-                    <pre style={{ color: '#94a3b8', fontSize: '0.7rem', margin: 0, fontFamily: 'monospace' }}>
-                        {JSON.stringify(manifest, null, 2)}
-                    </pre>
-                </div>
-            )}
-        </>
-    )
-
-
     // ── Command Processing ──
+    const captureBrowserScreenshot = useCallback(async (commandId: string) => {
+        try {
+            console.log(`[Player] Generating browser screenshot for command ${commandId}...`)
+            const canvas = await html2canvas(document.body, {
+                useCORS: true,
+                scale: 0.5,
+                logging: false,
+                backgroundColor: '#000000',
+                ignoreElements: (el) => el.id === 'admin-overlay' || el.id === 'pin-prompt'
+            })
+
+            const blob: Blob | null = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8))
+            if (!blob) throw new Error('Failed to create blob')
+
+            const fileName = `screenshots/${dc}_${commandId}.jpg`
+            const { error } = await supabase.storage
+                .from('device-screenshots')
+                .upload(fileName, blob, { contentType: 'image/jpeg', upsert: true })
+
+            if (error) throw error
+            console.log(`[Player] Browser screenshot uploaded: ${fileName}`)
+        } catch (err: any) {
+            console.error('[Player] Browser screenshot failed:', err.message)
+        }
+    }, [dc])
+
     const processIncomingCommands = useCallback(async (commands: any[]) => {
         for (const cmd of commands) {
             console.log(`[Player] Processing command: ${cmd.command} (${cmd.id})`)
 
             try {
-                // 1. Mark as EXECUTED via Edge Function (bypasses RLS)
-                await callEdgeFn('device-heartbeat', {
-                    device_code: dc,
-                    device_secret: secretRef.current,
-                    ack_command_id: cmd.id
-                })
+                // 1. Mark as EXECUTED immediately in Supabase
+                await supabase.from('device_commands').update({
+                    status: 'EXECUTED',
+                    executed_at: new Date().toISOString()
+                }).eq('id', cmd.id)
 
                 // 2. Perform the actual logic
                 if (cmd.command === 'REBOOT' || cmd.command === 'RELOAD') {
                     console.warn('[Player] Remote Reload/Reboot triggered. Reloading page...')
+                    // Multiple layers of reload to bypass various browser locks
                     window.location.reload()
+                    setTimeout(() => { window.location.href = window.location.href }, 500)
                 } else if (cmd.command === 'CLEAR_CACHE') {
                     console.warn('[Player] Remote Clear Cache triggered. Purging local storage...')
                     localStorage.removeItem(manifestKey(dc))
                     window.location.reload()
+                    setTimeout(() => { window.location.href = window.location.href }, 500)
                 } else if (cmd.command === 'SCREENSHOT') {
                     console.log('[Player] Remote Screenshot requested...')
                     const win = window as any
                     if (win.AndroidHealth && win.AndroidHealth.takeScreenshot) {
                         win.AndroidHealth.takeScreenshot(cmd.id)
                     } else {
-                        // Fallback: In browser, we can't easily screenshot, but we record the attempt
-                        console.error('[Player] Native screenshot bridge NOT available.')
+                        await captureBrowserScreenshot(cmd.id)
                     }
-                } else if (cmd.command === 'TOGGLE_DEBUG') {
-                    console.log('[Player] Remote Debug Toggle triggered.')
-                    setShowDebugOverlay(prev => !prev)
                 }
             } catch (err: any) {
                 console.error(`[Player] Command ${cmd.id} execution failed:`, err.message)
             }
         }
-    }, [dc, setShowDebugOverlay])
+    }, [dc, captureBrowserScreenshot])
 
     // Keep checkCommands for legacy/backup or direct REST usage
     const checkCommands = useCallback(async () => {
         if (!manifest?.device?.id) return
         try {
-            // If we know we are offline, don't even try polling commands right now
-            if (!navigator.onLine) return;
-
             const { data: commands, error } = await supabase
                 .from('device_commands')
                 .select('*')
@@ -1364,50 +1239,41 @@ export default function PlayerPage() {
                 .eq('status', 'PENDING')
                 .order('created_at', { ascending: true })
 
-            if (error) {
-                // If it's a "Failed to fetch", it's just a network drop, don't spam error logs
-                if (error.message?.includes('Failed to fetch')) return;
-                console.error('[Commands] Fetch error:', error.message || error)
-                return
-            }
+            if (error) throw error
             if (!commands || commands.length === 0) return
 
             for (const cmd of commands) {
                 console.log(`[Player] Executing remote command: ${cmd.command}`)
 
-                // Mark as executing/finished via Edge Function
-                await callEdgeFn('device-heartbeat', {
-                    device_code: dc,
-                    device_secret: secretRef.current,
-                    ack_command_id: cmd.id
-                })
+                // Mark as executing/finished
+                await supabase.from('device_commands').update({
+                    status: 'EXECUTED',
+                    executed_at: new Date().toISOString()
+                }).eq('id', cmd.id)
 
                 if (cmd.command === 'REBOOT') {
                     console.warn('[Player] Remote Reboot triggered via CMS. Reloading page...')
                     window.location.reload()
+                    setTimeout(() => { window.location.href = window.location.href }, 500)
                 } else if (cmd.command === 'CLEAR_CACHE') {
                     console.warn('[Player] Remote Clear Cache triggered. Purging local storage...')
                     localStorage.removeItem(manifestKey(dc))
-                    // We keep the secretKey so the device stays paired
                     window.location.reload()
+                    setTimeout(() => { window.location.href = window.location.href }, 500)
                 } else if (cmd.command === 'SCREENSHOT') {
                     console.log('[Player] Remote Screenshot requested...')
                     const win = window as any
                     if (win.AndroidHealth && win.AndroidHealth.takeScreenshot) {
-                        // The Android app will handle the upload to Supabase Storage
                         win.AndroidHealth.takeScreenshot(cmd.id)
                     } else {
-                        console.error('[Player] Native screenshot bridge NOT available.')
+                        await captureBrowserScreenshot(cmd.id)
                     }
                 }
             }
         } catch (err: any) {
-            if (err.message === 'Failed to fetch' || !navigator.onLine) {
-                return; // Ignore network drops
-            }
             console.error('[Commands] Polling error:', err.message)
         }
-    }, [manifest?.device?.id])
+    }, [manifest?.device?.id, dc, captureBrowserScreenshot])
 
     useEffect(() => {
         if (!manifest?.device?.id) return
@@ -1416,52 +1282,50 @@ export default function PlayerPage() {
     }, [manifest?.device?.id, checkCommands])
 
     // ── Asset Sync (Offline Cache) ──
-    // NOTE: We intentionally SKIP video assets here.
-    // Android WebView 83 (Droidlogic/older devices) blocks fetch() to Supabase storage
-    // with a CORS/network error when loading video blobs. Videos play fine from their
-    // original HTTP URL via the native MediaPlayer — so we only cache images.
     const syncAssets = useCallback(async (assetsToSync: ManifestAsset[]) => {
         if (!assetsToSync || assetsToSync.length === 0) return
 
-        const imageAssets = assetsToSync.filter(a => {
-            const t = (a.type || '').toLowerCase()
-            return !t.includes('video') && a.url && !a.url.startsWith('blob:')
+        const assetsToActuallySync = assetsToSync.filter(a => {
+            const isVideo = (a.type || '').toLowerCase().includes('video')
+            return !isVideo && a.url && !a.url.startsWith('blob:')
         })
 
-        if (imageAssets.length === 0) {
-            console.log('[Cache] No image assets to sync — skipping (videos are served directly).')
+        if (assetsToActuallySync.length === 0) {
+            console.log('[Cache] No cacheable assets (images) found — videos play direct.')
             return
         }
 
-        console.log(`[Cache] Syncing ${imageAssets.length} image asset(s) (videos served directly)...`)
-        setSyncProgress({ current: 0, total: imageAssets.length })
+        console.log(`[Cache] Syncing ${assetsToActuallySync.length} assets...`)
+        setSyncProgress({ current: 0, total: assetsToActuallySync.length })
 
         const updatedAssets = [...assetsToSync]
         let completed = 0
 
-        for (const asset of imageAssets) {
+        for (const asset of assetsToActuallySync) {
             const idx = updatedAssets.findIndex(a => a.media_id === asset.media_id)
             try {
                 const blobUrl = await downloadAndCache({
                     media_id: asset.media_id,
-                    url: asset.url!, // filter above guarantees non-null
+                    url: asset.url!,
                     type: asset.type,
                     checksum_sha256: asset.checksum_sha256
                 })
-                if (idx !== -1) updatedAssets[idx] = { ...asset, url: blobUrl }
-                console.log(`[Cache] ✅ Cached image ${asset.media_id}`)
+
+                // Skip blob hydration for PPT/Presentation as documented in stable core
+                if (asset.type !== 'ppt' && asset.type !== 'presentation') {
+                    if (idx !== -1) updatedAssets[idx] = { ...asset, url: blobUrl }
+                }
             } catch (err: any) {
-                const reason = err?.message || (typeof err === 'string' ? err : 'Unknown error')
+                const reason = err?.message || (typeof err === 'string' ? err : 'Network/CORS blocked')
                 console.error(`[Cache] Sync FAILED for ${asset.media_id}: ${reason}`)
+                // No alert - just log it and move on to allow playback of other items
             } finally {
                 completed++
-                setSyncProgress({ current: completed, total: imageAssets.length })
+                setSyncProgress({ current: completed, total: assetsToActuallySync.length })
             }
         }
 
-        // Update manifest with cached blob URLs (videos retain original URL)
         setManifest(prev => prev ? { ...prev, assets: updatedAssets } : null)
-        console.log(`[Cache] Sync complete. ${completed}/${imageAssets.length} images cached.`)
         setTimeout(() => setSyncProgress(null), 2000)
     }, [])
 
@@ -1480,10 +1344,11 @@ export default function PlayerPage() {
     // ── Fetch manifest ──
     const fetchManifest = useCallback(async (sec: string): Promise<boolean> => {
         try {
+            console.log(`[Player] Fetching manifest: DC=${dc} | Origin=${window.location.origin}`)
             const data = await callEdgeFn('device-manifest', {
                 device_code: dc,
                 device_secret: sec,
-                current_version: version,
+                current_version: versionRef.current,
                 origin: window.location.origin
             })
 
@@ -1491,7 +1356,6 @@ export default function PlayerPage() {
             if (data.up_to_date) {
                 console.log(`[Player] Content ${data.version} is up to date. Keep loop playing.`)
                 setOffline(false)
-                setLastSyncTime(new Date().toLocaleTimeString())
                 return true
             }
 
@@ -1507,7 +1371,6 @@ export default function PlayerPage() {
                 versionRef.current = newVersion
                 localStorage.setItem(manifestKey(dc), JSON.stringify(data))
                 setOffline(false)
-                addRemoteLog(`Update Received (v${newVersion})`)
                 return true
             }
 
@@ -1524,8 +1387,7 @@ export default function PlayerPage() {
             if (win.AndroidHealth?.setStoreInfo) {
                 win.AndroidHealth.setStoreInfo(data.device?.store_id || null, data.device?.store_name || null)
             }
-            addRemoteLog(`Manifest Loaded (v${newVersion})`)
-            setLastSyncTime(new Date().toLocaleTimeString())
+
             return true
         } catch (err: any) {
             const msg: string = (err.message || '').toLowerCase()
@@ -1541,42 +1403,31 @@ export default function PlayerPage() {
 
             if (msg.includes('no active publication') || msg.includes('no publication') || msg.includes('not found')) {
                 setPhase('standby')
-                if (err.data?.device && !manifest) {
-                    setManifest({
-                        ...err.data,
-                        region_playlists: {},
-                        assets: [],
-                        resolved: { ...err.data.resolved, role: err.data.device.role_id }
-                    })
+                if (err.data?.device) {
+                    setManifest({ resolved: { role: err.data.device.role_name, scope: 'Standby' } } as any)
                 }
-                addRemoteLog(`Standby: No Active Publication`, 'info')
                 return true
             }
 
-            // --- OFFLINE FALLBACK ---
             const cached = localStorage.getItem(manifestKey(dc))
             if (cached) {
                 try {
                     const c = JSON.parse(cached)
-                    const hydrated = await hydrateAssetsFromCache(c.assets)
-                    c.assets = hydrated
                     setManifest(c)
                     if (c.resolved?.version) {
                         setVersion(c.resolved.version)
                         versionRef.current = c.resolved.version
                     }
                     setOffline(true)
-                    addRemoteLog(`Network Fail - Loading Offline Cache`, 'error')
                     return true
-                } catch { /* ignore cache fail */ }
+                } catch { /* ignore */ }
             }
 
             setErrorMsg(err.message || 'Fetch failed')
             setPhase('error')
-            addRemoteLog(`Fetch Critical Error: ${err.message}`, 'error')
             return false
         }
-    }, [dc, version, phase, syncAssets, initPairing, addRemoteLog])
+    }, [dc, syncAssets, initPairing]) // REMOVED version, phase to stop re-triggering loops
 
     // ── Send heartbeat ──
     const sendHeartbeat = useCallback(async (sec: string) => {
@@ -1657,7 +1508,7 @@ export default function PlayerPage() {
                 }
             }
         } catch (err: any) {
-            console.warn('[Player] Heartbeat non-fatal:', err.message)
+            console.error('[Player] Heartbeat Network Error:', err.message)
             const msg = (err.message || '').toLowerCase()
             if (msg.includes('invalid credentials') || msg.includes('inactive device')) {
                 localStorage.removeItem(secretKey(dc))
@@ -1699,14 +1550,6 @@ export default function PlayerPage() {
         if (stored) {
             setSecret(stored)
             secretRef.current = stored
-
-            // --- SYNC TO NATIVE (Backwards compatibility / Auto-recovery) ---
-            const win = window as any
-            if (win.AndroidHealth?.syncSecret) {
-                win.AndroidHealth.syncSecret(stored)
-            }
-            // -------------------------------------------------------------
-
             setPhase('loading')
             fetchManifest(stored).then(ok => {
                 if (ok) setPhase(p => p === 'standby' ? 'standby' : 'playing')
@@ -1776,13 +1619,6 @@ export default function PlayerPage() {
         setSecret(s)
         secretRef.current = s
         localStorage.setItem(secretKey(dc), s)
-
-        // --- SYNC SECRET TO NATIVE SHRED PREFS ---
-        const win = window as any
-        if (win.AndroidHealth?.syncSecret) {
-            win.AndroidHealth.syncSecret(s)
-        }
-        // ----------------------------------------
         const ok = await fetchManifest(s)
         if (ok) {
             setPhase(p => p === 'standby' ? 'standby' : 'playing')
@@ -1793,7 +1629,16 @@ export default function PlayerPage() {
 
     // ── Retry ──
     const handleRetry = () => {
-        window.location.reload()
+        console.log('[Player] Manual retry triggered...')
+        if (secretRef.current) {
+            setPhase('loading')
+            fetchManifest(secretRef.current).then(ok => {
+                if (ok) setPhase('playing')
+                else setPhase('error')
+            })
+        } else {
+            window.location.reload()
+        }
     }
 
     // ── Resolve playlist items for playback ──
@@ -1808,296 +1653,354 @@ export default function PlayerPage() {
         return rp[regionKey] || []
     }
 
-    // ── Render ──
-    if (phase === 'loading') return <LoadingState device_code={dc} />
-    if (phase === 'pairing') return (
-        <div style={bgStyle}>
-            <AmbientOrbs />
-            <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem', maxWidth: 450 }}>
-                <Logo />
-                <div style={{ marginTop: '2.5rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: '2.5rem 2rem' }}>
-                    <div style={{ marginBottom: '1.5rem' }}>
-                        <div style={{ fontSize: '0.8rem', color: '#f87171', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700, marginBottom: '0.5rem' }}>Device Pairing Mode</div>
-                        <div style={{ color: '#f1f5f9', fontSize: '1.125rem', fontWeight: 600 }}>Get started in 30 seconds</div>
+    // ── Pre-calculate corner tap zone ──
+    const cornerTapZone = (
+        <div
+            onClick={(e) => {
+                e.stopPropagation();
+                handleCornerTap();
+            }}
+            style={{
+                position: 'fixed',
+                top: 0,
+                right: 0,
+                width: 120,
+                height: 120,
+                zIndex: 9999999,
+                cursor: 'pointer',
+                // background: 'rgba(255,0,0,0.1)', // debug
+            }}
+        />
+    )
+
+    // ── Admin panel button style helper ──
+    const btnStyle = (bg: string, color = '#f1f5f9'): React.CSSProperties => ({
+        padding: '0.875rem 1.25rem', borderRadius: 12, fontSize: '0.9rem',
+        fontWeight: 600, background: bg, border: '1px solid rgba(255,255,255,0.08)',
+        color, cursor: 'pointer', textAlign: 'center' as const,
+    })
+
+    // ── Hidden Admin Panel overlay ──
+    const AdminPanel = () => (
+        <>
+            {/* PIN Prompt */}
+            {showPinPrompt && (
+                <div id="pin-prompt" style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99998,
+                    background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                    <div style={{
+                        background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 20, padding: '2rem', width: 280, textAlign: 'center'
+                    }}>
+                        <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>🔐</div>
+                        <div style={{ fontWeight: 700, color: '#f1f5f9', marginBottom: '0.25rem' }}>Admin Access</div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '1.25rem' }}>Enter PIN to continue</div>
+                        {/* PIN dots display */}
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                            {[0, 1, 2, 3].map(i => (
+                                <div key={i} style={{
+                                    width: 14, height: 14, borderRadius: '50%',
+                                    background: pinInput.length > i ? '#ef4444' : '#1e293b',
+                                    border: '2px solid ' + (pinError ? '#ef4444' : '#334155'),
+                                    transition: 'all 0.2s'
+                                }} />
+                            ))}
+                        </div>
+                        {pinError && <div style={{ fontSize: '0.75rem', color: '#ef4444', marginBottom: '0.75rem' }}>Incorrect PIN</div>}
+                        {/* Numpad */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+                            {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].map((k, i) => (
+                                <button key={i} onClick={() => {
+                                    if (!k) return
+                                    if (k === '⌫') { setPinInput(p => p.slice(0, -1)); setPinError(false); return }
+                                    const next = pinInput + k
+                                    setPinInput(next)
+                                    if (next.length === 4) handlePinSubmit(next)
+                                }} style={{
+                                    padding: '0.85rem', borderRadius: 10, fontSize: '1.1rem', fontWeight: 600,
+                                    background: k ? '#1e293b' : 'transparent',
+                                    border: '1px solid ' + (k ? '#334155' : 'transparent'),
+                                    color: '#f1f5f9', cursor: k ? 'pointer' : 'default',
+                                    transition: 'background 0.15s'
+                                }}>{k}</button>
+                            ))}
+                        </div>
+                        <button onClick={() => { setShowPinPrompt(false); setPinInput('') }}
+                            style={{ marginTop: '1rem', width: '100%', padding: '0.5rem', background: 'transparent', border: '1px solid #334155', borderRadius: 8, color: '#64748b', cursor: 'pointer', fontSize: '0.875rem' }}>
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Admin Panel */}
+            {showAdminPanel && (
+                <div id="admin-overlay" style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999,
+                    background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(16px)',
+                    display: 'flex', flexDirection: 'column',
+                }}>
+                    {/* Header */}
+                    <div style={{ padding: '1.5rem 2rem', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div>
+                            <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#f1f5f9' }}>⚙️ Admin Panel</div>
+                            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.2rem' }}>Device: {dc} · v{version || 'unknown'}</div>
+                        </div>
+                        <button onClick={() => setShowAdminPanel(false)}
+                            style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#94a3b8', padding: '0.5rem 1rem', cursor: 'pointer', fontSize: '0.875rem' }}>
+                            ✕ Close
+                        </button>
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', marginBottom: '2rem' }}>
-                        {(pairingPin || '------').split('').map((char, i) => (
-                            <div key={i} style={{
-                                width: 48, height: 64, background: '#0f172a', border: '1px solid #1e293b',
-                                borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontSize: '2rem', fontWeight: 800, color: '#f1f5f9', fontFamily: 'monospace',
-                                boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.5)'
-                            }}>
-                                {char}
+                    {/* Info grid */}
+                    <div style={{ padding: '1.5rem 2rem', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+                        {[
+                            { label: 'Device Code', value: dc },
+                            { label: 'Connection', value: offline ? '🔴 Offline' : '🟢 Online' },
+                            { label: 'Content Version', value: version || '—' },
+                            { label: 'Assets Cached', value: String(manifest?.assets?.length || 0) },
+                            { label: 'Regions', value: Object.keys(manifest?.region_playlists || {}).join(', ') || '—' },
+                            { label: 'Pub Scope', value: manifest?.resolved?.scope || 'Global' },
+                        ].map(({ label, value }) => (
+                            <div key={label} style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: '0.875rem 1rem' }}>
+                                <div style={{ fontSize: '0.65rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>{label}</div>
+                                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#f8fafc', wordBreak: 'break-all' }}>{value}</div>
                             </div>
                         ))}
                     </div>
 
-                    <div style={{ color: '#94a3b8', fontSize: '0.875rem', lineHeight: 1.6, marginBottom: '2rem' }}>
-                        Go to <strong style={{ color: '#f1f5f9' }}>Admin → Devices</strong> on your CMS <br />
-                        and enter this 6-digit code to link this screen.
+                    {/* Actions */}
+                    <div style={{ padding: '0 2rem', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
+                        <button onClick={() => { setShowAdminPanel(false); window.location.reload() }} style={btnStyle('#1e293b')}>
+                            🔄 Force Reload
+                        </button>
+                        <button onClick={() => {
+                            localStorage.removeItem(manifestKey(dc))
+                            setShowAdminPanel(false)
+                            window.location.reload()
+                        }} style={btnStyle('#1e293b')}>
+                            🗑️ Clear Cache &amp; Reload
+                        </button>
+                        <button onClick={() => {
+                            localStorage.removeItem(secretKey(dc))
+                            localStorage.removeItem(manifestKey(dc))
+                            setShowAdminPanel(false)
+                            window.location.reload()
+                        }} style={btnStyle('#7f1d1d', '#fca5a5')}>
+                            ⚠️ Unpair Device
+                        </button>
+                        <button onClick={() => {
+                            setDebugJSON(JSON.stringify(manifest, null, 2))
+                            setShowDebugManifest(true)
+                        }} style={btnStyle('rgba(255,255,255,0.05)', '#94a3b8')}>
+                            🔍 Debug Manifest
+                        </button>
+                        <button onClick={() => {
+                            window.dispatchEvent(new CustomEvent('omnipush_force_play'))
+                            setShowAdminPanel(false)
+                        }} style={btnStyle('#14532d', '#86efac')}>
+                            ▶ Force Play
+                        </button>
                     </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
-                        <div style={{ background: 'white', padding: '0.75rem', borderRadius: 10 }}>
-                            <QRCodeSVG value={`${window.location.origin}/player/${dc}?pairing=${pairingPin}`} size={120} level="M" />
+                    {showDebugManifest && (
+                        <div style={{ padding: '0 2rem 1.5rem', maxHeight: '400px', overflow: 'auto' }}>
+                            <pre style={{
+                                background: '#020617', padding: '1rem', borderRadius: 8,
+                                fontSize: '0.65rem', color: '#64748b', fontFamily: 'monospace',
+                                border: '1px solid #1e293b', whiteSpace: 'pre-wrap', wordBreak: 'break-all'
+                            }}>
+                                {debugJSON}
+                            </pre>
+                            <button
+                                onClick={() => setShowDebugManifest(false)}
+                                style={{
+                                    marginTop: '0.75rem', width: '100%', padding: '0.5rem',
+                                    borderRadius: 6, background: '#1e293b', color: 'white',
+                                    border: 'none', cursor: 'pointer', fontSize: '0.75rem'
+                                }}
+                            >
+                                Close Debug View
+                            </button>
                         </div>
-                        <div style={{ fontSize: '0.7rem', color: '#475569' }}>
-                            Or scan to pair with your mobile phone
-                        </div>
+                    )}
+                    <div style={{ padding: '1.5rem 2rem', fontSize: '0.7rem', color: '#334155', textAlign: 'center' }}>
+                        OmniPush Admin · Tap anywhere outside or press Close to exit
                     </div>
-
-                    <button
-                        onClick={() => setPhase('secret')}
-                        style={{ marginTop: '2rem', background: 'none', border: 'none', color: '#475569', fontSize: '0.75rem', cursor: 'pointer', textDecoration: 'underline' }}
-                    >
-                        I have a secret key - manual entry
-                    </button>
                 </div>
-            </div>
-            <BottomBar device_code={dc} />
-        </div>
+            )}
+        </>
     )
-    if (phase === 'secret') return <SecretPrompt device_code={dc} onSubmit={handleSecret} />
-    if (phase === 'error') return <ErrorState device_code={dc} msg={errorMsg} onRetry={handleRetry} />
 
-    // ── Standby: authenticated but no content published yet ──
-    if (phase === 'standby') {
-        return (
+    // ── Main Content Resolver ──
+    const regions = manifest?.layout?.regions || [{ id: 'full', x: 0, y: 0, width: 100, height: 100 }]
+    const hasAnyContent = manifest ? Object.values(manifest.region_playlists || {}).some(items => items.length > 0) : false
+
+    const renderMain = () => {
+        if (phase === 'loading' || (!manifest && phase !== 'pairing' && phase !== 'secret' && phase !== 'error')) {
+            return <LoadingState device_code={dc} />
+        }
+        if (phase === 'pairing') return (
             <div style={bgStyle}>
                 <AmbientOrbs />
-                <div style={{ zIndex: 1, position: 'relative', textAlign: 'center' }}>
+                <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem', maxWidth: 450 }}>
                     <Logo />
-                    <div style={{ marginTop: '2.5rem', color: 'rgba(255,255,255,0.35)', fontSize: '0.9rem', lineHeight: 1.8 }}>
-                        <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📺</div>
-                        <div style={{ fontWeight: 600, color: '#f1f5f9', marginBottom: '0.25rem' }}>Display is Online</div>
-                        <div style={{ color: '#94a3b8' }}>Connected as <strong style={{ color: '#f87171' }}>{manifest?.resolved?.role || 'Unassigned'}</strong> role</div>
-                        <div style={{ marginTop: '1rem', color: 'rgba(255,255,255,0.3)', fontSize: '0.8125rem' }}>No active publication found for this role.</div>
-
-                        {manifest?.resolved?.debug && (
-                            <div style={{ marginTop: '1.5rem', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: 8, textAlign: 'left', display: 'inline-block', maxWidth: '90%' }}>
-                                <div style={{ fontSize: '0.65rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '0.5rem' }}>🔌 Database Link Diagnostics</div>
-                                <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontFamily: 'monospace', lineHeight: 1.5 }}>
-                                    Device Tenant: {manifest.resolved.debug.device_tenant}<br />
-                                    Device Role:   {manifest.resolved.debug.device_role_id}<br />
-                                    <hr style={{ border: 'none', borderTop: '1px solid #1e293b', margin: '0.75rem 0' }} />
-                                    Pubs in Tenant: {manifest.resolved.debug.total_tenant_pubs}<br />
-                                    Role Pub Status: {manifest.resolved.debug.found_role_pub?.active ? '✅ Active' : '❌ Inactive'}<br />
-                                    Pub Scope: {manifest.resolved.debug.found_role_pub?.scope || 'N/A'}<br />
-                                    Pub Tenant: {manifest.resolved.debug.found_role_pub?.tenant || 'N/A'}
-                                    {manifest.resolved.debug.resolution_error && (
-                                        <div style={{ marginTop: '0.5rem', color: '#f87171', fontWeight: 600 }}>
-                                            ⚠️ Resolution Error: {manifest.resolved.debug.resolution_error}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                        <div style={{ marginTop: '0.75rem', fontFamily: 'monospace', fontSize: '0.75rem', color: '#444' }}>
-                            {dc} · Polling for updates every 30s
+                    <div style={{ marginTop: '2.5rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: '2.5rem 2rem' }}>
+                        <div style={{ marginBottom: '1.5rem' }}>
+                            <div style={{ fontSize: '0.8rem', color: '#f87171', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700, marginBottom: '0.5rem' }}>Device Pairing Mode</div>
+                            <div style={{ color: '#f1f5f9', fontSize: '1.125rem', fontWeight: 600 }}>Get started in 30 seconds</div>
                         </div>
-                    </div>
-                    <div style={{ marginTop: '2rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1.25rem', borderRadius: 999, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e', fontSize: '0.8rem' }}>
-                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', display: 'inline-block', boxShadow: '0 0 8px #22c55e', animation: 'pulse 2s infinite' }} />
-                        Device Online · Awaiting Content
-                    </div>
-                    <div style={{ marginTop: '1.5rem', fontSize: '0.75rem', color: '#1e293b' }}>
-                        Publish a layout via Admin → Publish to start displaying content.
+
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', marginBottom: '2rem' }}>
+                            {(pairingPin || '------').split('').map((char, i) => (
+                                <div key={i} style={{
+                                    width: 48, height: 64, background: '#0f172a', border: '1px solid #1e293b',
+                                    borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontSize: '2rem', fontWeight: 800, color: '#f1f5f9', fontFamily: 'monospace',
+                                    boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.5)'
+                                }}>
+                                    {char}
+                                </div>
+                            ))}
+                        </div>
+
+                        <div style={{ color: '#94a3b8', fontSize: '0.875rem', lineHeight: 1.6, marginBottom: '2rem' }}>
+                            Go to <strong style={{ color: '#f1f5f9' }}>Admin → Devices</strong> on your CMS <br />
+                            and enter this 6-digit code to link this screen.
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+                            <div style={{ background: 'white', padding: '0.75rem', borderRadius: 10 }}>
+                                <QRCodeSVG value={`${window.location.origin}/player/${dc}?pairing=${pairingPin}`} size={120} level="M" />
+                            </div>
+                            <div style={{ fontSize: '0.7rem', color: '#475569' }}>
+                                Or scan to pair with your mobile phone
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={() => setPhase('secret')}
+                            style={{ marginTop: '2rem', background: 'none', border: 'none', color: '#475569', fontSize: '0.75rem', cursor: 'pointer', textDecoration: 'underline' }}
+                        >
+                            I have a secret key - manual entry
+                        </button>
                     </div>
                 </div>
-                {showDiagnostics && <BottomBar device_code={dc} version={version} offline={offline} />}
+                <BottomBar device_code={dc} />
             </div>
         )
-    }
 
+        if (phase === 'secret') return <SecretPrompt device_code={dc} onSubmit={handleSecret} />
+        if (phase === 'error') return <ErrorState device_code={dc} msg={errorMsg} onRetry={handleRetry} />
 
+        // ── Standby / No Content published yet ──
+        if (phase === 'standby' || (manifest && !hasAnyContent)) {
+            return (
+                <div style={bgStyle}>
+                    <AmbientOrbs />
+                    <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem' }}>
+                        <Logo />
+                        <div style={{ marginTop: '2.5rem', color: 'rgba(255,255,255,0.35)', fontSize: '0.9rem', lineHeight: 1.8 }}>
+                            <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📺</div>
+                            <div style={{ fontWeight: 600, color: '#f1f5f9', marginBottom: '0.25rem' }}>Display is Online</div>
+                            <div style={{ color: '#94a3b8' }}>Connected as <strong style={{ color: '#f87171' }}>{manifest?.resolved?.role || 'Unassigned'}</strong> role</div>
 
-    // Multi-Region Rendering
-    if (!manifest) return <LoadingState device_code={dc} />
+                            {!hasAnyContent ? (
+                                <div style={{ marginTop: '1rem', color: 'rgba(255,255,255,0.3)', fontSize: '0.8125rem' }}>
+                                    No active content published yet.
+                                </div>
+                            ) : (
+                                <div style={{ marginTop: '1rem', color: 'rgba(255,255,255,0.3)', fontSize: '0.8125rem' }}>
+                                    Awaiting content stream...
+                                </div>
+                            )}
 
-    const regions = manifest.layout?.regions || [{ id: 'full', x: 0, y: 0, width: 100, height: 100 }]
-    const hasAnyContent = Object.values(manifest.region_playlists || {}).some(items => items.length > 0)
-
-    // If NO content is published anywhere, show the "Awaiting Content" screen instead of black
-    if (!hasAnyContent) {
-        return (
-            <div style={bgStyle}>
-                <AmbientOrbs />
-                <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem' }}>
-                    <div style={{ background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(16px)', padding: '2.5rem', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 20px 50px rgba(0,0,0,0.3)' }}>
-                        <div style={{ width: 80, height: 80, borderRadius: '20px', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 2rem' }}>
-                            <Tv2 size={40} color="#fff" />
+                            {manifest?.resolved?.debug && (
+                                <div style={{ marginTop: '1.5rem', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: 8, textAlign: 'left', display: 'inline-block', maxWidth: '90%' }}>
+                                    <div style={{ fontSize: '0.65rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '0.5rem' }}>🔌 Database Link Diagnostics</div>
+                                    <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontFamily: 'monospace', lineHeight: 1.5 }}>
+                                        Device Tenant: {manifest.resolved.debug.device_tenant}<br />
+                                        Device Role:   {manifest.resolved.debug.device_role_id}<br />
+                                        <hr style={{ border: 'none', borderTop: '1px solid #1e293b', margin: '0.75rem 0' }} />
+                                        Pubs in Tenant: {manifest.resolved.debug.total_tenant_pubs}<br />
+                                        Role Pub Status: {manifest.resolved.debug.found_role_pub?.active ? '✅ Active' : '❌ Inactive'}<br />
+                                        Pub Scope: {manifest.resolved.debug.found_role_pub?.scope || 'N/A'}<br />
+                                        Pub Tenant: {manifest.resolved.debug.found_role_pub?.tenant || 'N/A'}
+                                        {manifest.resolved.debug.resolution_error && (
+                                            <div style={{ marginTop: '0.5rem', color: '#f87171', fontWeight: 600 }}>
+                                                ⚠️ Resolution Error: {manifest.resolved.debug.resolution_error}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                            <div style={{ marginTop: '0.75rem', fontFamily: 'monospace', fontSize: '0.75rem', color: '#444' }}>
+                                {dc} · Polling for updates every 30s
+                            </div>
                         </div>
-                        <h1 style={{ color: '#fff', fontSize: '1.75rem', fontWeight: 700, margin: '0 0 1rem' }}>No Active Content</h1>
-                        <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '1rem', maxWidth: 300, margin: '0 auto 2rem', lineHeight: 1.5 }}>
-                            This screen is connected, but no content has been assigned to this layout's regions.
-                        </p>
-                        <div style={{ padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '12px', fontSize: '0.85rem', color: '#94a3b8', textAlign: 'left', fontFamily: 'monospace' }}>
-                            Layout ID:   {manifest.layout?.layout_id?.slice(0, 8)}...<br />
-                            Pub Scope:   {manifest.resolved?.scope || 'N/A'}<br />
-                            Bundle ID:   {manifest.resolved?.bundle_id?.slice(0, 8) || 'N/A'}<br />
-                            Device Role: {manifest.device?.role_id?.slice(0, 8) || 'None'}
+                        <div style={{ marginTop: '2rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1.25rem', borderRadius: 999, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e', fontSize: '0.8rem' }}>
+                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', display: 'inline-block', boxShadow: '0 0 8px #22c55e', animation: 'pulse 2s infinite' }} />
+                            Device Online · Awaiting Content
                         </div>
                     </div>
                 </div>
+            )
+        }
 
-                {showDiagnostics && <BottomBar device_code={dc} version={version} offline={offline} />}
+        // ── Normal Playback ──
+        return (
+            <div style={{
+                position: 'fixed',
+                top: 0, left: 0, right: 0, bottom: 0,
+                width: '100vw',
+                height: '100dvh',
+                background: '#000',
+                overflow: 'hidden',
+                margin: 0, padding: 0,
+                zIndex: 1,
+            }}>
+                {regions.map((reg) => {
+                    const regionItems = manifest?.region_playlists?.[reg.id] || []
+                    if (regionItems.length === 0) return null
+                    return (
+                        <PlaybackEngine
+                            key={reg.id}
+                            region={reg}
+                            items={regionItems}
+                            assets={manifest!.assets}
+                        />
+                    )
+                })}
+
+                {/* Overlays */}
+                {offline && (
+                    <div style={{
+                        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+                        background: 'rgba(239,68,68,0.85)', padding: '0.5rem',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        gap: '0.5rem', fontSize: '0.8125rem', fontWeight: 500, color: 'white',
+                        backdropFilter: 'blur(4px)',
+                    }}>
+                        <WifiOff size={14} /> Offline — playing cached content
+                    </div>
+                )}
+                <style>{`
+                    @keyframes slideIn {
+                        from { transform: translateY(20px); opacity: 0; }
+                        to { transform: translateY(0); opacity: 1; }
+                    }
+                `}</style>
             </div>
         )
     }
 
     return (
-        <div style={{
-            position: 'fixed',
-            top: 0, left: 0, right: 0, bottom: 0,
-            width: '100vw',
-            height: '100vh',
-            background: '#000',
-            overflow: 'hidden',
-            margin: 0, padding: 0,
-            zIndex: 1,
-            display: 'block',
-        }}>
-            {regions.map((reg) => {
-                const regionItems = manifest.region_playlists?.[reg.id] || []
-
-                // Fallback for empty region to prevent black hole
-                if (regionItems.length === 0) {
-                    return (
-                        <div key={reg.id} style={{
-                            position: 'absolute',
-                            top: `${reg.y}%`, left: `${reg.x}%`,
-                            width: `${reg.width}%`, height: `${reg.height}%`,
-                            background: '#0f172a', border: '1px solid rgba(255,255,255,0.05)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            flexDirection: 'column'
-                        }}>
-                            <div style={{ opacity: 0.2 }}>
-                                <ImageIcon size={32} color="#fff" />
-                            </div>
-                            <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.1)', marginTop: '0.5rem' }}>Region: {reg.id}</span>
-                        </div>
-                    )
-                }
-
-                return (
-                    <PlaybackEngine
-                        key={reg.id}
-                        region={reg}
-                        items={regionItems}
-                        assets={manifest.assets}
-                        showDebug={showDebugOverlay}
-                        deviceCode={dc}
-                    />
-                )
-            })}
-
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', overflow: 'hidden', background: '#000', touchAction: 'none' }}>
+            {renderMain()}
+            {cornerTapZone}
             <AdminPanel />
-
-            {/* Invisible 60×60 tap zone — top-right corner triggers admin panel */}
-            {/* Admin Tap Zone (Top-Left) */}
-            <div
-                onClick={handleCornerTap}
-                style={{
-                    position: 'fixed', top: 0, left: 0,
-                    width: 60, height: 60, zIndex: 99999,
-                    cursor: 'default',
-                }}
-            />
-
-            {/* Debug Tap Zone (Top-Right) */}
-            <div
-                onClick={handleDebugCornerTap}
-                style={{
-                    position: 'fixed', top: 0, right: 0,
-                    width: 60, height: 60, zIndex: 99999,
-                    cursor: 'default',
-                }}
-            />
-
-            {/* Offline indicator overlay */}
-            {offline && (
-                <div style={{
-                    position: 'fixed', top: '2rem', right: '2rem', zIndex: 999,
-                    color: '#ef4444', background: 'transparent'
-                }}>
-                    <WifiOff size={48} strokeWidth={2.5} />
-                </div>
-            )}
-
-            {/* Remote Console Overlay for Screenshot Support */}
-            <div style={{
-                position: 'fixed',
-                bottom: 25,
-                left: 10,
-                zIndex: 99999,
-                width: '35%',
-                maxWidth: '400px',
-                pointerEvents: 'none',
-                display: 'flex',
-                flexDirection: 'column-reverse',
-                gap: '4px'
-            }}>
-                {remoteLogs.map((log, i) => (
-                    <div key={i} style={{
-                        background: log.type === 'error' ? 'rgba(153, 27, 27, 0.85)' : 'rgba(15, 23, 42, 0.85)',
-                        color: log.type === 'error' ? '#fecaca' : '#cbd5e1',
-                        fontSize: '9px',
-                        padding: '4px 8px',
-                        borderRadius: '6px',
-                        fontFamily: 'monospace',
-                        borderLeft: `3px solid ${log.type === 'error' ? '#ef4444' : '#6366f1'}`,
-                        boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
-                        backdropFilter: 'blur(4px)',
-                        animation: 'slideIn 0.3s ease-out'
-                    }}>
-                        <span style={{ opacity: 0.5 }}>[{log.time}]</span> {log.msg}
-                    </div>
-                ))}
-            </div>
-
-            {/* Bottom bar on top of content - hidden by default unless diagnostics active */}
-            {showDiagnostics && <BottomBar device_code={dc} version={version} offline={offline} />}
-
-            {/* NEW: Debug Overlay (Bottom-Right) */}
-            {showDebugOverlay && (
-                <div style={{
-                    position: 'fixed', bottom: 10, right: 10, zIndex: 100000,
-                    background: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(10px)',
-                    border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8,
-                    padding: '8px 12px', minWidth: 180, pointerEvents: 'none',
-                    boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-                }}>
-                    <div style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', marginBottom: 6, paddingBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.6rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>📡 Debug Info</span>
-                        <span style={{ fontSize: '0.6rem', color: offline ? '#ef4444' : '#22c55e', fontWeight: 700 }}>{offline ? 'OFFLINE' : 'ONLINE'}</span>
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'auto auto', gap: '4px 12px', fontSize: '10px', fontFamily: 'monospace' }}>
-                        <span style={{ color: '#64748b' }}>Last Sync:</span>
-                        <span style={{ color: '#f1f5f9', textAlign: 'right' }}>{lastSyncTime}</span>
-                        <span style={{ color: '#64748b' }}>Media:</span>
-                        <span style={{ color: '#f1f5f9', textAlign: 'right' }}>{manifest?.assets?.length || 0} assets</span>
-                        <span style={{ color: '#64748b' }}>Env/UA:</span>
-                        <span style={{ color: '#f1f5f9', textAlign: 'right' }}>Signage Web-V1</span>
-                    </div>
-                    {remoteLogs.length > 0 && remoteLogs[0].type === 'error' && (
-                        <div style={{ marginTop: 6, paddingTop: 4, borderTop: '1px solid rgba(255,255,255,0.05)', color: '#ef4444', fontSize: '9px', fontStyle: 'italic' }}>
-                            ⚠ {remoteLogs[0].msg}
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {/* Sync Overlay removed as per user request to avoid playback jitter/noise */}
-
-            {/* Styles for animation */}
-            <style>{`
-                @keyframes slideIn {
-                    from { transform: translateY(20px); opacity: 0; }
-                    to { transform: translateY(0); opacity: 1; }
-                }
-            `}</style>
         </div>
     )
 }
