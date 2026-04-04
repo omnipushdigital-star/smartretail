@@ -1026,6 +1026,7 @@ console.error = (...args) => {
     const msg = args.map(a => {
         try {
             if (a instanceof HTMLElement) return `[${a.tagName} Element]`;
+            if (a instanceof Error) return `[${a.name}] ${a.message}${a.stack ? '\n' + a.stack : ''}`;
             return typeof a === 'object' ? JSON.stringify(a) : String(a);
         } catch (e) {
             return String(a);
