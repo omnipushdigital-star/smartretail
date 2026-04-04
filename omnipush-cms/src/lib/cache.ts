@@ -1,3 +1,4 @@
+import { SUPABASE_ANON_KEY } from './supabase'
 
 const DB_NAME = 'omnipush_cache'
 const STORE_NAME = 'assets'
@@ -97,14 +98,18 @@ export async function downloadAndCache(asset: { media_id: string; url: string; c
 
         const res = await fetch(asset.url, {
             headers: {
-                'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY!,
-                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY!}`
+                'apikey': SUPABASE_ANON_KEY,
+                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                'x-client-info': 'omnipush-player-cache'
             },
             signal: controller.signal
         })
         clearTimeout(timeoutId)
 
-        if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`)
+        if (!res.ok) {
+            console.error(`[Cache] Fetch failed for ${asset.url}: ${res.status} ${res.statusText}`);
+            throw new Error(`HTTP ${res.status}: ${asset.url}`);
+        }
         const blob = await res.blob()
 
         if (!blob || blob.size === 0) throw new Error("Received empty blob")
