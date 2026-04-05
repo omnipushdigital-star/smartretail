@@ -1983,7 +1983,7 @@ export default function PlayerPage() {
                 })}
 
                 {/* Overlays */}
-                {offline && (
+                {offline && phase !== 'playing' && phase !== 'standby' && (
                     <div style={{
                         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
                         background: 'rgba(239,68,68,0.85)', padding: '0.5rem',
