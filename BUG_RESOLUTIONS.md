@@ -271,4 +271,53 @@ After rebuilding the APK and pushing to the device, video elements regained acce
 
 ---
 
-*Add new entries above this line in the format: `## BUG-NNN — Title`*
+## BUG-009 — Diagnostic Errors Showing as Empty Objects (`{}`)
+
+**Status:** ✅ Resolved  
+**File:** `omnipush-cms/src/pages/PlayerPage.tsx` → `console.error` override  
+**Date Resolved:** 2026-04-04
+
+### Symptom
+When the signange player reported a "Last Error" to the CMS dashboard (via heartbeats), it appeared as an empty JSON object `{}`. This made remote troubleshooting impossible for CORS or Network failures.
+
+### Root Cause
+Standard JavaScript `Error` objects (like `TypeError` or `DOMException`) have non-enumerable properties (`message`, `stack`, etc.). The previous `JSON.stringify(a)` logic in the console override ignored these non-enumerable fields, resulting in an empty object `{}`.
+
+### Resolution
+Updated the console serialization logic to explicitly check for `Error` instances and extract their key info:
+```tsx
+if (a instanceof Error) return `[${a.name}] ${a.message}${a.stack ? '\n' + a.stack : ''}`;
+```
+Diagnostic logs now provide the full error class name, message, and stack trace in the CMS.
+
+---
+
+## BUG-010 — "CORS Blocked" on External Assets (Cloudflare R2)
+
+**Status:** ✅ Resolved  
+**File:** `omnipush-cms/src/lib/cache.ts` → `downloadAndCache`  
+**Date Resolved:** 2026-04-05
+
+### Symptom
+Assets hosted on external CDNs (specifically Cloudflare R2 public buckets) failed to sync on older signange hardware (Android 11 / WebView 87) with the error: `[Cache] Sync FAILED: Network/CORS blocked`.
+
+### Root Cause
+1. **Header Triggered Preflight**: Sending Supabase `apikey` or `x-client-info` headers to external CDN URLs triggered an `OPTIONS` (preflight) request. If the CDN bucket wasn't configured to allow these custom headers, the entire fetch failed.
+2. **Environmental Restrictions**: Even with headers removed, old WebViews may have strict CORS or outdated Root SSL certificates for modern ECC-based Cloudflare endpoints.
+
+### Resolution
+Implemented a **Safe Remote Fallback** in the caching layer:
+1. **Conditional Headers**: The code now checks `url.includes('supabase.co')` and only sends auth headers to Supabase.
+2. **Resilient Fallback**: If a fetch for an external (non-Supabase) asset fails due to CORS or Network issues, the function now catches the error, logs a warning, and returns the **Original Remote URL** instead of failing the sync.
+3. **Synchronised Result**: The player logic then proceeds to render the asset from the remote source. While offline capability is lost for that specific file, the content remains visible during online operation.
+
+```tsx
+if (isExternal && isNetworkError) {
+    console.warn(`[Cache] Fallback to remote URL for ${asset.media_id} due to CORS/Network issue.`);
+    return asset.url; // Bypass IndexedDB and use remote source
+}
+```
+
+---
+
+*Add new entries above this lineIn the format: `## BUG-NNN — Title`*
