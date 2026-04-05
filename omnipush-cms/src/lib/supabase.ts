@@ -40,6 +40,8 @@ export async function callEdgeFn(fn: string, body: object): Promise<any> {
 
         const res = await fetch(`${SUPABASE_URL}/functions/v1/${fn}`, {
             method: 'POST',
+            mode: 'cors', // Explicitly force CORS mode for hardware players
+            cache: 'no-cache', // Prevent stale responses on intermittent connections
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': authHeader,
