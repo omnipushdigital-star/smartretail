@@ -320,4 +320,32 @@ if (isExternal && isNetworkError) {
 
 ---
 
+## BUG-011 — Video Play Error: "request was interrupted by a call to pause()"
+
+**Status:** ✅ Resolved  
+**File:** `omnipush-cms/src/pages/PlayerPage.tsx` → `VideoElement` component  
+**Date Resolved:** 2026-04-05
+
+### Symptom
+On older Android devices (WebView 83), video playback would occasionally fail with a red error in the CMS: `[Player] Play Error: The play() request was interrupted by a call to pause()`. This occurred during rapid playlist transitions.
+
+### Root Cause
+A race condition where React's render loop toggles `visibility` or `activeState` while the browser's asynchronous `.play()` request is still pending. The browser automatically pauses the video to save resources, triggering an exception.
+
+### Resolution
+1. **Componentized Video**: Created a dedicated `VideoElement` sub-component to encapsulate the HTML5 Video lifecycle.
+2. **Safe Playback Promise**: Implemented a manual `.play()` call wrapped in a `try/catch` block within a `useLayoutEffect`.
+3. **Error Suppression**: Specifically ignores `AbortError` (interruption) while logging other genuine playback errors, preventing unnecessary red alerts in the CMS dashboard.
+
+```tsx
+const playPromise = videoRef.current.play();
+if (playPromise !== undefined) {
+    playPromise.catch(err => {
+        if (err.name !== 'AbortError') console.warn('[Video] Play Error:', err.message);
+    });
+}
+```
+
+---
+
 *Add new entries above this lineIn the format: `## BUG-NNN — Title`*
