@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import React, { useEffect, useRef, useState, useCallback, useMemo, useLayoutEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { WifiOff, Tv2, Lock, RefreshCw, Clock, Image as ImageIcon } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
@@ -693,20 +693,11 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
                     />
                 )}
                 {type === 'video' && url && (
-                    <video
-                        src={url}
-                        style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }}
-                        autoPlay muted playsInline
-                        poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
-                        onPlaying={() => {
-                            console.log(`[PlaybackEngine] Video Playing, waiting ${READY_TIMING}ms buffer...`)
-                            setTimeout(() => setReadyIdx(targetIdx), READY_TIMING)
-                        }}
+                    <VideoElement
+                        url={url}
+                        isReady={isActive}
+                        onReady={() => setTimeout(() => setReadyIdx(targetIdx), READY_TIMING)}
                         onEnded={advance}
-                        onError={() => {
-                            setReadyIdx(targetIdx)
-                            setTimeout(advance, 3000)
-                        }}
                     />
                 )}
                 {type === 'web_url' && url && (
@@ -899,6 +890,41 @@ function ErrorState({ device_code, msg, onRetry }: { device_code: string; msg: s
             </div>
             <BottomBar device_code={device_code} />
         </div >
+    )
+}
+
+function VideoElement({ url, isReady, onReady, onEnded }: { url: string; isReady: boolean; onReady: () => void; onEnded: () => void }) {
+    const videoRef = useRef<HTMLVideoElement>(null)
+
+    useLayoutEffect(() => {
+        if (!videoRef.current) return
+        if (isReady) {
+            const playPromise = videoRef.current.play()
+            if (playPromise !== undefined) {
+                playPromise.catch(err => {
+                    if (err.name !== 'AbortError') {
+                        console.warn('[Video] Play Error:', err.message)
+                    }
+                })
+            }
+        } else {
+            videoRef.current.pause()
+        }
+    }, [isReady, url])
+
+    return (
+        <video
+            ref={videoRef}
+            src={url}
+            style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }}
+            muted playsInline
+            onPlaying={onReady}
+            onEnded={onEnded}
+            onError={() => {
+                onReady()
+                setTimeout(onEnded, 3000)
+            }}
+        />
     )
 }
 
