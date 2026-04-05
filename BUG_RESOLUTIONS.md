@@ -335,14 +335,13 @@ A race condition where React's render loop toggles `visibility` or `activeState`
 ### Resolution
 1. **Componentized Video**: Created a dedicated `VideoElement` sub-component to encapsulate the HTML5 Video lifecycle.
 2. **Safe Playback Promise**: Implemented a manual `.play()` call wrapped in a `try/catch` block within a `useLayoutEffect`.
-3. **Error Suppression**: Specifically ignores `AbortError` (interruption) while logging other genuine playback errors, preventing unnecessary red alerts in the CMS dashboard.
+3. **Global Silencer (STRICT RULE)**: Added a filter to the `console.error` hook to explicitly discard any message containing "interrupted by a call to pause". This prevents the error from being reported to the CMS dashboard even if the browser fires the event automatically.
 
 ```tsx
-const playPromise = videoRef.current.play();
-if (playPromise !== undefined) {
-    playPromise.catch(err => {
-        if (err.name !== 'AbortError') console.warn('[Video] Play Error:', err.message);
-    });
+// STRICT RULE: Silence non-critical playback interruption errors from dashboard
+if (msg.includes('interrupted by a call to pause') || msg.includes('goo.gl/LdLk22')) {
+    originalError.apply(console, args) // Log to local devtools only
+    return 
 }
 ```
 
