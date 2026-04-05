@@ -57,6 +57,7 @@ export default function PublishPage() {
         layout_id: '',
         bundle_id: '',
     })
+    const [editingId, setEditingId] = useState<string | null>(null)
 
     const loadAll = async () => {
         if (!currentTenantId) return
@@ -154,22 +155,36 @@ export default function PublishPage() {
                 console.warn("[Snapshot] Silent error during media list capture:", snapErr)
             }
 
-            // Step 4: Insert new publication
-            const { error: pubErr } = await supabase.from('layout_publications').insert({
-                tenant_id: currentTenantId,
-                layout_id: form.layout_id,
-                bundle_id: form.bundle_id,
-                scope: form.scope,
-                role_id: form.role_id,
-                store_id: form.scope === 'STORE' ? form.store_id : null,
-                device_id: form.scope === 'DEVICE' ? form.device_id : null,
-                is_active: true,
-                published_at: new Date().toISOString(),
-            })
-            if (pubErr) throw pubErr
+            // Step 4: Insert/Update publication
+            if (editingId) {
+                const { error: upErr } = await supabase.from('layout_publications').update({
+                    layout_id: form.layout_id,
+                    bundle_id: form.bundle_id,
+                    scope: form.scope,
+                    role_id: form.role_id,
+                    store_id: form.scope === 'STORE' ? form.store_id : null,
+                    device_id: form.scope === 'DEVICE' ? form.device_id : null,
+                    published_at: new Date().toISOString(),
+                }).eq('id', editingId)
+                if (upErr) throw upErr
+            } else {
+                const { error: pubErr } = await supabase.from('layout_publications').insert({
+                    tenant_id: currentTenantId,
+                    layout_id: form.layout_id,
+                    bundle_id: form.bundle_id,
+                    scope: form.scope,
+                    role_id: form.role_id,
+                    store_id: form.scope === 'STORE' ? form.store_id : null,
+                    device_id: form.scope === 'DEVICE' ? form.device_id : null,
+                    is_active: true,
+                    published_at: new Date().toISOString(),
+                })
+                if (pubErr) throw pubErr
+            }
 
-            toast.success('Published successfully!')
+            toast.success(editingId ? 'Updated successfully!' : 'Published successfully!')
             setShowPublishModal(false)
+            setEditingId(null)
             setForm({ role_id: '', scope: 'GLOBAL', store_id: '', device_id: '', layout_id: '', bundle_id: '' })
             loadAll()
         } catch (err: any) {
@@ -215,6 +230,19 @@ export default function PublishPage() {
         const { error } = await supabase.from('layout_publications').update({ is_active: false }).eq('id', pubId)
         if (error) toast.error(error.message)
         else { toast.success('Deactivated'); loadAll() }
+    }
+
+    const handleEdit = (p: ActivePub) => {
+        setEditingId(p.id)
+        setForm({
+            role_id: p.role_id || '',
+            scope: p.scope,
+            store_id: p.store_id || '',
+            device_id: p.device_id || '',
+            layout_id: p.layout_id,
+            bundle_id: p.bundle_id,
+        })
+        setShowPublishModal(true)
     }
 
     const scopeIcon = (scope: Scope) => {
@@ -305,9 +333,14 @@ export default function PublishPage() {
                                             {p.published_at ? formatDistanceToNow(new Date(p.published_at), { addSuffix: true }) : '—'}
                                         </td>
                                         <td>
-                                            <button onClick={() => handleDeactivate(p.id)} className="btn-danger" style={{ padding: '0.375rem 0.75rem', fontSize: '0.75rem' }}>
-                                                Deactivate
-                                            </button>
+                                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                <button onClick={() => handleEdit(p)} className="btn-secondary" style={{ padding: '0.375rem 0.75rem', fontSize: '0.75rem' }}>
+                                                    Edit
+                                                </button>
+                                                <button onClick={() => handleDeactivate(p.id)} className="btn-danger" style={{ padding: '0.375rem 0.75rem', fontSize: '0.75rem' }}>
+                                                    Deactivate
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
@@ -428,7 +461,7 @@ export default function PublishPage() {
                             <button type="button" className="btn-secondary" onClick={() => setShowPublishModal(false)}>Cancel</button>
                             <button type="submit" className="btn-primary" disabled={publishing}>
                                 {publishing && <Loader2 size={14} />}
-                                {publishing ? 'Publishing…' : 'Publish'}
+                                {publishing ? 'Saving…' : editingId ? 'Update Publication' : 'Publish'}
                             </button>
                         </div>
                     </form>
