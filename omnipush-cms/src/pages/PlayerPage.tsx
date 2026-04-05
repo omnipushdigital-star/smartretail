@@ -1058,6 +1058,13 @@ console.error = (...args) => {
             return String(a);
         }
     }).join(' ')
+
+    // STRICT RULE: Silence non-critical playback interruption errors from dashboard
+    if (msg.includes('interrupted by a call to pause') || msg.includes('goo.gl/LdLk22')) {
+        originalError.apply(console, args) // Log to local devtools only
+        return
+    }
+
     const log = `[${new Date().toLocaleTimeString()}] ERROR: ${msg}`
     consoleLogs.push(log)
     if (consoleLogs.length > MAX_LOGS) consoleLogs.shift()
