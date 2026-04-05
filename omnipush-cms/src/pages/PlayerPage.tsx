@@ -255,13 +255,14 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
             const releaseOld = () => {
                 if (!currentVideo) return;
                 try {
-                    console.log('[Player] Releasing O-Slot decoder:', currentSlot);
-                    // Crucial: hide old video instantly BEFORE mutating src so native play icon cannot render
+                    // CORTEX-FIX: Do NOT remove 'src' for 2-video playlists to keep the decoder hot for next loop
                     currentVideo.style.opacity = '0';
                     currentVideo.style.visibility = 'hidden';
                     currentVideo.pause();
-                    currentVideo.removeAttribute('src');
-                    currentVideo.load();
+                    if (sorted.length > 2) {
+                        currentVideo.removeAttribute('src'); // Only nuke src if we have many assets to manage
+                        currentVideo.load();
+                    }
                 } catch (e) { /* ignore */ }
             };
 
