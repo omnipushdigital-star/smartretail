@@ -123,22 +123,12 @@ export default function WorkflowBanner() {
                                 </div>
 
                                 {/* Labels */}
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                                     <span style={{
-                                        fontSize: '0.6rem',
+                                        fontSize: '0.75rem',
                                         fontWeight: 800,
                                         textTransform: 'uppercase',
-                                        letterSpacing: '0.15em',
-                                        color: labelColor,
-                                        lineHeight: 1,
-                                    }}>
-                                        Stage {String(idx + 1).padStart(2, '0')}
-                                    </span>
-                                    <span style={{
-                                        fontSize: '0.7rem',
-                                        fontWeight: 700,
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '0.06em',
+                                        letterSpacing: '0.08em',
                                         color: nameColor,
                                         lineHeight: 1.2,
                                     }}>
