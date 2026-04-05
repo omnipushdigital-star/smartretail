@@ -15,7 +15,13 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
         detectSessionInUrl: false,
     },
     global: {
-        headers: { 'x-app-version': '1.0.0' }
+        headers: { 'x-app-version': '1.0.0' },
+        fetch: (...args) => {
+            return fetch(...args).catch(err => {
+                console.warn('[Supabase] Network error:', err.message)
+                throw err;
+            });
+        }
     },
 })
 

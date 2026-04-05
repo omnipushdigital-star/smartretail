@@ -1280,59 +1280,6 @@ export default function PlayerPage() {
         }
     }, [dc, captureBrowserScreenshot])
 
-    // Keep checkCommands for legacy/backup or direct REST usage
-    const checkCommands = useCallback(async () => {
-        if (!manifest?.device?.id) return
-        try {
-            const { data: commands, error } = await supabase
-                .from('device_commands')
-                .select('*')
-                .eq('device_id', manifest.device.id)
-                .eq('status', 'PENDING')
-                .order('created_at', { ascending: true })
-
-            if (error) throw error
-            if (!commands || commands.length === 0) return
-
-            for (const cmd of commands) {
-                console.log(`[Player] Executing remote command: ${cmd.command}`)
-
-                // Mark as executing/finished
-                await supabase.from('device_commands').update({
-                    status: 'EXECUTED',
-                    executed_at: new Date().toISOString()
-                }).eq('id', cmd.id)
-
-                if (cmd.command === 'REBOOT') {
-                    console.warn('[Player] Remote Reboot triggered via CMS. Reloading page...')
-                    window.location.reload()
-                    setTimeout(() => { window.location.href = window.location.href }, 500)
-                } else if (cmd.command === 'CLEAR_CACHE') {
-                    console.warn('[Player] Remote Clear Cache triggered. Purging local storage...')
-                    localStorage.removeItem(manifestKey(dc))
-                    window.location.reload()
-                    setTimeout(() => { window.location.href = window.location.href }, 500)
-                } else if (cmd.command === 'SCREENSHOT') {
-                    console.log('[Player] Remote Screenshot requested...')
-                    const win = window as any
-                    if (win.AndroidHealth && win.AndroidHealth.takeScreenshot) {
-                        win.AndroidHealth.takeScreenshot(cmd.id)
-                    } else {
-                        await captureBrowserScreenshot(cmd.id)
-                    }
-                }
-            }
-        } catch (err: any) {
-            console.error('[Commands] Polling error:', err.message)
-        }
-    }, [manifest?.device?.id, dc, captureBrowserScreenshot])
-
-    useEffect(() => {
-        if (!manifest?.device?.id) return
-        const timer = setInterval(checkCommands, 10000) // Poll every 10s
-        return () => clearInterval(timer)
-    }, [manifest?.device?.id, checkCommands])
-
     // ── Asset Sync (Offline Cache) ──
     const syncAssets = useCallback(async (assetsToSync: ManifestAsset[]) => {
         if (!assetsToSync || assetsToSync.length === 0) return
