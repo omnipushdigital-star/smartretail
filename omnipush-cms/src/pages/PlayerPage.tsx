@@ -1312,8 +1312,7 @@ export default function PlayerPage() {
         if (!assetsToSync || assetsToSync.length === 0) return
 
         const assetsToActuallySync = assetsToSync.filter(a => {
-            const isVideo = (a.type || '').toLowerCase().includes('video')
-            return !isVideo && a.url && !a.url.startsWith('blob:')
+            return a.url && !a.url.startsWith('blob:')
         })
 
         if (assetsToActuallySync.length === 0) {
@@ -2012,15 +2011,19 @@ export default function PlayerPage() {
                 })}
 
                 {/* Overlays */}
-                {offline && phase !== 'playing' && phase !== 'standby' && (
+                {offline && (
                     <div style={{
-                        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
-                        background: 'rgba(239,68,68,0.85)', padding: '0.5rem',
+                        position: 'fixed', top: 12, right: 12, zIndex: 9999,
+                        background: 'rgba(220,38,38,0.92)', padding: '8px 14px',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        gap: '0.5rem', fontSize: '0.8125rem', fontWeight: 500, color: 'white',
-                        backdropFilter: 'blur(4px)',
+                        gap: '8px', fontSize: '11px', fontWeight: 600, color: 'white',
+                        borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        backdropFilter: 'blur(8px)',
+                        animation: 'slideIn 0.3s ease-out'
                     }}>
-                        <WifiOff size={14} /> Offline — playing cached content
+                        <WifiOff size={14} strokeWidth={2.5} />
+                        OFFLINE
                     </div>
                 )}
                 <style>{`
