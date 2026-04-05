@@ -38,10 +38,11 @@ export async function callEdgeFn(fn: string, body: object): Promise<any> {
             ? `Bearer ${session.access_token}`
             : `Bearer ${SUPABASE_ANON_KEY}`
 
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/${fn}`, {
+        // CORTEX-FIX: Use a timestamp cache-buster to prevent stale responses from internal WebView proxies
+        const url = `${SUPABASE_URL}/functions/v1/${fn}?t=${Date.now()}`
+        const res = await fetch(url, {
             method: 'POST',
-            mode: 'cors', // Explicitly force CORS mode for hardware players
-            cache: 'no-cache', // Prevent stale responses on intermittent connections
+            cache: 'no-cache',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': authHeader,
