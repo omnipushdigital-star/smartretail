@@ -130,8 +130,17 @@ export async function downloadAndCache(asset: { media_id: string; url: string; c
         if (err.name === 'AbortError') {
             throw new Error(`Download timed out after 60s`)
         }
-        // Check for specific CORS/Network indicators on old WebViews
+
+        // CORTEX-FIX: If this is an external URL (like R2) and it fails with CORS/Network error,
+        // we fallback to returning the original URL.
+        const isExternal = !asset.url.includes('supabase.co')
         const isNetworkError = !err.message || err.message === 'Failed to fetch' || err.name === 'TypeError'
+
+        if (isExternal && isNetworkError) {
+            console.warn(`[Cache] Fallback to remote URL for ${asset.media_id} due to CORS/Network issue.`)
+            return asset.url
+        }
+
         const reason = isNetworkError ? 'Network/CORS blocked' : err.message
         throw new Error(reason)
     }
