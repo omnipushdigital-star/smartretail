@@ -1148,6 +1148,7 @@ export default function PlayerPage() {
     const versionRef = useRef(version)
     const manifestTimerRef = useRef<any>(null)
     const hbTimerRef = useRef<any>(null)
+    const failCountRef = useRef(0)
 
     useEffect(() => {
         versionRef.current = version
@@ -1388,6 +1389,7 @@ export default function PlayerPage() {
                 win.AndroidHealth.setStoreInfo(data.device?.store_id || null, data.device?.store_name || null)
             }
 
+            failCountRef.current = 0 // Reset failure counter on success
             return true
         } catch (err: any) {
             const msg: string = (err.message || '').toLowerCase()
@@ -1409,25 +1411,32 @@ export default function PlayerPage() {
                 return true
             }
 
-            const cached = localStorage.getItem(manifestKey(dc))
-            if (cached) {
-                try {
-                    const c = JSON.parse(cached)
-                    setManifest(c)
-                    if (c.resolved?.version) {
-                        setVersion(c.resolved.version)
-                        versionRef.current = c.resolved.version
-                    }
-                    setOffline(true)
-                    return true
-                } catch { /* ignore */ }
+            // CORTEX: Sequential Error Counter to prevent flickering offline messages on network jitter
+            failCountRef.current += 1
+            if (failCountRef.current >= 3) {
+                const cached = localStorage.getItem(manifestKey(dc))
+                if (cached) {
+                    try {
+                        const c = JSON.parse(cached)
+                        setManifest(c)
+                        if (c.resolved?.version) {
+                            setVersion(c.resolved.version)
+                            versionRef.current = c.resolved.version
+                        }
+                        setOffline(true)
+                        return true
+                    } catch { /* ignore */ }
+                }
             }
 
-            setErrorMsg(err.message || 'Fetch failed')
-            setPhase('error')
+            // Only show a fatal error screen after 10 sequential failures
+            if (failCountRef.current >= 10) {
+                setErrorMsg(err.message || 'Multiple connection failures')
+                setPhase('error')
+            }
             return false
         }
-    }, [dc, syncAssets, initPairing]) // REMOVED version, phase to stop re-triggering loops
+    }, [dc, syncAssets, initPairing])
 
     // ── Send heartbeat ──
     const sendHeartbeat = useCallback(async (sec: string) => {
