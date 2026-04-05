@@ -179,7 +179,12 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
     effect?: TransitionEffect
 }) {
     const [activeSlot, setActiveSlot] = useState<0 | 1>(0)
-    const [isTransitioning, setIsTransitioning] = useState(false)
+    const [isTransitioning, setIsTransitioningState] = useState(false)
+    const setIsTransitioning = useCallback((v: boolean) => {
+        setIsTransitioningState(v)
+        const win = window as any
+        if (win.setGlobalTransition) win.setGlobalTransition(v)
+    }, [])
     const v1 = useRef<HTMLVideoElement>(null)
     const v2 = useRef<HTMLVideoElement>(null)
     const videoRefs = [v1, v2]
@@ -364,51 +369,62 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
     const getTransitionStyle = (slot: number): React.CSSProperties => {
         const isActive = activeSlot === slot
         const ready = isReady[slot]
+        const incomingReady = isReady[activeSlot === 0 ? 1 : 0]
         const e: TransitionEffect = effect ?? 'slide-up'
+
         const style: React.CSSProperties = {
             position: 'absolute',
             top: 0, left: 0,
             width: '100%', height: '100%',
             objectFit: 'fill',
-            background: 'transparent', // Crucial: no black background hidden behind frames
+            background: 'transparent',
             transition: 'transform 800ms cubic-bezier(0.4, 0, 0.2, 1), opacity 600ms ease, visibility 0s',
             zIndex: isActive ? 10 : 5,
             pointerEvents: 'none',
             visibility: (isActive || isTransitioning) ? 'visible' : 'hidden',
             transform: 'translate3d(0, 0, 0)',
-            opacity: ready ? 1 : 0, // Keep invisible until first frame
+            opacity: ready ? 1 : 0,
             willChange: 'transform, opacity'
         }
 
         if (!isActive) {
+            // Outgoing slot stays visible until incoming is ready to show
             switch (e) {
                 case 'fade':
-                    style.opacity = 0
+                    style.opacity = incomingReady ? 0 : 1
+                    style.transition = incomingReady ? 'opacity 0.3s ease' : 'none'
+                    style.visibility = 'visible'
                     break
                 case 'slide':
                 case 'slide-left':
-                    style.transform = 'translate3d(-100%, 0, 0)'
+                    style.transform = incomingReady ? 'translate3d(-100%, 0, 0)' : 'translate3d(0, 0, 0)'
+                    style.visibility = 'visible'
                     break
                 case 'slide-right':
-                    style.transform = 'translate3d(100%, 0, 0)'
+                    style.transform = incomingReady ? 'translate3d(100%, 0, 0)' : 'translate3d(0, 0, 0)'
+                    style.visibility = 'visible'
                     break
                 case 'slide-up':
-                    style.transform = 'translate3d(0, -100%, 0)'
+                    style.transform = incomingReady ? 'translate3d(0, -100%, 0)' : 'translate3d(0, 0, 0)'
+                    style.visibility = 'visible'
                     break
                 case 'slide-down':
-                    style.transform = 'translate3d(0, 100%, 0)'
+                    style.transform = incomingReady ? 'translate3d(0, 100%, 0)' : 'translate3d(0, 0, 0)'
+                    style.visibility = 'visible'
                     break
                 case 'zoom':
-                    style.transform = 'scale(0.95)'
-                    style.opacity = 0
+                    style.transform = incomingReady ? 'scale(0.95)' : 'scale(1)'
+                    style.opacity = incomingReady ? 0 : 1
+                    style.visibility = 'visible'
                     break
                 case 'none':
                     style.transition = 'none'
-                    style.opacity = 0
+                    style.opacity = incomingReady ? 0 : 1
+                    style.visibility = incomingReady ? 'hidden' : 'visible'
                     break
             }
+            style.zIndex = 1
         } else if (!ready) {
-            // Initial state for the ACTIVE item before it is "ready" (transitioning in)
             switch (e) {
                 case 'slide':
                 case 'slide-left':
@@ -448,15 +464,17 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
                         'controlsList': 'nodownload nofullscreen noremoteplayback'
                     }}
                     onPlaying={() => {
-                        console.log(`[DoubleBufferVideo] Video Slot ${i} Playing, waiting ${READY_TIMING}ms buffer...`)
-                        // Delay ready state slightly to ensure first frame hardware swap is stable
+                        console.log(`[DoubleBufferVideo] Video Slot ${i} Playing...`)
+                        const v = videoRefs[i].current
+                        const readyDelay = (v && v.readyState >= 4) ? 50 : READY_TIMING
+
                         setTimeout(() => {
                             setIsReady(prev => {
                                 const up = [...prev] as [boolean, boolean]
                                 up[i] = true
                                 return up
                             })
-                        }, READY_TIMING)
+                        }, readyDelay)
                     }}
                     onEnded={() => {
                         setIsReady(prev => {
@@ -1149,6 +1167,14 @@ export default function PlayerPage() {
     const manifestTimerRef = useRef<any>(null)
     const hbTimerRef = useRef<any>(null)
     const failCountRef = useRef(0)
+    const isTransitioningRef = useRef(false)
+
+    useEffect(() => {
+        // Global hook for child components to report transition states
+        (window as any).setGlobalTransition = (v: boolean) => {
+            isTransitioningRef.current = v
+        }
+    }, [])
 
     useEffect(() => {
         versionRef.current = version
@@ -1600,6 +1626,9 @@ export default function PlayerPage() {
         if (hbTimerRef.current) clearInterval(hbTimerRef.current)
 
         manifestTimerRef.current = setInterval(async () => {
+            // Guard: Skip manifest fetch if mid-transition to avoid Edge 'reconnecting' flash
+            if (isTransitioningRef.current) return
+
             const ok = await fetchManifest(secretRef.current)
             if (ok && phase === 'standby') setPhase('playing')
         }, pollMs)
