@@ -574,17 +574,26 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
         const asset = assets.find(a => a.media_id === item?.media_id)
         const type = asset?.type || item?.type || (item?.media_id ? 'video' : 'image')
 
-        // Videos in all-video playlists are handled by DoubleBufferVideo's onEnded
-        if (type === 'video' && activeItems.every(i => {
+        const isAllVideo = activeItems.every(i => {
             const a = assets.find(as => as.media_id === i.media_id)
             return (a?.type || i.type) === 'video'
-        })) return
+        })
 
-        const dur = ((item?.duration_seconds ?? 0) > 0
-            ? item!.duration_seconds!
-            : (type === 'video' ? DEFAULT_VIDEO_DURATION : (type === 'web_url' ? DEFAULT_WEB_DURATION : DEFAULT_IMAGE_DURATION))) * 1000
+        const itemDur = (item?.duration_seconds ?? 0) > 0 ? item!.duration_seconds! : 0
+        const defaultDur = type === 'video' ? DEFAULT_VIDEO_DURATION : (type === 'web_url' ? DEFAULT_WEB_DURATION : DEFAULT_IMAGE_DURATION)
+        const effectiveDur = (itemDur || defaultDur) * 1000
 
-        timerRef.current = setTimeout(advance, dur)
+        // FOR ALL-VIDEO PLAYLISTS: We still want a "Safety Watchdog" fallback
+        // in case the video tag fails to fire onEnded due to a crash or interruption.
+        if (isAllVideo) {
+            timerRef.current = setTimeout(() => {
+                console.warn('[Watchdog] Video transition took too long or stalled. Forcing advance.')
+                advance()
+            }, effectiveDur + 10000) // Give it 10 seconds grace period
+        } else {
+            timerRef.current = setTimeout(advance, effectiveDur)
+        }
+
         return () => { if (timerRef.current) clearTimeout(timerRef.current) }
     }, [idx, activeItems, assets, advance])
 
