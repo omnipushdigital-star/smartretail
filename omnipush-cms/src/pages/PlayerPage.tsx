@@ -2014,16 +2014,13 @@ export default function PlayerPage() {
                 {offline && (
                     <div style={{
                         position: 'fixed', top: 12, right: 12, zIndex: 9999,
-                        background: 'rgba(220,38,38,0.92)', padding: '8px 14px',
+                        background: 'transparent', width: 24, height: 24,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        gap: '8px', fontSize: '11px', fontWeight: 600, color: 'white',
-                        borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                        border: '1px solid rgba(255,255,255,0.2)',
-                        backdropFilter: 'blur(8px)',
-                        animation: 'slideIn 0.3s ease-out'
+                        color: '#dc2626', // Red-600
+                        animation: 'slideIn 0.3s ease-out',
+                        filter: 'drop-shadow(0 0 4px rgba(0,0,0,0.4))'
                     }}>
-                        <WifiOff size={14} strokeWidth={2.5} />
-                        OFFLINE
+                        <WifiOff size={20} strokeWidth={2.5} />
                     </div>
                 )}
                 <style>{`
