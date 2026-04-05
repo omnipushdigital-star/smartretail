@@ -334,7 +334,9 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
     useEffect(() => {
         if (sorted.length > 0) {
             const firstId = getUrl(sorted[0])
-            const nextId = sorted.length > 1 ? getUrl(sorted[1]) : ''
+            // GAPLESS LOOP FIX: If only one item, load it into both slots so we can swap back and forth to it
+            const nextId = sorted.length > 1 ? getUrl(sorted[1]) : (sorted.length === 1 ? firstId : '')
+
             if (initialSyncDone.current) {
                 const stillExists = sorted.some(s => getUrl(s) === slotUrls[activeSlot])
                 if (stillExists) return
