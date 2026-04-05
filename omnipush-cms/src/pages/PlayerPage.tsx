@@ -1491,10 +1491,10 @@ export default function PlayerPage() {
                 device_secret: sec,
                 current_version: versionRef.current,
                 status: phase,
-                logs: [...consoleLogs], // Send buffered logs
+                // logs: [...consoleLogs], // Temporarily disabled to rule out payload-size/WAF issues
                 ...meta
             }
-            consoleLogs.length = 0 // Clear after sending
+            // consoleLogs.length = 0 
 
             console.log('[Player] Sending heartbeat...')
             const res = await callEdgeFn('device-heartbeat', payload)
@@ -1503,13 +1503,12 @@ export default function PlayerPage() {
                 console.error('[Player] Heartbeat Server Error:', res.error)
             } else {
                 console.log(`[Player] Heartbeat Recorded ✅ (${phase})`)
-                // Handle commands returned in heartbeat
                 if (res.commands && res.commands.length > 0) {
                     processIncomingCommands(res.commands)
                 }
             }
         } catch (err: any) {
-            console.error('[Player] Heartbeat Network Error:', err.message)
+            console.error('[Player] Heartbeat Network Error Detail:', err.name, '|', err.message)
             const msg = (err.message || '').toLowerCase()
             if (msg.includes('invalid credentials') || msg.includes('inactive device')) {
                 localStorage.removeItem(secretKey(dc))
