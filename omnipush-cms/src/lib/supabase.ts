@@ -38,11 +38,8 @@ export async function callEdgeFn(fn: string, body: object): Promise<any> {
             ? `Bearer ${session.access_token}`
             : `Bearer ${SUPABASE_ANON_KEY}`
 
-        // CORTEX-FIX: Use a timestamp cache-buster to prevent stale responses from internal WebView proxies
-        const url = `${SUPABASE_URL}/functions/v1/${fn}?t=${Date.now()}`
-        const res = await fetch(url, {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/${fn}`, {
             method: 'POST',
-            cache: 'no-cache',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': authHeader,

@@ -1371,13 +1371,14 @@ export default function PlayerPage() {
     // ── Fetch manifest ──
     const fetchManifest = useCallback(async (sec: string): Promise<boolean> => {
         try {
-            console.log(`[Player] Fetching manifest: DC=${dc} | Origin=${window.location.origin}`)
+            console.log(`[Player] [MANIFEST_FETCH_START] DC=${dc}`)
             const data = await callEdgeFn('device-manifest', {
                 device_code: dc,
                 device_secret: sec,
                 current_version: versionRef.current,
                 origin: window.location.origin
             })
+            console.log(`[Player] [MANIFEST_FETCH_SUCCESS] v=${data.resolved?.version || 'N/A'}`)
 
             // ── Handling "Up to Date" response ──
             if (data.up_to_date) {
