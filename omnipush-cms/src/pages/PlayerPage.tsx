@@ -95,19 +95,11 @@ function LiveClock() {
 const globalStyle = `
   /* 1. Force root level elements to cover exact viewport - Essential for signage */
   html, body, #root {
-    margin: 0 !important;
-    padding: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    min-height: 100vh !important;
-    max-height: 100vh !important;
+    margin: 0; padding: 0;
+    width: 100vw !important; height: 100vh !important;
+    min-height: 100vh !important; max-height: 100vh !important;
     overflow: hidden !important;
-    position: fixed !important;
-    top: 0; left: 0; right: 0; bottom: 0;
-    -webkit-text-size-adjust: 100%;
-    -moz-text-size-adjust: 100%;
-    text-size-adjust: 100%;
-    background: #000 !important;
+    background: #000;
   }
 
   /* 2. Force all media to fill their region boxes without scaling artifacts */
@@ -333,31 +325,33 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
     }, [advanceBuffer])
 
     useEffect(() => {
-        if (sorted.length > 0) {
-            const firstId = getUrl(sorted[0])
-            // GAPLESS LOOP FIX: If only one item, load it into both slots so we can swap back and forth to it
-            const nextId = sorted.length > 1 ? getUrl(sorted[1]) : (sorted.length === 1 ? firstId : '')
-
-            if (initialSyncDone.current) {
-                const stillExists = sorted.some(s => getUrl(s) === slotUrls[activeSlot])
-                if (stillExists) return
-            }
-            setSlotUrls([firstId, nextId])
-            initialSyncDone.current = true
-            setTimeout(() => {
-                const v = activeSlot === 0 ? v1.current : v2.current
-                if (v) {
-                    v.currentTime = 0
-                    v.play().catch(() => { })
-                }
-            }, 100)
+        if (sorted.length === 0) return
+        if (initialSyncDone.current) {
+            const av = videoRefs[activeSlot].current
+            if (av && av.ended) initialSyncDone.current = false
+            return
         }
-    }, [sorted, getUrl])
+        const firstId = getUrl(sorted[0])
+        // GAPLESS LOOP FIX: If only one item, load it into both slots so we can swap back and forth to it
+        const nextId = sorted.length > 1 ? getUrl(sorted[1]) : (sorted.length === 1 ? firstId : '')
+
+        setSlotUrls([firstId, nextId])
+        initialSyncDone.current = true
+        setTimeout(() => {
+            const v = videoRefs[activeSlot].current
+            if (v) { v.currentTime = 0; v.play().catch(() => { }) }
+        }, 100)
+    }, [sorted, getUrl, activeSlot])
 
     useEffect(() => {
         const interval = setInterval(() => {
             const v = videoRefs[activeSlot].current
-            if (v && v.paused && v.readyState >= 3 && !v.ended) {
+            if (!v) return
+            if (v.ended && v.readyState >= 2) {
+                advanceBufferRef.current(true)
+                return
+            }
+            if (v.paused && v.readyState >= 2) {
                 v.play().catch(() => { })
             }
         }, 1500)
@@ -470,7 +464,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
                             up[i] = false
                             return up
                         })
-                        if (i === activeSlot) advanceBuffer()
+                        if (i === activeSlot) advanceBufferRef.current()
                     }}
                     onTimeUpdate={() => { if (i === activeSlot) triggerWatchdog(12000) }}
                 />
@@ -1123,8 +1117,8 @@ export default function PlayerPage() {
             meta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no, viewport-fit=cover')
 
             // Force browser to visible area only
-            document.documentElement.style.height = '100dvh';
-            document.body.style.height = '100dvh';
+            document.documentElement.style.height = '100vh';
+            document.body.style.height = '100vh';
         }
 
         syncViewport()
@@ -1132,7 +1126,19 @@ export default function PlayerPage() {
         return () => window.removeEventListener('resize', syncViewport)
     }, [])
 
+    useEffect(() => {
+        const t = setTimeout(() => {
+            if (phaseRef.current === 'loading') {
+                console.warn('[Player] 60s timeout. Force reloading...')
+                window.location.reload()
+            }
+        }, 60000)
+        return () => clearTimeout(t)
+    }, [])
+
     const [phase, setPhase] = useState<Phase>('loading')
+    const phaseRef = useRef<Phase>('loading')
+    useEffect(() => { phaseRef.current = phase }, [phase])
     const [secret, setSecret] = useState<string>('')
     const [manifest, setManifest] = useState<Manifest | null>(null)
     const [offline, setOffline] = useState(false)
@@ -2001,7 +2007,7 @@ export default function PlayerPage() {
                 position: 'fixed',
                 top: 0, left: 0, right: 0, bottom: 0,
                 width: '100vw',
-                height: '100dvh',
+                height: '100vh',
                 background: '#000',
                 overflow: 'hidden',
                 margin: 0, padding: 0,

@@ -33,7 +33,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
             const isPlayer = window.location.pathname.startsWith('/player/')
             if (isPlayer) {
                 console.log('[TenantContext] Player detected. Stabilizing network stack...')
-                await new Promise(r => setTimeout(r, 2000)) // 2s stabilization delay
+                await new Promise(r => setTimeout(r, 300)) // 0.3s stabilization delay
             }
 
             // Retry logic for unstable connections
