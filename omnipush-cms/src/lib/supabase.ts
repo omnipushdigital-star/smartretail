@@ -29,7 +29,9 @@ export const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000001'
 
 export async function callEdgeFn(fn: string, body: object): Promise<any> {
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 30000)
+    // abort fires at 28s — AFTER manualTimeout wins the race at 25s
+    // This ordering is critical for Chromium 87 where abort() silently hangs
+    const timeoutId = setTimeout(() => controller.abort(), 28000)
 
     try {
         const { data: { session } } = await supabase.auth.getSession()
@@ -49,9 +51,11 @@ export async function callEdgeFn(fn: string, body: object): Promise<any> {
             signal: controller.signal,
         })
 
-        // Manual timeout fallback for WebViews that ignore AbortController
+        // manualTimeout fires at 25s — strictly BEFORE controller.abort() at 28s
+        // On Chromium 87, abort() blackholes silently so manualTimeout MUST win the race
+        // 25s is enough for any legitimate slow network; 3s gap guarantees JS resolves this first
         const manualTimeout = new Promise<Response>((_, reject) =>
-            setTimeout(() => reject(new Error('Connection timed out.')), 30000)
+            setTimeout(() => reject(new Error('Connection timed out.')), 25000)
         );
 
         const res = await Promise.race([fetchPromise, manualTimeout]);

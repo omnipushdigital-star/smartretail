@@ -1145,12 +1145,14 @@ export default function PlayerPage() {
     }, [])
 
     useEffect(() => {
+        // 90s gives the bootFetch loop (3 attempts × 25s each + backoff) time to complete
+        // and reach the offline cache fallback before forcing a reload
         const t = setTimeout(() => {
             if (phaseRef.current === 'loading') {
-                console.warn('[Player] 60s timeout. Force reloading...')
+                console.warn('[Player] 90s boot timeout. Force reloading...')
                 window.location.reload()
             }
-        }, 60000)
+        }, 90000)
         return () => clearTimeout(t)
     }, [])
 
@@ -1593,27 +1595,12 @@ export default function PlayerPage() {
             secretRef.current = stored
             setPhase('loading')
 
-            const waitForNetwork = (): Promise<void> => {
-                return new Promise(resolve => {
-                    // If already online, resolve immediately
-                    if (navigator.onLine) { resolve(); return }
-                    // Otherwise wait for the 'online' event
-                    const handler = () => {
-                        window.removeEventListener('online', handler)
-                        resolve()
-                    }
-                    window.addEventListener('online', handler)
-                    // Hard fallback: Chromium 87 onLine is unreliable on some Android builds
-                    // Wait max 12s then attempt anyway
-                    setTimeout(resolve, 12000)
-                })
-            }
-
             const bootFetch = async () => {
-                await waitForNetwork()
-                // Extra 1.5s buffer after onLine fires — Chromium 87 on Amlogic reports
-                // navigator.onLine=true before DNS resolution and SSL handshake are actually ready
-                await new Promise(r => setTimeout(r, 1500))
+                // navigator.onLine is broken on Chromium 87 — always true even when network isn't ready.
+                // waitForNetwork() was a no-op. Removed entirely.
+                // The 25s manualTimeout in callEdgeFn handles network-not-ready gracefully.
+                // Small initial pause to let the WebView finish mounting before first network call.
+                await new Promise(r => setTimeout(r, 500))
                 let bootOk = false
                 for (let i = 0; i < 3; i++) {
                     const ok = await fetchManifest(stored)
