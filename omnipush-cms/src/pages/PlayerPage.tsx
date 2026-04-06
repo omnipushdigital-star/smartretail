@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo, useLayoutEffect } from 'react'
+﻿import React, { useEffect, useRef, useState, useCallback, useMemo, useLayoutEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { WifiOff, Tv2, Lock, RefreshCw, Clock, Image as ImageIcon } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
@@ -2017,8 +2017,8 @@ export default function PlayerPage() {
             <div style={{
                 position: 'fixed',
                 top: 0, left: 0, right: 0, bottom: 0,
-                width: '100vw',
-                height: '100vh',
+                width: '100%',
+                height: '100%',
                 background: '#000',
                 overflow: 'hidden',
                 margin: 0, padding: 0,
@@ -2040,14 +2040,15 @@ export default function PlayerPage() {
                 {/* Overlays */}
                 {offline && (
                     <div style={{
-                        position: 'fixed', top: 12, right: 12, zIndex: 9999,
-                        background: 'transparent', width: 24, height: 24,
+                        position: 'fixed', top: 10, right: 10, zIndex: 10000,
+                        background: 'transparent',
+                        width: 32, height: 32,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: '#dc2626', // Red-600
+                        color: '#dc2626',
                         animation: 'slideIn 0.3s ease-out',
-                        filter: 'drop-shadow(0 0 4px rgba(0,0,0,0.4))'
+                        filter: 'drop-shadow(0 0 4px rgba(0,0,0,0.5))'
                     }}>
-                        <WifiOff size={20} strokeWidth={2.5} />
+                        <WifiOff size={22} strokeWidth={2.5} />
                     </div>
                 )}
                 <style>{`
@@ -2061,7 +2062,7 @@ export default function PlayerPage() {
     }
 
     return (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', overflow: 'hidden', background: '#000', touchAction: 'none' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', overflow: 'hidden', background: '#000', touchAction: 'none' }}>
             {renderMain()}
             {cornerTapZone}
             <AdminPanel />
