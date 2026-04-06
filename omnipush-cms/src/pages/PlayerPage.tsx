@@ -1596,22 +1596,37 @@ export default function PlayerPage() {
             setPhase('loading')
 
             const bootFetch = async () => {
-                // navigator.onLine is broken on Chromium 87 — always true even when network isn't ready.
-                // waitForNetwork() was a no-op. Removed entirely.
-                // The 25s manualTimeout in callEdgeFn handles network-not-ready gracefully.
                 // Small initial pause to let the WebView finish mounting before first network call.
                 await new Promise(r => setTimeout(r, 500))
-                let bootOk = false
-                for (let i = 0; i < 3; i++) {
+
+                // Reset fail counter so boot-time transient failures don't immediately
+                // trigger the offline cache or error state (which are for steady-state failures)
+                failCountRef.current = 0
+
+                for (let attempt = 1; attempt <= 3; attempt++) {
+                    console.log(`[Player Boot] Manifest fetch attempt ${attempt}/3...`)
+                    const isLastAttempt = attempt === 3
+
+                    // On non-final attempts: hold failCount below the cache threshold (3)
+                    // so fetchManifest returns false cleanly instead of switching to offline mode.
+                    // On the final attempt: let failCount reach threshold so offline cache kicks in.
+                    if (!isLastAttempt) failCountRef.current = 0
+
                     const ok = await fetchManifest(stored)
                     if (ok) {
-                        bootOk = true
-                        break
+                        setPhase(p => p === 'standby' ? 'standby' : 'playing')
+                        return
                     }
-                    if (failCountRef.current >= 3) break
+
+                    if (!isLastAttempt) {
+                        const delayMs = attempt === 1 ? 5000 : 10000
+                        console.warn(`[Player Boot] Attempt ${attempt} failed — waiting ${delayMs / 1000}s (network may not be ready)...`)
+                        await new Promise(r => setTimeout(r, delayMs))
+                    }
                 }
-                if (bootOk) setPhase(p => p === 'standby' ? 'standby' : 'playing')
-                else setPhase('error')
+
+                // All 3 attempts exhausted — fetchManifest handles offline cache / error state internally
+                console.error('[Player Boot] All boot attempts failed.')
             }
 
             bootFetch()
