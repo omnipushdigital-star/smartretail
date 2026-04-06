@@ -1438,6 +1438,14 @@ export default function PlayerPage() {
 
             // CORTEX: Sequential Error Counter to prevent flickering offline messages on network jitter
             failCountRef.current += 1
+
+            // Exponential backoff — prevents burning through the 3-attempt cached fallback budget
+            // during the boot window when all failures happen within milliseconds of each other
+            // Delays: attempt 1=1s, attempt 2=2s, attempt 3=4s, capped at 15s
+            const backoffMs = Math.min(1000 * Math.pow(2, failCountRef.current - 1), 15000)
+            console.warn(`[Player] Manifest fetch failed (attempt ${failCountRef.current}), backoff ${backoffMs}ms`)
+            await new Promise(r => setTimeout(r, backoffMs))
+
             if (failCountRef.current >= 3) {
                 const cached = localStorage.getItem(manifestKey(dc))
                 if (cached) {
@@ -1523,7 +1531,7 @@ export default function PlayerPage() {
                 device_code: dc,
                 device_secret: sec,
                 current_version: versionRef.current,
-                status: phase,
+                status: phaseRef.current,
                 // logs: [...consoleLogs], // Temporarily disabled to rule out payload-size/WAF issues
                 ...meta
             }
@@ -1549,7 +1557,7 @@ export default function PlayerPage() {
                 window.location.reload()
             }
         }
-    }, [dc, version, phase])
+    }, [dc])
 
     // ── Init: check for stored secret or URL param ──
     useEffect(() => {
@@ -1584,10 +1592,34 @@ export default function PlayerPage() {
             setSecret(stored)
             secretRef.current = stored
             setPhase('loading')
-            fetchManifest(stored).then(ok => {
+
+            const waitForNetwork = (): Promise<void> => {
+                return new Promise(resolve => {
+                    // If already online, resolve immediately
+                    if (navigator.onLine) { resolve(); return }
+                    // Otherwise wait for the 'online' event
+                    const handler = () => {
+                        window.removeEventListener('online', handler)
+                        resolve()
+                    }
+                    window.addEventListener('online', handler)
+                    // Hard fallback: Chromium 87 onLine is unreliable on some Android builds
+                    // Wait max 12s then attempt anyway
+                    setTimeout(resolve, 12000)
+                })
+            }
+
+            const bootFetch = async () => {
+                await waitForNetwork()
+                // Extra 1.5s buffer after onLine fires — Chromium 87 on Amlogic reports
+                // navigator.onLine=true before DNS resolution and SSL handshake are actually ready
+                await new Promise(r => setTimeout(r, 1500))
+                const ok = await fetchManifest(stored)
                 if (ok) setPhase(p => p === 'standby' ? 'standby' : 'playing')
                 else setPhase('error')
-            })
+            }
+
+            bootFetch()
         } else {
             setPhase('pairing')
             initPairing()
