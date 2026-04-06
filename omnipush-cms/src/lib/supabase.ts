@@ -27,11 +27,18 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 
 export const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000001'
 
+// ─── BOOT-CRITICAL: DO NOT MODIFY TIMEOUT VALUES ──────────────────────────
+// Root cause fix for Amlogic Android TV box (Chromium 87) boot freeze.
+// Chromium 87 has a silent blackhole bug where AbortController.abort() fires
+// but the fetch promise NEVER resolves or rejects — hanging the JS thread.
+// Fix: manualTimeout (25s) MUST fire strictly before controller.abort() (28s)
+// so that Promise.race() resolves via the JS timer, bypassing the broken abort.
+// DO NOT change 25000 or 28000. DO NOT make them equal. DO NOT remove manualTimeout.
+// Tested on: Amlogic S905W2 / Android 11 / Chromium 87 / Android Studio emulator.
+// ─────────────────────────────────────────────────────────────────────────────
 export async function callEdgeFn(fn: string, body: object): Promise<any> {
     const controller = new AbortController()
-    // abort fires at 28s — AFTER manualTimeout wins the race at 25s
-    // This ordering is critical for Chromium 87 where abort() silently hangs
-    const timeoutId = setTimeout(() => controller.abort(), 28000)
+    const timeoutId = setTimeout(() => controller.abort(), 28000) // MUST be > 25000
 
     try {
         const { data: { session } } = await supabase.auth.getSession()
@@ -51,14 +58,14 @@ export async function callEdgeFn(fn: string, body: object): Promise<any> {
             signal: controller.signal,
         })
 
-        // manualTimeout fires at 25s — strictly BEFORE controller.abort() at 28s
-        // On Chromium 87, abort() blackholes silently so manualTimeout MUST win the race
-        // 25s is enough for any legitimate slow network; 3s gap guarantees JS resolves this first
+        // BOOT-CRITICAL: manualTimeout MUST fire at 25s, strictly before abort() at 28s.
+        // This is the ONLY reliable way to unblock a hung fetch on Chromium 87 WebView.
+        // DO NOT change this value. DO NOT remove this. DO NOT make equal to timeoutId.
         const manualTimeout = new Promise<Response>((_, reject) =>
             setTimeout(() => reject(new Error('Connection timed out.')), 25000)
-        );
+        )
 
-        const res = await Promise.race([fetchPromise, manualTimeout]);
+        const res = await Promise.race([fetchPromise, manualTimeout])
         clearTimeout(timeoutId)
 
         const text = await res.text()

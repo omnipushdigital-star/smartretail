@@ -1144,9 +1144,15 @@ export default function PlayerPage() {
         return () => window.removeEventListener('resize', syncViewport)
     }, [])
 
+    // ─── BOOT-CRITICAL: DO NOT CHANGE 90000 ───────────────────────────────────
+    // This watchdog MUST be 90s minimum. The bootFetch loop below runs 3 attempts,
+    // each with a 25s callEdgeFn timeout + internal backoff (1s, 2s).
+    // Worst case boot time: 0.5 + 25 + 1 + 25 + 2 + 25 = ~78.5s before cache loads.
+    // If this timeout is < 90s, it fires mid-loop and reloads before offline cache
+    // activates — causing an infinite reload cycle on boxes without network at boot.
+    // DO NOT reduce this value. DO NOT remove this effect.
+    // ─────────────────────────────────────────────────────────────────────────────
     useEffect(() => {
-        // 90s gives the bootFetch loop (3 attempts × 25s each + backoff) time to complete
-        // and reach the offline cache fallback before forcing a reload
         const t = setTimeout(() => {
             if (phaseRef.current === 'loading') {
                 console.warn('[Player] 90s boot timeout. Force reloading...')
@@ -1439,11 +1445,14 @@ export default function PlayerPage() {
             }
 
             // CORTEX: Sequential Error Counter to prevent flickering offline messages on network jitter
+            // ─── BOOT-CRITICAL: DO NOT REMOVE backoff OR failCountRef >= 3 check ─────
+            // failCountRef tracks sequential failures across bootFetch loop iterations.
+            // The backoff spaces out retries so the Amlogic network stack has time to recover.
+            // failCountRef >= 3 is the trigger for offline cache load — this is how the device
+            // plays content when rebooted without network. Both pieces MUST stay together.
+            // DO NOT remove the await backoff. DO NOT change the >= 3 threshold.
+            // ─────────────────────────────────────────────────────────────────────────────
             failCountRef.current += 1
-
-            // Exponential backoff — prevents burning through the 3-attempt cached fallback budget
-            // during the boot window when all failures happen within milliseconds of each other
-            // Delays: attempt 1=1s, attempt 2=2s, attempt 3=4s, capped at 15s
             const backoffMs = Math.min(1000 * Math.pow(2, failCountRef.current - 1), 15000)
             console.warn(`[Player] Manifest fetch failed (attempt ${failCountRef.current}), backoff ${backoffMs}ms`)
             await new Promise(r => setTimeout(r, backoffMs))
@@ -1595,38 +1604,30 @@ export default function PlayerPage() {
             secretRef.current = stored
             setPhase('loading')
 
+            // ─── BOOT-CRITICAL: DO NOT SIMPLIFY OR REMOVE bootFetch LOOP ─────────────
+            // This 3-attempt loop exists specifically for Amlogic Android TV boxes where
+            // the network stack is not ready when the app starts after reboot.
+            // Each attempt uses callEdgeFn which has a 25s manualTimeout (in supabase.ts).
+            // After 3 failures, failCountRef >= 3 triggers offline cache load in fetchManifest.
+            // This is the ONLY path that gets the device playing from cache when network
+            // is unavailable at boot. DO NOT replace with a single fetchManifest() call.
+            // DO NOT add waitForNetwork() — navigator.onLine is broken on Chromium 87.
+            // DO NOT reduce loop iterations below 3.
+            // ─────────────────────────────────────────────────────────────────────────────
             const bootFetch = async () => {
-                // Small initial pause to let the WebView finish mounting before first network call.
-                await new Promise(r => setTimeout(r, 500))
-
-                // Reset fail counter so boot-time transient failures don't immediately
-                // trigger the offline cache or error state (which are for steady-state failures)
-                failCountRef.current = 0
-
-                for (let attempt = 1; attempt <= 3; attempt++) {
-                    console.log(`[Player Boot] Manifest fetch attempt ${attempt}/3...`)
-                    const isLastAttempt = attempt === 3
-
-                    // On non-final attempts: hold failCount below the cache threshold (3)
-                    // so fetchManifest returns false cleanly instead of switching to offline mode.
-                    // On the final attempt: let failCount reach threshold so offline cache kicks in.
-                    if (!isLastAttempt) failCountRef.current = 0
-
+                await new Promise(r => setTimeout(r, 500)) // Let WebView finish mounting
+                let bootOk = false
+                for (let i = 0; i < 3; i++) {
+                    console.log(`[Boot] Manifest attempt ${i + 1}/3...`)
                     const ok = await fetchManifest(stored)
                     if (ok) {
-                        setPhase(p => p === 'standby' ? 'standby' : 'playing')
-                        return
+                        bootOk = true
+                        break
                     }
-
-                    if (!isLastAttempt) {
-                        const delayMs = attempt === 1 ? 5000 : 10000
-                        console.warn(`[Player Boot] Attempt ${attempt} failed — waiting ${delayMs / 1000}s (network may not be ready)...`)
-                        await new Promise(r => setTimeout(r, delayMs))
-                    }
+                    if (failCountRef.current >= 3) break // Cache fallback activated inside fetchManifest
                 }
-
-                // All 3 attempts exhausted — fetchManifest handles offline cache / error state internally
-                console.error('[Player Boot] All boot attempts failed.')
+                if (bootOk) setPhase(p => p === 'standby' ? 'standby' : 'playing')
+                else setPhase('error')
             }
 
             bootFetch()
