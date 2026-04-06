@@ -37,7 +37,7 @@ export async function callEdgeFn(fn: string, body: object): Promise<any> {
             ? `Bearer ${session.access_token}`
             : `Bearer ${SUPABASE_ANON_KEY}`
 
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/${fn}`, {
+        const fetchPromise = fetch(`${SUPABASE_URL}/functions/v1/${fn}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -48,6 +48,13 @@ export async function callEdgeFn(fn: string, body: object): Promise<any> {
             body: JSON.stringify(body),
             signal: controller.signal,
         })
+
+        // Manual timeout fallback for WebViews that ignore AbortController
+        const manualTimeout = new Promise<Response>((_, reject) =>
+            setTimeout(() => reject(new Error('Connection timed out.')), 30000)
+        );
+
+        const res = await Promise.race([fetchPromise, manualTimeout]);
         clearTimeout(timeoutId)
 
         const text = await res.text()
@@ -70,7 +77,9 @@ export async function callEdgeFn(fn: string, body: object): Promise<any> {
         return json
     } catch (err: any) {
         clearTimeout(timeoutId)
-        if (err.name === 'AbortError') throw new Error('Connection timed out.')
+        if (err.name === 'AbortError' || err.message === 'Connection timed out.') {
+            throw new Error('Connection timed out.')
+        }
         throw err
     }
 }

@@ -1614,8 +1614,16 @@ export default function PlayerPage() {
                 // Extra 1.5s buffer after onLine fires — Chromium 87 on Amlogic reports
                 // navigator.onLine=true before DNS resolution and SSL handshake are actually ready
                 await new Promise(r => setTimeout(r, 1500))
-                const ok = await fetchManifest(stored)
-                if (ok) setPhase(p => p === 'standby' ? 'standby' : 'playing')
+                let bootOk = false
+                for (let i = 0; i < 3; i++) {
+                    const ok = await fetchManifest(stored)
+                    if (ok) {
+                        bootOk = true
+                        break
+                    }
+                    if (failCountRef.current >= 3) break
+                }
+                if (bootOk) setPhase(p => p === 'standby' ? 'standby' : 'playing')
                 else setPhase('error')
             }
 
