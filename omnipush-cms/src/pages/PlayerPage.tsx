@@ -964,8 +964,8 @@ const bgStyle: React.CSSProperties = {
 function AmbientOrbs() {
     return (
         <>
-            <div style={{ position: 'absolute', top: '15%', left: '10%', width: 500, height: 500, borderRadius: '50%', background: 'rgba(239, 68, 68, 0.06)', filter: 'blur(100px)', pointerEvents: 'none' }} />
-            <div style={{ position: 'absolute', bottom: '10%', right: '10%', width: 400, height: 400, borderRadius: '50%', background: 'rgba(220, 38, 38, 0.05)', filter: 'blur(80px)', pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', top: '15%', left: '10%', width: 500, height: 500, borderRadius: '50%', background: 'rgba(239, 68, 68, 0.03)', filter: 'blur(60px)', pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', bottom: '10%', right: '10%', width: 400, height: 400, borderRadius: '50%', background: 'rgba(220, 38, 38, 0.02)', filter: 'blur(40px)', pointerEvents: 'none' }} />
         </>
     )
 }
@@ -1615,19 +1615,22 @@ export default function PlayerPage() {
             // DO NOT reduce loop iterations below 3.
             // ─────────────────────────────────────────────────────────────────────────────
             const bootFetch = async () => {
-                await new Promise(r => setTimeout(r, 500))
+                await new Promise(r => setTimeout(r, 2000)) // Give Amlogic network stack more time to settle
                 let bootOk = false
-                // Attempt 1 & 2: Fast Network check (12s each)
-                // Attempt 3: Final check (12s) which triggers Cache fallback inside fetchManifest
-                for (let i = 0; i < 3; i++) {
-                    console.log(`[Boot] Manifest attempt ${i + 1}/3 (Fast Mode 12s)...`)
-                    const ok = await fetchManifest(stored, 12000)
-                    if (ok) {
+
+                // Attempt 1: Safe Network Check (25s)
+                console.log(`[Boot] Manifest attempt 1/2 (Safe Mode 25s)...`)
+                if (await fetchManifest(stored, 25000)) {
+                    bootOk = true
+                } else {
+                    // Attempt 2: Final Check (25s) with 3s breather
+                    await new Promise(r => setTimeout(r, 3000))
+                    console.log(`[Boot] Manifest attempt 2/2 (Final Check 25s)...`)
+                    if (await fetchManifest(stored, 25000)) {
                         bootOk = true
-                        break
                     }
-                    if (failCountRef.current >= 3) break
                 }
+
                 if (bootOk) setPhase(p => p === 'standby' ? 'standby' : 'playing')
                 else setPhase('error')
             }
