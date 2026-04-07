@@ -776,27 +776,23 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
 // ─── UI States ────────────────────────────────────────────────────────────────
 
 function LoadingState({ device_code }: { device_code: string }) {
-    const [trouble, setTrouble] = useState(false)
-    useEffect(() => {
-        const t = setTimeout(() => setTrouble(true), 15000)
-        return () => clearTimeout(t)
-    }, [])
     return (
-        <div style={{ ...bgStyle, background: '#020617' }}>
-            <div style={{ textAlign: 'center', zIndex: 1, position: 'relative' }}>
-                <Logo />
-                <div style={{ width: 44, height: 44, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.05)', borderTopColor: '#ef4444', animation: 'spin 1s linear infinite', margin: '2.5rem auto 1.5rem' }} />
-                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.9rem', fontWeight: 500 }}>Initializing system…</div>
-                <div style={{ fontFamily: 'monospace', color: '#ef4444', fontSize: '0.8rem', marginTop: '0.75rem', opacity: 0.6 }}>{device_code}</div>
-                {trouble && (
-                    <div style={{ marginTop: '2.5rem', animation: 'slideIn 0.5s ease' }}>
-                        <button onClick={() => window.location.reload()} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8', padding: '0.6rem 1.25rem', borderRadius: 10, fontSize: '0.8rem', cursor: 'pointer' }}>
-                            Taking too long? Force Reload
-                        </button>
-                    </div>
-                )}
-            </div>
-            <BottomBar device_code={device_code} />
+        <div style={{
+            position: 'fixed', inset: 0,
+            background: '#000000',
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            zIndex: 99999
+        }}>
+            <div style={{
+                width: 40, height: 40,
+                border: '3px solid #111',
+                borderTopColor: '#22c55e',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite'
+            }} />
+            <div style={{ color: '#666', fontSize: '14px', marginTop: '24px', fontWeight: 500 }}>Initializing System...</div>
+            <div style={{ color: '#333', fontSize: '12px', marginTop: '8px', fontFamily: 'monospace' }}>{device_code}</div>
         </div>
     )
 }
@@ -2059,16 +2055,15 @@ export default function PlayerPage() {
                 {offline && (
                     <div style={{
                         position: 'fixed', top: 32, right: 32, zIndex: 10000,
-                        background: 'rgba(0,0,0,0.6)',
-                        width: 48, height: 48,
+                        background: '#ef4444',
+                        width: 52, height: 52, // Slightly larger to ensure no clipping
                         borderRadius: '50%',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: '#ef4444',
-                        animation: 'slideIn 0.3s ease-out',
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
-                        border: '1px solid rgba(255,255,255,0.05)'
+                        color: '#ffffff',
+                        boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
+                        border: '3px solid #ffffff'
                     }}>
-                        <WifiOff size={24} strokeWidth={2.5} />
+                        <WifiOff size={28} strokeWidth={2.5} />
                     </div>
                 )}
                 <style>{`
@@ -2080,11 +2075,7 @@ export default function PlayerPage() {
                         from { transform: rotate(0deg); }
                         to { transform: rotate(360deg); }
                     }
-                    @keyframes pulse {
-                        0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
-                        70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); }
-                        100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
-                    }
+                    /* Removed heavy pulse keyframes with box-shadow */
                 `}</style>
             </div>
         )
