@@ -1514,18 +1514,20 @@ export default function PlayerPage() {
         }
 
         try {
+            // CORTEX: Jitter/Stagger fix for Amlogic hardware to avoid manifest/heartbeat collisions.
+            // When manifest polling (every 3s) and heartbeat (every 30s) collide, the older Amlogic 
+            // network stack often cancels one, resulting in 'TypeError: Failed to fetch'.
             const payload = {
                 device_code: dc,
                 device_secret: sec,
                 current_version: versionRef.current,
                 status: phaseRef.current,
-                // logs: [...consoleLogs], // Temporarily disabled to rule out payload-size/WAF issues
-                ...meta
+                // Sanitize meta to ensure no illegal JSON values (NaN/Infinity)
+                ...JSON.parse(JSON.stringify(meta, (k, v) => (typeof v === 'number' && isNaN(v)) ? null : v))
             }
-            // consoleLogs.length = 0 
 
             console.log('[Player] Sending heartbeat...')
-            const res = await callEdgeFn('device-heartbeat', payload)
+            const res = await callEdgeFn('device-heartbeat', payload, 15000) // 15s timeout
 
             if (res.error) {
                 console.error('[Player] Heartbeat Server Error:', res.error)
@@ -1649,27 +1651,30 @@ export default function PlayerPage() {
         if (hbTimerRef.current) clearInterval(hbTimerRef.current)
 
         manifestTimerRef.current = setInterval(async () => {
-            // Guard: Skip manifest fetch if mid-transition to avoid Edge 'reconnecting' flash
             if (isTransitioningRef.current) return
-
             const ok = await fetchManifest(secretRef.current)
             if (ok && phase === 'standby') setPhase('playing')
         }, pollMs)
 
-        hbTimerRef.current = setInterval(() => {
-            sendHeartbeat(secretRef.current)
-        }, HEARTBEAT_INTERVAL_MS)
-
-        // Initial heartbeat (debounced/prevented if just sent)
-        const lastHb = localStorage.getItem('last_hb_sent') || '0'
-        if (Date.now() - parseInt(lastHb) > 5000) {
-            sendHeartbeat(secretRef.current)
-            localStorage.setItem('last_hb_sent', Date.now().toString())
+        // ─── STAGGERED HEARTBEAT FIX ──────────────────────────────────────────
+        // Stagger heartbeat by 15s to ensure it perfectly alternates with 
+        // the 3s manifest poll on older Amlogic devices.
+        const staggerMs = 15000 + (Math.random() * 5000) // Add 5s jitter
+        const startHeartbeat = () => {
+            hbTimerRef.current = setInterval(() => {
+                sendHeartbeat(secretRef.current)
+            }, HEARTBEAT_INTERVAL_MS)
         }
+
+        const initialHbTimeout = setTimeout(() => {
+            sendHeartbeat(secretRef.current)
+            startHeartbeat()
+        }, staggerMs)
 
         return () => {
             if (manifestTimerRef.current) clearInterval(manifestTimerRef.current)
             if (hbTimerRef.current) clearInterval(hbTimerRef.current)
+            clearTimeout(initialHbTimeout)
         }
     }, [phase, !!secret, manifest?.poll_seconds]) // Stable dependencies
 
