@@ -793,6 +793,7 @@ function LoadingState({ device_code }: { device_code: string }) {
             }} />
             <div style={{ color: '#666', fontSize: '14px', marginTop: '24px', fontWeight: 500 }}>Initializing System...</div>
             <div style={{ color: '#333', fontSize: '12px', marginTop: '8px', fontFamily: 'monospace' }}>{device_code}</div>
+            <div style={{ position: 'fixed', bottom: 20, color: '#222', fontSize: '10px' }}>v1.5-hw-stabilized</div>
         </div>
     )
 }
