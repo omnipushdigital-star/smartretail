@@ -21,10 +21,10 @@
       div.style.width = '100%'; div.style.background = 'red'; div.style.color = 'white';
       div.style.zIndex = '1000000'; div.style.padding = '10px'; div.style.fontSize = '12px';
       div.style.wordBreak = 'break-all';
-      div.innerHTML = 'JS Error: ' + msg + '<br/>File: ' + url + '<br/>Line: ' + lineNo + '<br/>Restarting in 15s...';
+      div.innerHTML = 'JS Error: ' + msg + '<br/>File: ' + url + '<br/>Line: ' + lineNo + '<br/>Restarting in 45s...';
       document.body.appendChild(div);
       if (window.location.pathname.includes('/player/')) {
-        setTimeout(function () { window.location.reload(); }, 15000);
+        setTimeout(function () { window.location.reload(); }, 45000);
       }
       return false;
     };
@@ -33,10 +33,10 @@
       div.style.position = 'fixed'; div.style.top = '50px'; div.style.left = '0';
       div.style.width = '100%'; div.style.background = 'orange'; div.style.color = 'white';
       div.style.zIndex = '1000000'; div.style.padding = '10px'; div.style.fontSize = '12px';
-      div.innerHTML = 'Unhandled Promise Rejection: ' + event.reason + '<br/>Restarting in 15s...';
+      div.innerHTML = 'Unhandled Promise Rejection: ' + event.reason + '<br/>Restarting in 45s...';
       document.body.appendChild(div);
       if (window.location.pathname.includes('/player/')) {
-        setTimeout(function () { window.location.reload(); }, 15000);
+        setTimeout(function () { window.location.reload(); }, 45000);
       }
     };
   </script>

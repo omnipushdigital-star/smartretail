@@ -36,9 +36,10 @@ export const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000001'
 // DO NOT change 25000 or 28000. DO NOT make them equal. DO NOT remove manualTimeout.
 // Tested on: Amlogic S905W2 / Android 11 / Chromium 87 / Android Studio emulator.
 // ─────────────────────────────────────────────────────────────────────────────
-export async function callEdgeFn(fn: string, body: object): Promise<any> {
+export async function callEdgeFn(fn: string, body: object, timeoutMs: number = 25000): Promise<any> {
+    const abortTimeoutMs = timeoutMs + 3000 // MUST be > timeoutMs
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 28000) // MUST be > 25000
+    const timeoutId = setTimeout(() => controller.abort(), abortTimeoutMs)
 
     try {
         const { data: { session } } = await supabase.auth.getSession()
@@ -58,11 +59,9 @@ export async function callEdgeFn(fn: string, body: object): Promise<any> {
             signal: controller.signal,
         })
 
-        // BOOT-CRITICAL: manualTimeout MUST fire at 25s, strictly before abort() at 28s.
-        // This is the ONLY reliable way to unblock a hung fetch on Chromium 87 WebView.
-        // DO NOT change this value. DO NOT remove this. DO NOT make equal to timeoutId.
+        // BOOT-CRITICAL: manualTimeout MUST fire strictly before abort().
         const manualTimeout = new Promise<Response>((_, reject) =>
-            setTimeout(() => reject(new Error('Connection timed out.')), 25000)
+            setTimeout(() => reject(new Error('Connection timed out.')), timeoutMs)
         )
 
         const res = await Promise.race([fetchPromise, manualTimeout])

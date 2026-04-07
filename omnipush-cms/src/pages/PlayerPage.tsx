@@ -1375,15 +1375,15 @@ export default function PlayerPage() {
     }, [dc])
 
     // ── Fetch manifest ──
-    const fetchManifest = useCallback(async (sec: string): Promise<boolean> => {
+    const fetchManifest = useCallback(async (sec: string, timeoutMs: number = 25000): Promise<boolean> => {
         try {
-            console.log(`[Player] [MANIFEST_FETCH_START] DC=${dc}`)
+            console.log(`[Player] [MANIFEST_FETCH_START] DC=${dc} (t=${timeoutMs}ms)`)
             const data = await callEdgeFn('device-manifest', {
                 device_code: dc,
                 device_secret: sec,
                 current_version: versionRef.current,
                 origin: window.location.origin
-            })
+            }, timeoutMs)
             console.log(`[Player] [MANIFEST_FETCH_SUCCESS] v=${data.resolved?.version || 'N/A'}`)
 
             // ── Handling "Up to Date" response ──
@@ -1615,16 +1615,18 @@ export default function PlayerPage() {
             // DO NOT reduce loop iterations below 3.
             // ─────────────────────────────────────────────────────────────────────────────
             const bootFetch = async () => {
-                await new Promise(r => setTimeout(r, 500)) // Let WebView finish mounting
+                await new Promise(r => setTimeout(r, 500))
                 let bootOk = false
+                // Attempt 1 & 2: Fast Network check (12s each)
+                // Attempt 3: Final check (12s) which triggers Cache fallback inside fetchManifest
                 for (let i = 0; i < 3; i++) {
-                    console.log(`[Boot] Manifest attempt ${i + 1}/3...`)
-                    const ok = await fetchManifest(stored)
+                    console.log(`[Boot] Manifest attempt ${i + 1}/3 (Fast Mode 12s)...`)
+                    const ok = await fetchManifest(stored, 12000)
                     if (ok) {
                         bootOk = true
                         break
                     }
-                    if (failCountRef.current >= 3) break // Cache fallback activated inside fetchManifest
+                    if (failCountRef.current >= 3) break
                 }
                 if (bootOk) setPhase(p => p === 'standby' ? 'standby' : 'playing')
                 else setPhase('error')
