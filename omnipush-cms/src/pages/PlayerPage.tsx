@@ -2058,24 +2058,15 @@ export default function PlayerPage() {
                 {/* Overlays */}
                 {offline && (
                     <div style={{
-                        position: 'fixed',
-                        top: 16,
-                        right: 16,
-                        zIndex: 10000,
-                        background: 'rgba(255, 255, 255, 0.1)',
-                        backdropFilter: 'blur(4px)',
-                        borderRadius: '50%',
-                        width: 44,
-                        height: 44,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: '#ef4444', // slightly brighter red
+                        position: 'fixed', top: 10, right: 10, zIndex: 10000,
+                        background: 'transparent',
+                        width: 32, height: 32,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: '#dc2626',
                         animation: 'slideIn 0.3s ease-out',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-                        border: '1px solid rgba(255, 255, 255, 0.2)'
+                        filter: 'drop-shadow(0 0 4px rgba(0,0,0,0.5))'
                     }}>
-                        <WifiOff size={24} strokeWidth={2.5} />
+                        <WifiOff size={22} strokeWidth={2.5} />
                     </div>
                 )}
                 <style>{`
