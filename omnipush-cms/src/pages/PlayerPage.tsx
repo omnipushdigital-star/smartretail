@@ -177,8 +177,9 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
     assets: ManifestAsset[]
     onAdvance: () => void
     effect?: TransitionEffect
-}) {
+}): React.ReactElement {
     const [activeSlot, setActiveSlot] = useState<0 | 1>(0)
+    const isAndroidNative = !!(window as any).AndroidHealth
     const [isTransitioning, setIsTransitioningState] = useState(false)
     const setIsTransitioning = useCallback((v: boolean) => {
         setIsTransitioningState(v)
@@ -193,6 +194,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
     const [debug, setDebug] = useState<string>('Init')
     const watchdogRef = useRef<any>(null)
     const initialSyncDone = useRef(false)
+    const [isReady, setIsReady] = useState<[boolean, boolean]>([false, false])
 
     const sorted = React.useMemo(
         () => [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
@@ -206,6 +208,34 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
     }, [memoizedAssets])
 
     const advanceBufferRef = useRef<(force?: boolean) => void>(() => { })
+
+    // ── Native Handoff Lifecycle ──
+    useEffect(() => {
+        if (isAndroidNative) {
+            (window as any).onNativeVideoEnded = () => {
+                console.log("[NativeHandoff] Video ended successfully. Advancing loop.")
+                advanceBufferRef.current(true)
+            }
+        }
+        return () => {
+            if ((window as any).onNativeVideoEnded) delete (window as any).onNativeVideoEnded
+            if (isAndroidNative && (window as any).AndroidHealth) (window as any).AndroidHealth.stopNativeVideo()
+        }
+    }, [isAndroidNative])
+
+    // ── Native Playback Sync ──
+    useEffect(() => {
+        if (!isAndroidNative) return
+        const currentItem = sorted[idxRef.current]
+        if (currentItem) {
+            const url = getUrl(currentItem)
+            if (url && url.startsWith('http')) {
+                console.log(`[NativeHandoff] Slot Swap Trigger -> Play: ${url.slice(-20)}`)
+                const win = window as any
+                if (win.AndroidHealth) win.AndroidHealth.playNativeVideo(url)
+            }
+        }
+    }, [isAndroidNative, activeSlot, sorted, getUrl])
 
     const triggerWatchdog = useCallback((delay = 10000) => {
         if (watchdogRef.current) clearTimeout(watchdogRef.current)
@@ -221,10 +251,15 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
         if (sorted.length === 0) return
 
         if (sorted.length === 1) {
-            const v = videoRefs[activeSlot].current
-            if (v) {
-                v.currentTime = 0
-                v.play().catch(e => setDebug(`Loop Err: ${e.message.slice(0, 10)}`))
+            if (isAndroidNative) {
+                const url = getUrl(sorted[0])
+                if (url && (window as any).AndroidHealth) (window as any).AndroidHealth.playNativeVideo(url)
+            } else {
+                const v = videoRefs[activeSlot].current
+                if (v) {
+                    v.currentTime = 0
+                    v.play().catch(e => setDebug(`Loop Err: ${e.message.slice(0, 10)}`))
+                }
             }
             onAdvance()
             return
@@ -236,7 +271,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
         const nextVideo = videoRefs[nextSlot].current
         const nextIdx = (idxRef.current + 1) % sorted.length
 
-        if (nextVideo && nextVideo.error && !forceNext) {
+        if (!isAndroidNative && nextVideo && nextVideo.error && !forceNext) {
             setDebug(`Err Skip V${nextIdx}`)
             idxRef.current = nextIdx
             onAdvance()
@@ -245,205 +280,147 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
         }
 
         const performSwitch = () => {
-            if (!nextVideo) return
+            if (!isAndroidNative && !nextVideo) return
 
-            setDebug(`${idxRef.current}→${nextIdx} | SAFE SWAP`)
+            setDebug(`${idxRef.current}→${nextIdx}${isAndroidNative ? '|NATIVE' : '|SAFE'}`)
 
             const releaseOld = () => {
                 if (!currentVideo) return;
                 try {
-                    // CORTEX-FIX: Do NOT remove 'src' for 2-video playlists to keep the decoder hot for next loop
                     currentVideo.style.opacity = '0';
                     currentVideo.style.visibility = 'hidden';
                     currentVideo.pause();
                     if (sorted.length > 2) {
-                        currentVideo.removeAttribute('src'); // Only nuke src if we have many assets to manage
+                        currentVideo.removeAttribute('src');
                         currentVideo.load();
                     }
                 } catch (e) { /* ignore */ }
             };
 
-            // Start the next one FIRST, while it is still completely hidden!
-            triggerWatchdog(15000)
-            nextVideo.muted = true
-            nextVideo.currentTime = 0
-            if (sorted[nextIdx]) {
-                nextVideo.playbackRate = sorted[nextIdx].playback_speed || 1
-            }
-
-            nextVideo.play().then(() => {
-                console.log('[Player] Playing N-Slot:', nextIdx)
-                setDebug(`${nextIdx} PLAYING`)
-
-                // Now that it's confirmed playing, reveal it and trigger the transition CSS
-                setIsTransitioning(true)
-                setActiveSlot(nextSlot)
+            if (isAndroidNative) {
                 idxRef.current = nextIdx
+                setActiveSlot(nextSlot) // Triggers the sync effect
                 onAdvance()
+            } else {
+                triggerWatchdog(15000)
+                nextVideo!.muted = true
+                nextVideo!.currentTime = 0
+                if (sorted[nextIdx]) {
+                    nextVideo!.playbackRate = sorted[nextIdx].playback_speed || 1
+                }
 
-                // Release old video slightly after new one is successfully active and covering the screen
-                setTimeout(releaseOld, 250);
-
-                // Keep transition flag true slightly longer for hardware to visually stabilize
-                setTimeout(() => {
+                nextVideo!.play().then(() => {
+                    setIsTransitioning(true)
+                    setActiveSlot(nextSlot)
+                    idxRef.current = nextIdx
+                    onAdvance()
+                    setTimeout(releaseOld, 250);
+                    setTimeout(() => setIsTransitioning(false), 800)
+                }).catch(e => {
+                    console.error('[DoubleBufferVideo] play error:', e)
+                    setDebug(`Play Err V${nextIdx}`)
                     setIsTransitioning(false)
-
-                    // Queue next buffer
-                    const pIdx = (nextIdx + 1) % sorted.length
-                    const pUrl = getUrl(sorted[pIdx])
-                    setTimeout(() => {
-                        setSlotUrls(prev => {
-                            const up: [string, string] = [...prev] as [string, string]
-                            up[currentSlot] = pUrl
-                            return up
-                        })
-                    }, 300)
-                }, 850)
-
-            }).catch(e => {
-                console.error('[Player] Play Error:', e.message)
-                setDebug(`P.Err: ${e.message?.slice(0, 15)}`)
-                setIsTransitioning(false)
-                releaseOld();
-                setTimeout(() => advanceBuffer(true), 1500)
-            })
+                })
+            }
         }
 
-        if (nextVideo && nextVideo.readyState >= 2) {
+        if (isAndroidNative || (nextVideo && (nextVideo.readyState >= 3 || forceNext))) {
             performSwitch()
-        } else if (nextVideo) {
-            setDebug(`Wait S${nextSlot} R:${nextVideo.readyState}`)
-            const onCanPlay = () => {
-                nextVideo.removeEventListener('canplay', onCanPlay)
-                performSwitch()
-            }
-            nextVideo.addEventListener('canplay', onCanPlay)
-            setTimeout(() => {
-                nextVideo.removeEventListener('canplay', onCanPlay)
-                if (activeSlot === currentSlot) performSwitch()
-            }, 5000)
+        } else {
+            setDebug(`Waiting V${nextIdx}`)
+            const checkReady = setInterval(() => {
+                if (nextVideo && nextVideo.readyState >= 3) {
+                    clearInterval(checkReady)
+                    performSwitch()
+                }
+            }, 100)
+            setTimeout(() => clearInterval(checkReady), 8000)
         }
-    }, [activeSlot, sorted, getUrl, onAdvance, triggerWatchdog])
+    }, [activeSlot, sorted, videoRefs, onAdvance, triggerWatchdog, setIsTransitioning, isAndroidNative, getUrl])
+
+    advanceBufferRef.current = advanceBuffer
+
+    const onCanPlay = useCallback(() => {
+        const v = videoRefs[activeSlot === 0 ? 1 : 0].current
+        if (v) v.muted = true
+    }, [activeSlot, videoRefs])
 
     useEffect(() => {
-        advanceBufferRef.current = advanceBuffer
-    }, [advanceBuffer])
+        if (sorted.length > 0 && !initialSyncDone.current) {
+            console.log('[DoubleBufferVideo] Initializing Slots...')
+            const url0 = getUrl(sorted[0])
+            const url1 = sorted.length > 1 ? getUrl(sorted[1]) : url0
 
-    useEffect(() => {
-        if (sorted.length === 0) return
-        if (initialSyncDone.current) {
-            const av = videoRefs[activeSlot].current
-            if (av && av.ended) initialSyncDone.current = false
-            return
+            if (isAndroidNative) {
+                if (url0 && (window as any).AndroidHealth) (window as any).AndroidHealth.playNativeVideo(url0)
+            } else {
+                setSlotUrls([url0, url1])
+            }
+            initialSyncDone.current = true
         }
-        const firstId = getUrl(sorted[0])
-        // GAPLESS LOOP FIX: If only one item, load it into both slots so we can swap back and forth to it
-        const nextId = sorted.length > 1 ? getUrl(sorted[1]) : (sorted.length === 1 ? firstId : '')
-
-        setSlotUrls([firstId, nextId])
-        initialSyncDone.current = true
-        setTimeout(() => {
-            const v = videoRefs[activeSlot].current
-            if (v) { v.currentTime = 0; v.play().catch(() => { }) }
-        }, 100)
-    }, [sorted, getUrl, activeSlot])
+    }, [sorted, getUrl, isAndroidNative])
 
     useEffect(() => {
-        const interval = setInterval(() => {
-            const v = videoRefs[activeSlot].current
-            if (!v) return
-            if (v.ended && v.readyState >= 2) {
-                advanceBufferRef.current(true)
-                return
+        if (!isAndroidNative && sorted.length > 1) {
+            const nextIdx = (idxRef.current + 1) % sorted.length
+            const nextSlot = activeSlot === 0 ? 1 : 0
+            const nextUrl = getUrl(sorted[nextIdx])
+            if (nextUrl !== slotUrls[nextSlot]) {
+                setSlotUrls(prev => {
+                    const up = [...prev] as [string, string]
+                    up[nextSlot] = nextUrl
+                    return up
+                })
+                const nBuffer = videoRefs[nextSlot].current
+                if (nBuffer) {
+                    nBuffer.load()
+                    nBuffer.muted = true
+                }
             }
-            if (v.paused && v.readyState >= 2) {
-                v.play().catch(() => { })
-            }
-        }, 1500)
-        return () => clearInterval(interval)
-    }, [activeSlot])
-
-    const [isReady, setIsReady] = useState<[boolean, boolean]>([false, false])
-    const isReadyRef = useRef<boolean[]>([false, false])
+        }
+    }, [activeSlot, sorted, slotUrls, videoRefs, isAndroidNative, getUrl])
 
     const getTransitionStyle = (slot: number): React.CSSProperties => {
-        const isActive = activeSlot === slot
-        const ready = isReady[slot]
-        const incomingReady = isReady[activeSlot === 0 ? 1 : 0]
-        const e: TransitionEffect = effect ?? 'slide-up'
-
-        const style: React.CSSProperties = {
+        const isActive = slot === activeSlot
+        const base: React.CSSProperties = {
             position: 'absolute',
-            top: 0, left: 0,
-            width: '100%', height: '100%',
+            top: 0, left: 0, width: '100%', height: '100%',
             objectFit: 'fill',
-            background: 'transparent',
-            transition: 'transform 800ms cubic-bezier(0.4, 0, 0.2, 1), opacity 600ms ease, visibility 0s',
+            transition: isTransitioning ? `all ${TRANSITION_DURATION}ms ease-in-out` : 'none',
+            visibility: isActive ? 'visible' : 'hidden',
+            opacity: isActive ? 1 : 0,
             zIndex: isActive ? 10 : 5,
-            pointerEvents: 'none',
-            visibility: (isActive || isTransitioning) ? 'visible' : 'hidden',
-            transform: 'translate3d(0, 0, 0)',
-            opacity: ready ? 1 : 0,
-            willChange: 'transform, opacity'
+            background: 'black'
         }
 
-        if (!isActive) {
-            // Outgoing slot stays visible until incoming is ready to show
-            switch (e) {
-                case 'fade':
-                    style.opacity = incomingReady ? 0 : 1
-                    style.transition = incomingReady ? 'opacity 0.3s ease' : 'none'
-                    style.visibility = 'visible'
-                    break
-                case 'slide':
-                case 'slide-left':
-                    style.transform = incomingReady ? 'translate3d(-100%, 0, 0)' : 'translate3d(0, 0, 0)'
-                    style.visibility = 'visible'
-                    break
-                case 'slide-right':
-                    style.transform = incomingReady ? 'translate3d(100%, 0, 0)' : 'translate3d(0, 0, 0)'
-                    style.visibility = 'visible'
-                    break
-                case 'slide-up':
-                    style.transform = incomingReady ? 'translate3d(0, -100%, 0)' : 'translate3d(0, 0, 0)'
-                    style.visibility = 'visible'
-                    break
-                case 'slide-down':
-                    style.transform = incomingReady ? 'translate3d(0, 100%, 0)' : 'translate3d(0, 0, 0)'
-                    style.visibility = 'visible'
-                    break
-                case 'zoom':
-                    style.transform = incomingReady ? 'scale(0.95)' : 'scale(1)'
-                    style.opacity = incomingReady ? 0 : 1
-                    style.visibility = 'visible'
-                    break
-                case 'none':
-                    style.transition = 'none'
-                    style.opacity = incomingReady ? 0 : 1
-                    style.visibility = incomingReady ? 'hidden' : 'visible'
-                    break
-            }
-            style.zIndex = 1
-        } else if (!ready) {
-            switch (e) {
-                case 'slide':
-                case 'slide-left':
-                    style.transform = 'translate3d(100%, 0, 0)'
-                    break
-                case 'slide-right':
-                    style.transform = 'translate3d(-100%, 0, 0)'
-                    break
-                case 'zoom':
-                    style.transform = 'scale(1.05)'
-                    break
-            }
+        if (!isTransitioning) return base
+
+        if (effect === 'fade') return base
+
+        const isNext = slot === activeSlot
+        if (effect === 'slide-up') {
+            base.transform = isNext ? 'translateY(0)' : 'translateY(-100%)'
+            if (isNext) base.zIndex = 15
+        } else if (effect === 'slide-down') {
+            base.transform = isNext ? 'translateY(0)' : 'translateY(100%)'
+            if (isNext) base.zIndex = 15
+        } else if (effect === 'slide-left') {
+            base.transform = isNext ? 'translateX(0)' : 'translateX(-100%)'
+            if (isNext) base.zIndex = 15
+        } else if (effect === 'slide-right') {
+            base.transform = isNext ? 'translateX(0)' : 'translateX(100%)'
+            if (isNext) base.zIndex = 15
+        } else if (effect === 'zoom') {
+            base.transform = isNext ? 'scale(1)' : 'scale(1.2)'
+            base.opacity = isNext ? 1 : 0
         }
-        return style
+
+        return base
     }
 
     return (
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: '#000', overflow: 'hidden' }}>
-            {[0, 1].map(i => (
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: isAndroidNative ? 'transparent' : '#000', overflow: 'hidden' }}>
+            {!isAndroidNative && [0, 1].map(i => (
                 <video
                     key={i}
                     ref={videoRefs[i]}
@@ -485,8 +462,10 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
                         if (i === activeSlot) advanceBufferRef.current()
                     }}
                     onTimeUpdate={() => { if (i === activeSlot) triggerWatchdog(12000) }}
+                    onCanPlay={onCanPlay}
                 />
             ))}
+            {isAndroidNative && <div id="native-layer-proxy" style={{ pointerEvents: 'none' }} />}
             <div style={{ position: 'absolute', bottom: 4, left: 4, fontSize: 9, color: 'rgba(255,255,255,0.2)', zIndex: 110 }}>
                 {debug} | {activeSlot === 0 ? 'V1' : 'V2'} | {effect}
             </div>
@@ -799,21 +778,20 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
 function LoadingState({ device_code }: { device_code: string }) {
     const [trouble, setTrouble] = useState(false)
     useEffect(() => {
-        const t = setTimeout(() => setTrouble(true), 25000)
+        const t = setTimeout(() => setTrouble(true), 15000)
         return () => clearTimeout(t)
     }, [])
     return (
-        <div style={bgStyle}>
-            <AmbientOrbs />
+        <div style={{ ...bgStyle, background: '#020617' }}>
             <div style={{ textAlign: 'center', zIndex: 1, position: 'relative' }}>
                 <Logo />
-                <div style={{ width: 40, height: 40, borderRadius: '50%', border: '3px solid #1e293b', borderTopColor: 'var(--color-brand-500)', animation: 'spin 0.8s linear infinite', margin: '2rem auto 1rem' }} />
-                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>Connecting to network…</div>
-                <div style={{ fontFamily: 'monospace', color: '#f87171', fontSize: '0.8rem', marginTop: '0.5rem' }}>{device_code}</div>
+                <div style={{ width: 44, height: 44, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.05)', borderTopColor: '#ef4444', animation: 'spin 1s linear infinite', margin: '2.5rem auto 1.5rem' }} />
+                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.9rem', fontWeight: 500 }}>Initializing system…</div>
+                <div style={{ fontFamily: 'monospace', color: '#ef4444', fontSize: '0.8rem', marginTop: '0.75rem', opacity: 0.6 }}>{device_code}</div>
                 {trouble && (
-                    <div style={{ marginTop: '2rem', animation: 'slideIn 0.5s ease' }}>
-                        <button onClick={() => window.location.reload()} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#64748b', padding: '0.5rem 1rem', borderRadius: 8, fontSize: '0.75rem', cursor: 'pointer' }}>
-                            Taking too long? Reload
+                    <div style={{ marginTop: '2.5rem', animation: 'slideIn 0.5s ease' }}>
+                        <button onClick={() => window.location.reload()} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8', padding: '0.6rem 1.25rem', borderRadius: 10, fontSize: '0.8rem', cursor: 'pointer' }}>
+                            Taking too long? Force Reload
                         </button>
                     </div>
                 )}
@@ -1214,6 +1192,7 @@ export default function PlayerPage() {
     const [pinInput, setPinInput] = useState('')
     const [pinError, setPinError] = useState(false)
     const [showDebugManifest, setShowDebugManifest] = useState(false)
+    const [showLogs, setShowLogs] = useState(false)
     const [debugJSON, setDebugJSON] = useState('')
 
     const handleCornerTap = () => {
@@ -1878,36 +1857,54 @@ export default function PlayerPage() {
                         <button onClick={() => {
                             setDebugJSON(JSON.stringify(manifest, null, 2))
                             setShowDebugManifest(true)
+                            setShowLogs(false)
                         }} style={btnStyle('rgba(255,255,255,0.05)', '#94a3b8')}>
                             🔍 Debug Manifest
+                        </button>
+                        <button onClick={() => {
+                            setShowLogs(true)
+                            setShowDebugManifest(false)
+                        }} style={btnStyle('rgba(255,255,255,0.05)', '#f1f5f9')}>
+                            📄 View Logs
                         </button>
                         <button onClick={() => {
                             window.dispatchEvent(new CustomEvent('omnipush_force_play'))
                             setShowAdminPanel(false)
                         }} style={btnStyle('#14532d', '#86efac')}>
-                            ▶ Force Play
+                            ▶ Force Play (Reset Logic)
                         </button>
                     </div>
 
                     {showDebugManifest && (
-                        <div style={{ padding: '0 2rem 1.5rem', maxHeight: '400px', overflow: 'auto' }}>
+                        <div style={{ padding: '0 2rem 1.5rem', flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#475569', marginBottom: '0.5rem' }}>INTERNAL MANIFEST STATE</div>
                             <pre style={{
-                                background: '#020617', padding: '1rem', borderRadius: 8,
+                                flex: 1, background: '#020617', padding: '1rem', borderRadius: 8,
                                 fontSize: '0.65rem', color: '#64748b', fontFamily: 'monospace',
-                                border: '1px solid #1e293b', whiteSpace: 'pre-wrap', wordBreak: 'break-all'
+                                border: '1px solid #1e293b', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                                overflowY: 'auto'
                             }}>
                                 {debugJSON}
                             </pre>
-                            <button
-                                onClick={() => setShowDebugManifest(false)}
-                                style={{
-                                    marginTop: '0.75rem', width: '100%', padding: '0.5rem',
-                                    borderRadius: 6, background: '#1e293b', color: 'white',
-                                    border: 'none', cursor: 'pointer', fontSize: '0.75rem'
-                                }}
-                            >
-                                Close Debug View
-                            </button>
+                            <button onClick={() => setShowDebugManifest(false)} style={{ marginTop: '0.75rem', padding: '0.6rem', borderRadius: 6, background: '#1e293b', color: 'white', border: 'none', cursor: 'pointer' }}>Close</button>
+                        </div>
+                    )}
+
+                    {showLogs && (
+                        <div style={{ padding: '0 2rem 1.5rem', flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#475569', marginBottom: '0.5rem' }}>DEVICE DIAGNOSTIC LOGS (Last 50)</div>
+                            <div style={{
+                                flex: 1, background: '#020617', padding: '1rem', borderRadius: 8,
+                                fontSize: '0.65rem', color: '#94a3b8', fontFamily: 'monospace',
+                                border: '1px solid #1e293b', overflowY: 'auto'
+                            }}>
+                                {consoleLogs.length === 0 ? "No logs available yet." : consoleLogs.map((log, i) => (
+                                    <div key={i} style={{ borderBottom: '1px solid #0f172a', padding: '2px 0', color: log.includes('ERR') ? '#ef4444' : log.includes('WARN') ? '#f59e0b' : '#94a3b8' }}>
+                                        {log}
+                                    </div>
+                                ))}
+                            </div>
+                            <button onClick={() => setShowLogs(false)} style={{ marginTop: '0.75rem', padding: '0.6rem', borderRadius: 6, background: '#1e293b', color: 'white', border: 'none', cursor: 'pointer' }}>Close</button>
                         </div>
                     )}
                     <div style={{ padding: '1.5rem 2rem', fontSize: '0.7rem', color: '#334155', textAlign: 'center' }}>
@@ -2061,21 +2058,32 @@ export default function PlayerPage() {
                 {/* Overlays */}
                 {offline && (
                     <div style={{
-                        position: 'fixed', top: 10, right: 10, zIndex: 10000,
-                        background: 'transparent',
-                        width: 32, height: 32,
+                        position: 'fixed', top: 32, right: 32, zIndex: 10000,
+                        background: 'rgba(0,0,0,0.6)',
+                        width: 48, height: 48,
+                        borderRadius: '50%',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: '#dc2626',
+                        color: '#ef4444',
                         animation: 'slideIn 0.3s ease-out',
-                        filter: 'drop-shadow(0 0 4px rgba(0,0,0,0.5))'
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+                        border: '1px solid rgba(255,255,255,0.05)'
                     }}>
-                        <WifiOff size={22} strokeWidth={2.5} />
+                        <WifiOff size={24} strokeWidth={2.5} />
                     </div>
                 )}
                 <style>{`
                     @keyframes slideIn {
                         from { transform: translateY(20px); opacity: 0; }
                         to { transform: translateY(0); opacity: 1; }
+                    }
+                    @keyframes spin {
+                        from { transform: rotate(0deg); }
+                        to { transform: rotate(360deg); }
+                    }
+                    @keyframes pulse {
+                        0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+                        70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); }
+                        100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
                     }
                 `}</style>
             </div>
