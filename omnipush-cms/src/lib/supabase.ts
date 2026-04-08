@@ -40,6 +40,8 @@ export async function callEdgeFn(fn: string, body: object, timeoutMs: number = 2
     const abortTimeoutMs = timeoutMs + 3000 // MUST be > timeoutMs
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), abortTimeoutMs)
+    let hasResolved = false
+
 
     try {
         const { data: { session } } = await supabase.auth.getSession()
@@ -59,13 +61,19 @@ export async function callEdgeFn(fn: string, body: object, timeoutMs: number = 2
             signal: controller.signal,
         })
 
-        // BOOT-CRITICAL: manualTimeout MUST fire strictly before abort().
-        const manualTimeout = new Promise<Response>((_, reject) =>
-            setTimeout(() => reject(new Error('Connection timed out.')), timeoutMs)
-        )
+        // BOOT-CRITICAL: State-aware manualTimeout to prevent unhandled rejection 
+        // if fetch() succeeds just before the timer fires.
+        const manualTimeout = new Promise<Response>((_, reject) => {
+            setTimeout(() => {
+                if (!hasResolved) reject(new Error('Connection timed out.'))
+            }, timeoutMs)
+        })
 
         const res = await Promise.race([fetchPromise, manualTimeout])
+        hasResolved = true
         clearTimeout(timeoutId)
+
+
 
         const text = await res.text()
         const json = text ? JSON.parse(text) : null

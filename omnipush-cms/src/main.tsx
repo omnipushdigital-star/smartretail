@@ -11,8 +11,13 @@ window.addEventListener('unhandledrejection', (e) => {
   }
 })
 
-createRoot(document.getElementById('root')!).render(
+console.log('[System] [BOOT] React main.tsx running...')
+const rootEl = document.getElementById('root')
+if (rootEl) rootEl.innerHTML = '' // Clear JS Booting... message
+
+createRoot(rootEl!).render(
   <StrictMode>
     <App />
   </StrictMode>,
 )
+
