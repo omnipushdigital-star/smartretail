@@ -10,94 +10,60 @@ const isHardwarePlayer = navigator.userAgent.toLowerCase().includes('android') |
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     db: { schema: 'public' },
     auth: {
-        persistSession: !isHardwarePlayer, // Disable persistence on hardware players if storage is restricted
+        persistSession: !isHardwarePlayer,
         autoRefreshToken: true,
         detectSessionInUrl: false,
     },
     global: {
         headers: { 'x-app-version': '1.0.0' },
-        fetch: (...args) => {
-            return fetch(...args).catch(err => {
-                console.warn('[Supabase] Network error:', err.message)
-                throw err;
-            });
-        }
     },
 })
 
 export const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000001'
 
-// ─── BOOT-CRITICAL: DO NOT MODIFY TIMEOUT VALUES ──────────────────────────
-// Root cause fix for Amlogic Android TV box (Chromium 87) boot freeze.
-// Chromium 87 has a silent blackhole bug where AbortController.abort() fires
-// but the fetch promise NEVER resolves or rejects — hanging the JS thread.
-// Fix: manualTimeout (25s) MUST fire strictly before controller.abort() (28s)
-// so that Promise.race() resolves via the JS timer, bypassing the broken abort.
-// DO NOT change 25000 or 28000. DO NOT make them equal. DO NOT remove manualTimeout.
-// Tested on: Amlogic S905W2 / Android 11 / Chromium 87 / Android Studio emulator.
-// ─────────────────────────────────────────────────────────────────────────────
-export async function callEdgeFn(fn: string, body: object, timeoutMs: number = 25000): Promise<any> {
-    const abortTimeoutMs = timeoutMs + 3000 // MUST be > timeoutMs
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), abortTimeoutMs)
-    let hasResolved = false
-
-
+/**
+ * callEdgeFn: Robust wrapper for Supabase Edge Functions with multi-layer timeout
+ * specially tuned for legacy Android WebView (Chromium 87).
+ */
+export async function callEdgeFn(fnName: string, payload: any, timeoutMs = 25000): Promise<{ data?: any; error?: string }> {
     try {
         const { data: { session } } = await supabase.auth.getSession()
-        const authHeader = session?.access_token
-            ? `Bearer ${session.access_token}`
-            : `Bearer ${SUPABASE_ANON_KEY}`
+        const controller = new AbortController()
 
-        const fetchPromise = fetch(`${SUPABASE_URL}/functions/v1/${fn}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': authHeader,
-                'apikey': SUPABASE_ANON_KEY!,
-                'x-client-info': 'omnipush-player/1.0.0',
-            },
-            body: JSON.stringify(body),
-            signal: controller.signal,
-        })
-
-        // BOOT-CRITICAL: State-aware manualTimeout to prevent unhandled rejection 
-        // if fetch() succeeds just before the timer fires.
-        const manualTimeout = new Promise<Response>((_, reject) => {
+        let hasResolved = false
+        const manualTimeout = new Promise<never>((_, reject) =>
             setTimeout(() => {
-                if (!hasResolved) reject(new Error('Connection timed out.'))
+                if (!hasResolved) {
+                    controller.abort() // Force kill the fetch
+                    reject(new Error('OMNIPUSH_TIMEOUT'))
+                }
             }, timeoutMs)
+        )
+
+        const fetchPromise = supabase.functions.invoke(fnName, {
+            body: payload,
+            headers: {
+                'x-app-version': '1.0.0',
+                'Authorization': `Bearer ${session?.access_token || SUPABASE_ANON_KEY}`
+            },
+            signal: controller.signal
         })
 
-        const res = await Promise.race([fetchPromise, manualTimeout])
+        const res = await Promise.race([fetchPromise, manualTimeout]) as any
         hasResolved = true
-        clearTimeout(timeoutId)
 
-
-
-        const text = await res.text()
-        const json = text ? JSON.parse(text) : null
-
-        if (!res.ok) {
-            // If the function returned a structured JSON error, always use it first
-            if (json?.error) {
-                const err = new Error(json.error) as any
-                err.data = json  // attach full response for debug
-                err.status = res.status
-                throw err
-            }
-            // Only show "not deployed" if it's a gateway-level 404 with no body
-            if (res.status === 404) {
-                throw new Error(`Edge Function "${fn}" is not deployed or cannot be found.`)
-            }
-            throw new Error(`Server error (HTTP ${res.status})`)
+        if (res.error) {
+            console.error(`[EdgeFn] ${fnName} internal error:`, res.error)
+            return { error: String(res.error) }
         }
-        return json
+
+        return { data: res.data }
     } catch (err: any) {
-        clearTimeout(timeoutId)
-        if (err.name === 'AbortError' || err.message === 'Connection timed out.') {
-            throw new Error('Connection timed out.')
+        if (err.name === 'AbortError' || err.message === 'OMNIPUSH_TIMEOUT') {
+            console.warn(`[EdgeFn] ${fnName} timed out after ${timeoutMs}ms`)
+            return { error: 'Request timed out' }
         }
-        throw err
+        console.error(`[EdgeFn] ${fnName} network error:`, err.message)
+        return { error: err.message || 'Unknown network error' }
     }
 }

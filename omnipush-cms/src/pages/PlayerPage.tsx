@@ -195,6 +195,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
     const watchdogRef = useRef<any>(null)
     const initialSyncDone = useRef(false)
     const [isReady, setIsReady] = useState<[boolean, boolean]>([false, false])
+    const bootStartedRef = useRef(false) // LOCK: Prevent infinite boot loops
 
     const sorted = React.useMemo(
         () => [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
@@ -1430,7 +1431,7 @@ export default function PlayerPage() {
             // ─────────────────────────────────────────────────────────────────────────────
             failCountRef.current += 1
             const backoffMs = Math.min(1000 * Math.pow(2, failCountRef.current - 1), 15000)
-            console.warn(`[Player] Manifest fetch failed (attempt ${failCountRef.current}), backoff ${backoffMs}ms`)
+            console.warn(`[Player] Manifest fetch failed (attempt ${failCountRef.current}), DC=${dc}`)
             await new Promise(r => setTimeout(r, backoffMs))
 
             if (failCountRef.current >= 3) {
@@ -1550,7 +1551,9 @@ export default function PlayerPage() {
 
     // ── Init: check for stored secret or URL param ──
     useEffect(() => {
-        if (!dc) return
+        if (!dc || bootStartedRef.current) return
+        bootStartedRef.current = true // Lock it immediately
+
 
         // 1. Check for ?reset=true to clear stale data
         const params = new URLSearchParams(window.location.search)
