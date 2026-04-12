@@ -1606,6 +1606,14 @@ export default function PlayerPage() {
             } else {
                 console.log(`[Player] Heartbeat Recorded ✅ (${phase})`)
                 lastErrorRef.current = null 
+                failCountRef.current = 0 // Reset fail count
+                
+                // Auto-recover from error phase if heartbeat succeeds
+                if (phaseRef.current === 'error') {
+                    console.log('[Player] Connection restored, auto-recovering...')
+                    setPhase('playing')
+                }
+
                 if (res.commands && res.commands.length > 0) {
                     processIncomingCommands(res.commands)
                 }
