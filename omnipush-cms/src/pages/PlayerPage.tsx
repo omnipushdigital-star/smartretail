@@ -1605,6 +1605,7 @@ export default function PlayerPage() {
                 console.error('[Player] Heartbeat Server Error:', res.error)
             } else {
                 console.log(`[Player] Heartbeat Recorded ✅ (${phase})`)
+                lastErrorRef.current = null 
                 if (res.commands && res.commands.length > 0) {
                     processIncomingCommands(res.commands)
                 }
