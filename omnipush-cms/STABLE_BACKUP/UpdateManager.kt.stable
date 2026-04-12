@@ -1,0 +1,184 @@
+package com.omnipush.smartretail.managers
+
+import android.app.DownloadManager
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.net.Uri
+import android.os.Environment
+import android.os.Build
+import android.util.Log
+import androidx.core.content.FileProvider
+import com.omnipush.smartretail.BuildConfig
+import android.app.PendingIntent
+import android.content.pm.PackageInstaller
+import java.io.File
+import java.io.FileInputStream
+
+class UpdateManager(private val context: Context) {
+
+    private val downloadManager: DownloadManager? = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
+    private var downloadId: Long = -1L
+    private var isDownloading = false
+
+    companion object {
+        private const val TAG = "UpdateManager"
+        private const val APK_NAME = "smartretail_update.apk"
+    }
+
+    suspend fun checkForUpdates(networkManager: NetworkManager) {
+        if (isDownloading) {
+            Log.d(TAG, "Update check skipped: download already in progress")
+            return
+        }
+        
+        val latestUpdate = networkManager.getLatestUpdate() ?: return
+        
+        val currentVersionCode = BuildConfig.VERSION_CODE
+        val isNewer = latestUpdate.versionCode > currentVersionCode
+        val isForced = latestUpdate.forceUpdate && latestUpdate.versionCode != currentVersionCode
+
+        if (isNewer || isForced) {
+            Log.d(TAG, "Update required: ${latestUpdate.versionName} (Code: ${latestUpdate.versionCode}, Forced: ${latestUpdate.forceUpdate})")
+            val directUrl = convertToDirectDownloadUrl(latestUpdate.apkUrl)
+            startDownload(directUrl)
+        } else {
+            Log.d(TAG, "App is up to date (Current: $currentVersionCode, Latest: ${latestUpdate.versionCode})")
+        }
+    }
+
+    private fun convertToDirectDownloadUrl(url: String): String {
+        // Handle various Google Drive formats
+        // 1. https://drive.google.com/file/d/ID/view...
+        // 2. https://drive.google.com/open?id=ID
+        // 3. https://drive.google.com/uc?id=ID
+        
+        if (!url.contains("drive.google.com")) return url
+
+        var fileId: String? = null
+
+        if (url.contains("/file/d/")) {
+            fileId = url.split("/file/d/")[1].split("/")[0].split("?")[0]
+        } else if (url.contains("?id=")) {
+            fileId = url.split("?id=")[1].split("&")[0]
+        } else if (url.contains("&id=")) {
+            fileId = url.split("&id=")[1].split("&")[0]
+        }
+
+        return if (fileId != null) {
+            "https://drive.google.com/uc?export=download&id=$fileId"
+        } else {
+            url
+        }
+    }
+
+    private fun startDownload(url: String) {
+        if (!url.startsWith("http://", ignoreCase = true) && !url.startsWith("https://", ignoreCase = true)) {
+            Log.e(TAG, "Invalid download URL: $url - Only HTTP/HTTPS is supported.")
+            return
+        }
+
+        try {
+            // Clear old downloads
+            val oldFile = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), APK_NAME)
+            if (oldFile.exists()) oldFile.delete()
+
+            val request = DownloadManager.Request(Uri.parse(url))
+                .setTitle("SmartRetail Player Update")
+                .setDescription("Downloading update...")
+                .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, APK_NAME)
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
+                .setAllowedOverMetered(true)
+                .setAllowedOverRoaming(true)
+
+            val dm = downloadManager
+            if (dm == null) {
+                Log.e(TAG, "DownloadManager not available on this device")
+                return
+            }
+            downloadId = dm.enqueue(request)
+            isDownloading = true
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.registerReceiver(onDownloadComplete, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), Context.RECEIVER_EXPORTED)
+            } else {
+                @Suppress("UnspecifiedRegisterReceiverFlag")
+                context.registerReceiver(onDownloadComplete, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
+            }
+            Log.d(TAG, "Download started: $downloadId for URL: $url")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start download for URL: $url", e)
+            isDownloading = false
+        }
+    }
+
+    private val onDownloadComplete = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val id = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
+            if (id == downloadId) {
+                isDownloading = false
+                Log.d(TAG, "Download complete, initiating install")
+                installApk()
+            }
+        }
+    }
+
+    private fun installApk() {
+        val apkFile = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), APK_NAME)
+        if (!apkFile.exists()) {
+            Log.e(TAG, "APK file not found for installation")
+            return
+        }
+
+        try {
+            val packageInstaller = context.packageManager.packageInstaller
+            val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+            params.setAppPackageName(context.packageName)
+
+            val sessionId = packageInstaller.createSession(params)
+            val session = packageInstaller.openSession(sessionId)
+
+            val outp = session.openWrite("SmartRetailUpdate", 0, apkFile.length())
+            val inp = FileInputStream(apkFile)
+            val buffer = ByteArray(65536)
+            var c: Int
+            while (inp.read(buffer).also { c = it } != -1) {
+                outp.write(buffer, 0, c)
+            }
+            session.fsync(outp)
+            inp.close()
+            outp.close()
+
+            // Create an Intent to handle the result (even for silent installs, we need a receiver)
+            val intent = Intent(context, context.javaClass)
+            intent.action = "ACTION_INSTALL_COMPLETE"
+            val pendingIntent = PendingIntent.getActivity(
+                context, 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+            )
+
+            session.commit(pendingIntent.intentSender)
+            session.close()
+            Log.i(TAG, "Silent install session committed successfully")
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Silent install failed, falling back to legacy install", e)
+            fallbackToLegacyInstall(apkFile)
+        }
+    }
+
+    private fun fallbackToLegacyInstall(apkFile: File) {
+        val apkUri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            apkFile
+        )
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(apkUri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+    }
+}

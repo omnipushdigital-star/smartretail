@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import React, { useEffect, useRef, useState, useCallback, useMemo, useLayoutEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { WifiOff, Tv2, Lock, RefreshCw, Clock, Image as ImageIcon } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
@@ -95,19 +95,11 @@ function LiveClock() {
 const globalStyle = `
   /* 1. Force root level elements to cover exact viewport - Essential for signage */
   html, body, #root {
-    margin: 0 !important;
-    padding: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    min-height: 100vh !important;
-    max-height: 100vh !important;
+    margin: 0; padding: 0;
+    width: 100vw !important; height: 100vh !important;
+    min-height: 100vh !important; max-height: 100vh !important;
     overflow: hidden !important;
-    position: fixed !important;
-    top: 0; left: 0; right: 0; bottom: 0;
-    -webkit-text-size-adjust: 100%;
-    -moz-text-size-adjust: 100%;
-    text-size-adjust: 100%;
-    background: #000 !important;
+    background: #000;
   }
 
   /* 2. Force all media to fill their region boxes without scaling artifacts */
@@ -185,9 +177,15 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
     assets: ManifestAsset[]
     onAdvance: () => void
     effect?: TransitionEffect
-}) {
+}): React.ReactElement {
     const [activeSlot, setActiveSlot] = useState<0 | 1>(0)
-    const [isTransitioning, setIsTransitioning] = useState(false)
+    const isAndroidNative = !!(window as any).AndroidHealth
+    const [isTransitioning, setIsTransitioningState] = useState(false)
+    const setIsTransitioning = useCallback((v: boolean) => {
+        setIsTransitioningState(v)
+        const win = window as any
+        if (win.setGlobalTransition) win.setGlobalTransition(v)
+    }, [])
     const v1 = useRef<HTMLVideoElement>(null)
     const v2 = useRef<HTMLVideoElement>(null)
     const videoRefs = [v1, v2]
@@ -196,6 +194,8 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
     const [debug, setDebug] = useState<string>('Init')
     const watchdogRef = useRef<any>(null)
     const initialSyncDone = useRef(false)
+    const [isReady, setIsReady] = useState<[boolean, boolean]>([false, false])
+    const bootStartedRef = useRef(false) // LOCK: Prevent infinite boot loops
 
     const sorted = React.useMemo(
         () => [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
@@ -209,6 +209,34 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
     }, [memoizedAssets])
 
     const advanceBufferRef = useRef<(force?: boolean) => void>(() => { })
+
+    // ── Native Handoff Lifecycle ──
+    useEffect(() => {
+        if (isAndroidNative) {
+            (window as any).onNativeVideoEnded = () => {
+                console.log("[NativeHandoff] Video ended successfully. Advancing loop.")
+                advanceBufferRef.current(true)
+            }
+        }
+        return () => {
+            if ((window as any).onNativeVideoEnded) delete (window as any).onNativeVideoEnded
+            if (isAndroidNative && (window as any).AndroidHealth) (window as any).AndroidHealth.stopNativeVideo()
+        }
+    }, [isAndroidNative])
+
+    // ── Native Playback Sync ──
+    useEffect(() => {
+        if (!isAndroidNative) return
+        const currentItem = sorted[idxRef.current]
+        if (currentItem) {
+            const url = getUrl(currentItem)
+            if (url && url.startsWith('http')) {
+                console.log(`[NativeHandoff] Slot Swap Trigger -> Play: ${url.slice(-20)}`)
+                const win = window as any
+                if (win.AndroidHealth) win.AndroidHealth.playNativeVideo(url)
+            }
+        }
+    }, [isAndroidNative, activeSlot, sorted, getUrl])
 
     const triggerWatchdog = useCallback((delay = 10000) => {
         if (watchdogRef.current) clearTimeout(watchdogRef.current)
@@ -224,10 +252,15 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
         if (sorted.length === 0) return
 
         if (sorted.length === 1) {
-            const v = videoRefs[activeSlot].current
-            if (v) {
-                v.currentTime = 0
-                v.play().catch(e => setDebug(`Loop Err: ${e.message.slice(0, 10)}`))
+            if (isAndroidNative) {
+                const url = getUrl(sorted[0])
+                if (url && (window as any).AndroidHealth) (window as any).AndroidHealth.playNativeVideo(url)
+            } else {
+                const v = videoRefs[activeSlot].current
+                if (v) {
+                    v.currentTime = 0
+                    v.play().catch(e => setDebug(`Loop Err: ${e.message.slice(0, 10)}`))
+                }
             }
             onAdvance()
             return
@@ -239,7 +272,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
         const nextVideo = videoRefs[nextSlot].current
         const nextIdx = (idxRef.current + 1) % sorted.length
 
-        if (nextVideo && nextVideo.error && !forceNext) {
+        if (!isAndroidNative && nextVideo && nextVideo.error && !forceNext) {
             setDebug(`Err Skip V${nextIdx}`)
             idxRef.current = nextIdx
             onAdvance()
@@ -248,189 +281,147 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
         }
 
         const performSwitch = () => {
-            if (!nextVideo) return
+            if (!isAndroidNative && !nextVideo) return
 
-            setDebug(`${idxRef.current}→${nextIdx} | SAFE SWAP`)
+            setDebug(`${idxRef.current}→${nextIdx}${isAndroidNative ? '|NATIVE' : '|SAFE'}`)
 
             const releaseOld = () => {
                 if (!currentVideo) return;
                 try {
-                    console.log('[Player] Releasing O-Slot decoder:', currentSlot);
-                    // Crucial: hide old video instantly BEFORE mutating src so native play icon cannot render
                     currentVideo.style.opacity = '0';
                     currentVideo.style.visibility = 'hidden';
                     currentVideo.pause();
-                    currentVideo.removeAttribute('src');
-                    currentVideo.load();
+                    if (sorted.length > 2) {
+                        currentVideo.removeAttribute('src');
+                        currentVideo.load();
+                    }
                 } catch (e) { /* ignore */ }
             };
 
-            // Start the next one FIRST, while it is still completely hidden!
-            triggerWatchdog(15000)
-            nextVideo.muted = true
-            nextVideo.currentTime = 0
-            if (sorted[nextIdx]) {
-                nextVideo.playbackRate = sorted[nextIdx].playback_speed || 1
-            }
-
-            nextVideo.play().then(() => {
-                console.log('[Player] Playing N-Slot:', nextIdx)
-                setDebug(`${nextIdx} PLAYING`)
-
-                // Now that it's confirmed playing, reveal it and trigger the transition CSS
-                setIsTransitioning(true)
-                setActiveSlot(nextSlot)
+            if (isAndroidNative) {
                 idxRef.current = nextIdx
+                setActiveSlot(nextSlot) // Triggers the sync effect
                 onAdvance()
+            } else {
+                triggerWatchdog(15000)
+                nextVideo!.muted = true
+                nextVideo!.currentTime = 0
+                if (sorted[nextIdx]) {
+                    nextVideo!.playbackRate = sorted[nextIdx].playback_speed || 1
+                }
 
-                // Release old video slightly after new one is successfully active and covering the screen
-                setTimeout(releaseOld, 250);
-
-                // Keep transition flag true slightly longer for hardware to visually stabilize
-                setTimeout(() => {
+                nextVideo!.play().then(() => {
+                    setIsTransitioning(true)
+                    setActiveSlot(nextSlot)
+                    idxRef.current = nextIdx
+                    onAdvance()
+                    setTimeout(releaseOld, 250);
+                    setTimeout(() => setIsTransitioning(false), 800)
+                }).catch(e => {
+                    console.error('[DoubleBufferVideo] play error:', e)
+                    setDebug(`Play Err V${nextIdx}`)
                     setIsTransitioning(false)
-
-                    // Queue next buffer
-                    const pIdx = (nextIdx + 1) % sorted.length
-                    const pUrl = getUrl(sorted[pIdx])
-                    setTimeout(() => {
-                        setSlotUrls(prev => {
-                            const up: [string, string] = [...prev] as [string, string]
-                            up[currentSlot] = pUrl
-                            return up
-                        })
-                    }, 300)
-                }, 850)
-
-            }).catch(e => {
-                console.error('[Player] Play Error:', e.message)
-                setDebug(`P.Err: ${e.message?.slice(0, 15)}`)
-                setIsTransitioning(false)
-                releaseOld();
-                setTimeout(() => advanceBuffer(true), 1500)
-            })
+                })
+            }
         }
 
-        if (nextVideo && nextVideo.readyState >= 2) {
+        if (isAndroidNative || (nextVideo && (nextVideo.readyState >= 3 || forceNext))) {
             performSwitch()
-        } else if (nextVideo) {
-            setDebug(`Wait S${nextSlot} R:${nextVideo.readyState}`)
-            const onCanPlay = () => {
-                nextVideo.removeEventListener('canplay', onCanPlay)
-                performSwitch()
-            }
-            nextVideo.addEventListener('canplay', onCanPlay)
-            setTimeout(() => {
-                nextVideo.removeEventListener('canplay', onCanPlay)
-                if (activeSlot === currentSlot) performSwitch()
-            }, 5000)
-        }
-    }, [activeSlot, sorted, getUrl, onAdvance, triggerWatchdog])
-
-    useEffect(() => {
-        advanceBufferRef.current = advanceBuffer
-    }, [advanceBuffer])
-
-    useEffect(() => {
-        if (sorted.length > 0) {
-            const firstId = getUrl(sorted[0])
-            const nextId = sorted.length > 1 ? getUrl(sorted[1]) : ''
-            if (initialSyncDone.current) {
-                const stillExists = sorted.some(s => getUrl(s) === slotUrls[activeSlot])
-                if (stillExists) return
-            }
-            setSlotUrls([firstId, nextId])
-            initialSyncDone.current = true
-            setTimeout(() => {
-                const v = activeSlot === 0 ? v1.current : v2.current
-                if (v) {
-                    v.currentTime = 0
-                    v.play().catch(() => { })
+        } else {
+            setDebug(`Waiting V${nextIdx}`)
+            const checkReady = setInterval(() => {
+                if (nextVideo && nextVideo.readyState >= 3) {
+                    clearInterval(checkReady)
+                    performSwitch()
                 }
             }, 100)
+            setTimeout(() => clearInterval(checkReady), 8000)
         }
-    }, [sorted, getUrl])
+    }, [activeSlot, sorted, videoRefs, onAdvance, triggerWatchdog, setIsTransitioning, isAndroidNative, getUrl])
+
+    advanceBufferRef.current = advanceBuffer
+
+    const onCanPlay = useCallback(() => {
+        const v = videoRefs[activeSlot === 0 ? 1 : 0].current
+        if (v) v.muted = true
+    }, [activeSlot, videoRefs])
 
     useEffect(() => {
-        const interval = setInterval(() => {
-            const v = videoRefs[activeSlot].current
-            if (v && v.paused && v.readyState >= 3 && !v.ended) {
-                v.play().catch(() => { })
-            }
-        }, 1500)
-        return () => clearInterval(interval)
-    }, [activeSlot])
+        if (sorted.length > 0 && !initialSyncDone.current) {
+            console.log('[DoubleBufferVideo] Initializing Slots...')
+            const url0 = getUrl(sorted[0])
+            const url1 = sorted.length > 1 ? getUrl(sorted[1]) : url0
 
-    const [isReady, setIsReady] = useState<[boolean, boolean]>([false, false])
-    const isReadyRef = useRef<boolean[]>([false, false])
+            if (isAndroidNative) {
+                if (url0 && (window as any).AndroidHealth) (window as any).AndroidHealth.playNativeVideo(url0)
+            } else {
+                setSlotUrls([url0, url1])
+            }
+            initialSyncDone.current = true
+        }
+    }, [sorted, getUrl, isAndroidNative])
+
+    useEffect(() => {
+        if (!isAndroidNative && sorted.length > 1) {
+            const nextIdx = (idxRef.current + 1) % sorted.length
+            const nextSlot = activeSlot === 0 ? 1 : 0
+            const nextUrl = getUrl(sorted[nextIdx])
+            if (nextUrl !== slotUrls[nextSlot]) {
+                setSlotUrls(prev => {
+                    const up = [...prev] as [string, string]
+                    up[nextSlot] = nextUrl
+                    return up
+                })
+                const nBuffer = videoRefs[nextSlot].current
+                if (nBuffer) {
+                    nBuffer.load()
+                    nBuffer.muted = true
+                }
+            }
+        }
+    }, [activeSlot, sorted, slotUrls, videoRefs, isAndroidNative, getUrl])
 
     const getTransitionStyle = (slot: number): React.CSSProperties => {
-        const isActive = activeSlot === slot
-        const ready = isReady[slot]
-        const e: TransitionEffect = effect ?? 'slide-up'
-        const style: React.CSSProperties = {
+        const isActive = slot === activeSlot
+        const base: React.CSSProperties = {
             position: 'absolute',
-            top: 0, left: 0,
-            width: '100%', height: '100%',
+            top: 0, left: 0, width: '100%', height: '100%',
             objectFit: 'fill',
-            background: 'transparent', // Crucial: no black background hidden behind frames
-            transition: 'transform 800ms cubic-bezier(0.4, 0, 0.2, 1), opacity 600ms ease, visibility 0s',
+            transition: isTransitioning ? `all ${TRANSITION_DURATION}ms ease-in-out` : 'none',
+            visibility: isActive ? 'visible' : 'hidden',
+            opacity: isActive ? 1 : 0,
             zIndex: isActive ? 10 : 5,
-            pointerEvents: 'none',
-            visibility: (isActive || isTransitioning) ? 'visible' : 'hidden',
-            transform: 'translate3d(0, 0, 0)',
-            opacity: ready ? 1 : 0, // Keep invisible until first frame
-            willChange: 'transform, opacity'
+            background: 'black'
         }
 
-        if (!isActive) {
-            switch (e) {
-                case 'fade':
-                    style.opacity = 0
-                    break
-                case 'slide':
-                case 'slide-left':
-                    style.transform = 'translate3d(-100%, 0, 0)'
-                    break
-                case 'slide-right':
-                    style.transform = 'translate3d(100%, 0, 0)'
-                    break
-                case 'slide-up':
-                    style.transform = 'translate3d(0, -100%, 0)'
-                    break
-                case 'slide-down':
-                    style.transform = 'translate3d(0, 100%, 0)'
-                    break
-                case 'zoom':
-                    style.transform = 'scale(0.95)'
-                    style.opacity = 0
-                    break
-                case 'none':
-                    style.transition = 'none'
-                    style.opacity = 0
-                    break
-            }
-        } else if (!ready) {
-            // Initial state for the ACTIVE item before it is "ready" (transitioning in)
-            switch (e) {
-                case 'slide':
-                case 'slide-left':
-                    style.transform = 'translate3d(100%, 0, 0)'
-                    break
-                case 'slide-right':
-                    style.transform = 'translate3d(-100%, 0, 0)'
-                    break
-                case 'zoom':
-                    style.transform = 'scale(1.05)'
-                    break
-            }
+        if (!isTransitioning) return base
+
+        if (effect === 'fade') return base
+
+        const isNext = slot === activeSlot
+        if (effect === 'slide-up') {
+            base.transform = isNext ? 'translateY(0)' : 'translateY(-100%)'
+            if (isNext) base.zIndex = 15
+        } else if (effect === 'slide-down') {
+            base.transform = isNext ? 'translateY(0)' : 'translateY(100%)'
+            if (isNext) base.zIndex = 15
+        } else if (effect === 'slide-left') {
+            base.transform = isNext ? 'translateX(0)' : 'translateX(-100%)'
+            if (isNext) base.zIndex = 15
+        } else if (effect === 'slide-right') {
+            base.transform = isNext ? 'translateX(0)' : 'translateX(100%)'
+            if (isNext) base.zIndex = 15
+        } else if (effect === 'zoom') {
+            base.transform = isNext ? 'scale(1)' : 'scale(1.2)'
+            base.opacity = isNext ? 1 : 0
         }
-        return style
+
+        return base
     }
 
     return (
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: '#000', overflow: 'hidden' }}>
-            {[0, 1].map(i => (
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: isAndroidNative ? 'transparent' : '#000', overflow: 'hidden' }}>
+            {!isAndroidNative && [0, 1].map(i => (
                 <video
                     key={i}
                     ref={videoRefs[i]}
@@ -451,15 +442,17 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
                         'controlsList': 'nodownload nofullscreen noremoteplayback'
                     }}
                     onPlaying={() => {
-                        console.log(`[DoubleBufferVideo] Video Slot ${i} Playing, waiting ${READY_TIMING}ms buffer...`)
-                        // Delay ready state slightly to ensure first frame hardware swap is stable
+                        console.log(`[DoubleBufferVideo] Video Slot ${i} Playing...`)
+                        const v = videoRefs[i].current
+                        const readyDelay = (v && v.readyState >= 4) ? 50 : READY_TIMING
+
                         setTimeout(() => {
                             setIsReady(prev => {
                                 const up = [...prev] as [boolean, boolean]
                                 up[i] = true
                                 return up
                             })
-                        }, READY_TIMING)
+                        }, readyDelay)
                     }}
                     onEnded={() => {
                         setIsReady(prev => {
@@ -467,11 +460,13 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
                             up[i] = false
                             return up
                         })
-                        if (i === activeSlot) advanceBuffer()
+                        if (i === activeSlot) advanceBufferRef.current()
                     }}
                     onTimeUpdate={() => { if (i === activeSlot) triggerWatchdog(12000) }}
+                    onCanPlay={onCanPlay}
                 />
             ))}
+            {isAndroidNative && <div id="native-layer-proxy" style={{ pointerEvents: 'none' }} />}
             <div style={{ position: 'absolute', bottom: 4, left: 4, fontSize: 9, color: 'rgba(255,255,255,0.2)', zIndex: 110 }}>
                 {debug} | {activeSlot === 0 ? 'V1' : 'V2'} | {effect}
             </div>
@@ -574,17 +569,26 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
         const asset = assets.find(a => a.media_id === item?.media_id)
         const type = asset?.type || item?.type || (item?.media_id ? 'video' : 'image')
 
-        // Videos in all-video playlists are handled by DoubleBufferVideo's onEnded
-        if (type === 'video' && activeItems.every(i => {
+        const isAllVideo = activeItems.every(i => {
             const a = assets.find(as => as.media_id === i.media_id)
             return (a?.type || i.type) === 'video'
-        })) return
+        })
 
-        const dur = ((item?.duration_seconds ?? 0) > 0
-            ? item!.duration_seconds!
-            : (type === 'video' ? DEFAULT_VIDEO_DURATION : (type === 'web_url' ? DEFAULT_WEB_DURATION : DEFAULT_IMAGE_DURATION))) * 1000
+        const itemDur = (item?.duration_seconds ?? 0) > 0 ? item!.duration_seconds! : 0
+        const defaultDur = type === 'video' ? DEFAULT_VIDEO_DURATION : (type === 'web_url' ? DEFAULT_WEB_DURATION : DEFAULT_IMAGE_DURATION)
+        const effectiveDur = (itemDur || defaultDur) * 1000
 
-        timerRef.current = setTimeout(advance, dur)
+        // FOR ALL-VIDEO PLAYLISTS: We still want a "Safety Watchdog" fallback
+        // in case the video tag fails to fire onEnded due to a crash or interruption.
+        if (isAllVideo) {
+            timerRef.current = setTimeout(() => {
+                console.warn('[Watchdog] Video transition took too long or stalled. Forcing advance.')
+                advance()
+            }, effectiveDur + 10000) // Give it 10 seconds grace period
+        } else {
+            timerRef.current = setTimeout(advance, effectiveDur)
+        }
+
         return () => { if (timerRef.current) clearTimeout(timerRef.current) }
     }, [idx, activeItems, assets, advance])
 
@@ -693,20 +697,11 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
                     />
                 )}
                 {type === 'video' && url && (
-                    <video
-                        src={url}
-                        style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }}
-                        autoPlay muted playsInline
-                        poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
-                        onPlaying={() => {
-                            console.log(`[PlaybackEngine] Video Playing, waiting ${READY_TIMING}ms buffer...`)
-                            setTimeout(() => setReadyIdx(targetIdx), READY_TIMING)
-                        }}
+                    <VideoElement
+                        url={url}
+                        isReady={isActive}
+                        onReady={() => setTimeout(() => setReadyIdx(targetIdx), READY_TIMING)}
                         onEnded={advance}
-                        onError={() => {
-                            setReadyIdx(targetIdx)
-                            setTimeout(advance, 3000)
-                        }}
                     />
                 )}
                 {type === 'web_url' && url && (
@@ -782,28 +777,24 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
 // ─── UI States ────────────────────────────────────────────────────────────────
 
 function LoadingState({ device_code }: { device_code: string }) {
-    const [trouble, setTrouble] = useState(false)
-    useEffect(() => {
-        const t = setTimeout(() => setTrouble(true), 25000)
-        return () => clearTimeout(t)
-    }, [])
     return (
-        <div style={bgStyle}>
-            <AmbientOrbs />
-            <div style={{ textAlign: 'center', zIndex: 1, position: 'relative' }}>
-                <Logo />
-                <div style={{ width: 40, height: 40, borderRadius: '50%', border: '3px solid #1e293b', borderTopColor: 'var(--color-brand-500)', animation: 'spin 0.8s linear infinite', margin: '2rem auto 1rem' }} />
-                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>Connecting to network…</div>
-                <div style={{ fontFamily: 'monospace', color: '#f87171', fontSize: '0.8rem', marginTop: '0.5rem' }}>{device_code}</div>
-                {trouble && (
-                    <div style={{ marginTop: '2rem', animation: 'slideIn 0.5s ease' }}>
-                        <button onClick={() => window.location.reload()} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#64748b', padding: '0.5rem 1rem', borderRadius: 8, fontSize: '0.75rem', cursor: 'pointer' }}>
-                            Taking too long? Reload
-                        </button>
-                    </div>
-                )}
-            </div>
-            <BottomBar device_code={device_code} />
+        <div style={{
+            position: 'fixed', inset: 0,
+            background: '#000000',
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            zIndex: 99999
+        }}>
+            <div style={{
+                width: 40, height: 40,
+                border: '3px solid #111',
+                borderTopColor: '#22c55e',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite'
+            }} />
+            <div style={{ color: '#666', fontSize: '14px', marginTop: '24px', fontWeight: 500 }}>Initializing System...</div>
+            <div style={{ color: '#333', fontSize: '12px', marginTop: '8px', fontFamily: 'monospace' }}>{device_code}</div>
+            <div style={{ position: 'fixed', bottom: 20, color: '#222', fontSize: '10px' }}>v1.5-hw-stabilized</div>
         </div>
     )
 }
@@ -876,7 +867,7 @@ function ErrorState({ device_code, msg, onRetry }: { device_code: string; msg: s
             <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem' }}>
                 <Logo />
                 <div style={{ marginTop: '2.5rem', background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 16, padding: '1.5rem 2rem', maxWidth: 450 }}>
-                    <WifiOff size={28} color="#ef4444" style={{ margin: '0 auto 0.75rem' }} />
+                    <WifiOff size={20} color="#ef4444" style={{ margin: '0 auto 0.75rem' }} />
                     <div style={{ fontWeight: 600, color: '#ef4444', marginBottom: '0.5rem' }}>Connection Failed</div>
                     <div style={{ fontSize: '0.7rem', color: '#64748b', fontFamily: 'monospace', marginBottom: '1rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem', borderRadius: 8 }}>
                         DEVICE_CODE: {device_code}
@@ -902,6 +893,41 @@ function ErrorState({ device_code, msg, onRetry }: { device_code: string; msg: s
     )
 }
 
+function VideoElement({ url, isReady, onReady, onEnded }: { url: string; isReady: boolean; onReady: () => void; onEnded: () => void }) {
+    const videoRef = useRef<HTMLVideoElement>(null)
+
+    useLayoutEffect(() => {
+        if (!videoRef.current) return
+        if (isReady) {
+            const playPromise = videoRef.current.play()
+            if (playPromise !== undefined) {
+                playPromise.catch(err => {
+                    if (err.name !== 'AbortError') {
+                        console.warn('[Video] Play Error:', err.message)
+                    }
+                })
+            }
+        } else {
+            videoRef.current.pause()
+        }
+    }, [isReady, url])
+
+    return (
+        <video
+            ref={videoRef}
+            src={url}
+            style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }}
+            muted playsInline
+            onPlaying={onReady}
+            onEnded={onEnded}
+            onError={() => {
+                onReady()
+                setTimeout(onEnded, 3000)
+            }}
+        />
+    )
+}
+
 // ─── Shared UI helpers ───────────────────────────────────────────────────────
 
 const bgStyle: React.CSSProperties = {
@@ -914,8 +940,8 @@ const bgStyle: React.CSSProperties = {
 function AmbientOrbs() {
     return (
         <>
-            <div style={{ position: 'absolute', top: '15%', left: '10%', width: 500, height: 500, borderRadius: '50%', background: 'rgba(239, 68, 68, 0.06)', filter: 'blur(100px)', pointerEvents: 'none' }} />
-            <div style={{ position: 'absolute', bottom: '10%', right: '10%', width: 400, height: 400, borderRadius: '50%', background: 'rgba(220, 38, 38, 0.05)', filter: 'blur(80px)', pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', top: '15%', left: '10%', width: 500, height: 500, borderRadius: '50%', background: 'rgba(239, 68, 68, 0.03)', filter: 'blur(60px)', pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', bottom: '10%', right: '10%', width: 400, height: 400, borderRadius: '50%', background: 'rgba(220, 38, 38, 0.02)', filter: 'blur(40px)', pointerEvents: 'none' }} />
         </>
     )
 }
@@ -1026,11 +1052,19 @@ console.error = (...args) => {
     const msg = args.map(a => {
         try {
             if (a instanceof HTMLElement) return `[${a.tagName} Element]`;
+            if (a instanceof Error) return `[${a.name}] ${a.message}${a.stack ? '\n' + a.stack : ''}`;
             return typeof a === 'object' ? JSON.stringify(a) : String(a);
         } catch (e) {
             return String(a);
         }
     }).join(' ')
+
+    // STRICT RULE: Silence non-critical playback interruption errors from dashboard
+    if (msg.includes('interrupted by a call to pause') || msg.includes('goo.gl/LdLk22')) {
+        originalError.apply(console, args) // Log to local devtools only
+        return
+    }
+
     const log = `[${new Date().toLocaleTimeString()}] ERROR: ${msg}`
     consoleLogs.push(log)
     if (consoleLogs.length > MAX_LOGS) consoleLogs.shift()
@@ -1077,8 +1111,8 @@ export default function PlayerPage() {
             meta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no, viewport-fit=cover')
 
             // Force browser to visible area only
-            document.documentElement.style.height = '100dvh';
-            document.body.style.height = '100dvh';
+            document.documentElement.style.height = '100vh';
+            document.body.style.height = '100vh';
         }
 
         syncViewport()
@@ -1086,7 +1120,27 @@ export default function PlayerPage() {
         return () => window.removeEventListener('resize', syncViewport)
     }, [])
 
+    // ─── BOOT-CRITICAL: DO NOT CHANGE 90000 ───────────────────────────────────
+    // This watchdog MUST be 90s minimum. The bootFetch loop below runs 3 attempts,
+    // each with a 25s callEdgeFn timeout + internal backoff (1s, 2s).
+    // Worst case boot time: 0.5 + 25 + 1 + 25 + 2 + 25 = ~78.5s before cache loads.
+    // If this timeout is < 90s, it fires mid-loop and reloads before offline cache
+    // activates — causing an infinite reload cycle on boxes without network at boot.
+    // DO NOT reduce this value. DO NOT remove this effect.
+    // ─────────────────────────────────────────────────────────────────────────────
+    useEffect(() => {
+        const t = setTimeout(() => {
+            if (phaseRef.current === 'loading') {
+                console.warn('[Player] 90s boot timeout. Force reloading...')
+                window.location.reload()
+            }
+        }, 90000)
+        return () => clearTimeout(t)
+    }, [])
+
     const [phase, setPhase] = useState<Phase>('loading')
+    const phaseRef = useRef<Phase>('loading')
+    useEffect(() => { phaseRef.current = phase }, [phase])
     const [secret, setSecret] = useState<string>('')
     const [manifest, setManifest] = useState<Manifest | null>(null)
     const [offline, setOffline] = useState(false)
@@ -1096,6 +1150,15 @@ export default function PlayerPage() {
     const versionRef = useRef(version)
     const manifestTimerRef = useRef<any>(null)
     const hbTimerRef = useRef<any>(null)
+    const failCountRef = useRef(0)
+    const isTransitioningRef = useRef(false)
+
+    useEffect(() => {
+        // Global hook for child components to report transition states
+        (window as any).setGlobalTransition = (v: boolean) => {
+            isTransitioningRef.current = v
+        }
+    }, [])
 
     useEffect(() => {
         versionRef.current = version
@@ -1127,6 +1190,7 @@ export default function PlayerPage() {
     const [pinInput, setPinInput] = useState('')
     const [pinError, setPinError] = useState(false)
     const [showDebugManifest, setShowDebugManifest] = useState(false)
+    const [showLogs, setShowLogs] = useState(false)
     const [debugJSON, setDebugJSON] = useState('')
 
     const handleCornerTap = () => {
@@ -1228,110 +1292,49 @@ export default function PlayerPage() {
         }
     }, [dc, captureBrowserScreenshot])
 
-    // Keep checkCommands for legacy/backup or direct REST usage
-    const checkCommands = useCallback(async () => {
-        if (!manifest?.device?.id) return
-        try {
-            const { data: commands, error } = await supabase
-                .from('device_commands')
-                .select('*')
-                .eq('device_id', manifest.device.id)
-                .eq('status', 'PENDING')
-                .order('created_at', { ascending: true })
-
-            if (error) throw error
-            if (!commands || commands.length === 0) return
-
-            for (const cmd of commands) {
-                console.log(`[Player] Executing remote command: ${cmd.command}`)
-
-                // Mark as executing/finished
-                await supabase.from('device_commands').update({
-                    status: 'EXECUTED',
-                    executed_at: new Date().toISOString()
-                }).eq('id', cmd.id)
-
-                if (cmd.command === 'REBOOT') {
-                    console.warn('[Player] Remote Reboot triggered via CMS. Reloading page...')
-                    window.location.reload()
-                    setTimeout(() => { window.location.href = window.location.href }, 500)
-                } else if (cmd.command === 'CLEAR_CACHE') {
-                    console.warn('[Player] Remote Clear Cache triggered. Purging local storage...')
-                    localStorage.removeItem(manifestKey(dc))
-                    window.location.reload()
-                    setTimeout(() => { window.location.href = window.location.href }, 500)
-                } else if (cmd.command === 'SCREENSHOT') {
-                    console.log('[Player] Remote Screenshot requested...')
-                    const win = window as any
-                    if (win.AndroidHealth && win.AndroidHealth.takeScreenshot) {
-                        win.AndroidHealth.takeScreenshot(cmd.id)
-                    } else {
-                        await captureBrowserScreenshot(cmd.id)
-                    }
-                }
-            }
-        } catch (err: any) {
-            console.error('[Commands] Polling error:', err.message)
-        }
-    }, [manifest?.device?.id, dc, captureBrowserScreenshot])
-
-    useEffect(() => {
-        if (!manifest?.device?.id) return
-        const timer = setInterval(checkCommands, 10000) // Poll every 10s
-        return () => clearInterval(timer)
-    }, [manifest?.device?.id, checkCommands])
-
     // ── Asset Sync (Offline Cache) ──
     const syncAssets = useCallback(async (assetsToSync: ManifestAsset[]) => {
         if (!assetsToSync || assetsToSync.length === 0) return
 
-        console.log(`[Cache] Syncing ${assetsToSync.length} assets...`)
-        setSyncProgress({ current: 0, total: assetsToSync.length })
+        const assetsToActuallySync = assetsToSync.filter(a => {
+            return a.url && !a.url.startsWith('blob:')
+        })
+
+        if (assetsToActuallySync.length === 0) {
+            console.log('[Cache] No cacheable assets (images) found — videos play direct.')
+            return
+        }
+
+        console.log(`[Cache] Syncing ${assetsToActuallySync.length} assets...`)
+        setSyncProgress({ current: 0, total: assetsToActuallySync.length })
 
         const updatedAssets = [...assetsToSync]
         let completed = 0
 
-        for (let i = 0; i < updatedAssets.length; i++) {
-            const asset = updatedAssets[i]
-            if (!asset.url) {
-                completed++
-                setSyncProgress({ current: completed, total: updatedAssets.length })
-                continue
-            }
-
+        for (const asset of assetsToActuallySync) {
+            const idx = updatedAssets.findIndex(a => a.media_id === asset.media_id)
             try {
-                // Determine if it's already a blob URL (unlikely at start)
-                if (asset.url.startsWith('blob:')) {
-                    completed++
-                    setSyncProgress({ current: completed, total: updatedAssets.length })
-                    continue
-                }
-
                 const blobUrl = await downloadAndCache({
                     media_id: asset.media_id,
-                    url: asset.url,
+                    url: asset.url!,
                     type: asset.type,
                     checksum_sha256: asset.checksum_sha256
                 })
 
-                // CRITICAL: Google Docs Viewer (used for PPT) cannot access blob: URLs.
-                // We keep the original remote URL for transparency in the manifest for these types.
+                // Skip blob hydration for PPT/Presentation as documented in stable core
                 if (asset.type !== 'ppt' && asset.type !== 'presentation') {
-                    updatedAssets[i] = { ...asset, url: blobUrl }
-                } else {
-                    console.log(`[Cache] Downloaded ${asset.media_id} for offline redundancy, but using remote URL for rendering.`)
+                    if (idx !== -1) updatedAssets[idx] = { ...asset, url: blobUrl }
                 }
             } catch (err: any) {
-                const errorStr = err?.message || JSON.stringify(err) || 'Unknown Error'
-                console.error(`[Cache] Failed to sync ${asset.media_id}:`, errorStr)
-                setErrorMsg(`[Cache] Sync failed: ${errorStr}`)
+                const reason = err?.message || (typeof err === 'string' ? err : 'Network/CORS blocked')
+                console.error(`[Cache] Sync FAILED for ${asset.media_id} (${asset.type}): ${reason} | URL: ${asset.url}`)
+                // No alert - just log it and move on to allow playback of other items
             } finally {
                 completed++
-                setSyncProgress({ current: completed, total: updatedAssets.length })
+                setSyncProgress({ current: completed, total: assetsToActuallySync.length })
             }
         }
 
-        // Update manifest with blob URLs
         setManifest(prev => prev ? { ...prev, assets: updatedAssets } : null)
         setTimeout(() => setSyncProgress(null), 2000)
     }, [])
@@ -1349,15 +1352,16 @@ export default function PlayerPage() {
     }, [dc])
 
     // ── Fetch manifest ──
-    const fetchManifest = useCallback(async (sec: string): Promise<boolean> => {
+    const fetchManifest = useCallback(async (sec: string, timeoutMs: number = 25000): Promise<boolean> => {
         try {
-            console.log(`[Player] Fetching manifest: DC=${dc} | Origin=${window.location.origin}`)
+            console.log(`[Player] [MANIFEST_FETCH_START] DC=${dc} (t=${timeoutMs}ms)`)
             const data = await callEdgeFn('device-manifest', {
                 device_code: dc,
                 device_secret: sec,
                 current_version: versionRef.current,
                 origin: window.location.origin
-            })
+            }, timeoutMs)
+            console.log(`[Player] [MANIFEST_FETCH_SUCCESS] v=${data.resolved?.version || 'N/A'}`)
 
             // ── Handling "Up to Date" response ──
             if (data.up_to_date) {
@@ -1395,6 +1399,7 @@ export default function PlayerPage() {
                 win.AndroidHealth.setStoreInfo(data.device?.store_id || null, data.device?.store_name || null)
             }
 
+            failCountRef.current = 0 // Reset failure counter on success
             return true
         } catch (err: any) {
             const msg: string = (err.message || '').toLowerCase()
@@ -1416,25 +1421,43 @@ export default function PlayerPage() {
                 return true
             }
 
-            const cached = localStorage.getItem(manifestKey(dc))
-            if (cached) {
-                try {
-                    const c = JSON.parse(cached)
-                    setManifest(c)
-                    if (c.resolved?.version) {
-                        setVersion(c.resolved.version)
-                        versionRef.current = c.resolved.version
-                    }
-                    setOffline(true)
-                    return true
-                } catch { /* ignore */ }
+            // CORTEX: Sequential Error Counter to prevent flickering offline messages on network jitter
+            // ─── BOOT-CRITICAL: DO NOT REMOVE backoff OR failCountRef >= 3 check ─────
+            // failCountRef tracks sequential failures across bootFetch loop iterations.
+            // The backoff spaces out retries so the Amlogic network stack has time to recover.
+            // failCountRef >= 3 is the trigger for offline cache load — this is how the device
+            // plays content when rebooted without network. Both pieces MUST stay together.
+            // DO NOT remove the await backoff. DO NOT change the >= 3 threshold.
+            // ─────────────────────────────────────────────────────────────────────────────
+            failCountRef.current += 1
+            const backoffMs = Math.min(1000 * Math.pow(2, failCountRef.current - 1), 15000)
+            console.warn(`[Player] Manifest fetch failed (attempt ${failCountRef.current}), DC=${dc}`)
+            await new Promise(r => setTimeout(r, backoffMs))
+
+            if (failCountRef.current >= 3) {
+                const cached = localStorage.getItem(manifestKey(dc))
+                if (cached) {
+                    try {
+                        const c = JSON.parse(cached)
+                        setManifest(c)
+                        if (c.resolved?.version) {
+                            setVersion(c.resolved.version)
+                            versionRef.current = c.resolved.version
+                        }
+                        setOffline(true)
+                        return true
+                    } catch { /* ignore */ }
+                }
             }
 
-            setErrorMsg(err.message || 'Fetch failed')
-            setPhase('error')
+            // Only show a fatal error screen after 10 sequential failures
+            if (failCountRef.current >= 10) {
+                setErrorMsg(err.message || 'Multiple connection failures')
+                setPhase('error')
+            }
             return false
         }
-    }, [dc, syncAssets, initPairing]) // REMOVED version, phase to stop re-triggering loops
+    }, [dc, syncAssets, initPairing])
 
     // ── Send heartbeat ──
     const sendHeartbeat = useCallback(async (sec: string) => {
@@ -1492,30 +1515,31 @@ export default function PlayerPage() {
         }
 
         try {
+            // CORTEX: Jitter/Stagger fix for Amlogic hardware to avoid manifest/heartbeat collisions.
+            // When manifest polling (every 3s) and heartbeat (every 30s) collide, the older Amlogic 
+            // network stack often cancels one, resulting in 'TypeError: Failed to fetch'.
             const payload = {
                 device_code: dc,
                 device_secret: sec,
                 current_version: versionRef.current,
-                status: phase,
-                logs: [...consoleLogs], // Send buffered logs
-                ...meta
+                status: phaseRef.current,
+                // Sanitize meta to ensure no illegal JSON values (NaN/Infinity)
+                ...JSON.parse(JSON.stringify(meta, (k, v) => (typeof v === 'number' && isNaN(v)) ? null : v))
             }
-            consoleLogs.length = 0 // Clear after sending
 
             console.log('[Player] Sending heartbeat...')
-            const res = await callEdgeFn('device-heartbeat', payload)
+            const res = await callEdgeFn('device-heartbeat', payload, 15000) // 15s timeout
 
             if (res.error) {
                 console.error('[Player] Heartbeat Server Error:', res.error)
             } else {
                 console.log(`[Player] Heartbeat Recorded ✅ (${phase})`)
-                // Handle commands returned in heartbeat
                 if (res.commands && res.commands.length > 0) {
                     processIncomingCommands(res.commands)
                 }
             }
         } catch (err: any) {
-            console.error('[Player] Heartbeat Network Error:', err.message)
+            console.error('[Player] Heartbeat Network Error Detail:', err.name, '|', err.message)
             const msg = (err.message || '').toLowerCase()
             if (msg.includes('invalid credentials') || msg.includes('inactive device')) {
                 localStorage.removeItem(secretKey(dc))
@@ -1523,11 +1547,13 @@ export default function PlayerPage() {
                 window.location.reload()
             }
         }
-    }, [dc, version, phase])
+    }, [dc])
 
     // ── Init: check for stored secret or URL param ──
     useEffect(() => {
-        if (!dc) return
+        if (!dc || bootStartedRef.current) return
+        bootStartedRef.current = true // Lock it immediately
+
 
         // 1. Check for ?reset=true to clear stale data
         const params = new URLSearchParams(window.location.search)
@@ -1558,10 +1584,39 @@ export default function PlayerPage() {
             setSecret(stored)
             secretRef.current = stored
             setPhase('loading')
-            fetchManifest(stored).then(ok => {
-                if (ok) setPhase(p => p === 'standby' ? 'standby' : 'playing')
+
+            // ─── BOOT-CRITICAL: DO NOT SIMPLIFY OR REMOVE bootFetch LOOP ─────────────
+            // This 3-attempt loop exists specifically for Amlogic Android TV boxes where
+            // the network stack is not ready when the app starts after reboot.
+            // Each attempt uses callEdgeFn which has a 25s manualTimeout (in supabase.ts).
+            // After 3 failures, failCountRef >= 3 triggers offline cache load in fetchManifest.
+            // This is the ONLY path that gets the device playing from cache when network
+            // is unavailable at boot. DO NOT replace with a single fetchManifest() call.
+            // DO NOT add waitForNetwork() — navigator.onLine is broken on Chromium 87.
+            // DO NOT reduce loop iterations below 3.
+            // ─────────────────────────────────────────────────────────────────────────────
+            const bootFetch = async () => {
+                await new Promise(r => setTimeout(r, 2000)) // Give Amlogic network stack more time to settle
+                let bootOk = false
+
+                // Attempt 1: Safe Network Check (25s)
+                console.log(`[Boot] Manifest attempt 1/2 (Safe Mode 25s)...`)
+                if (await fetchManifest(stored, 25000)) {
+                    bootOk = true
+                } else {
+                    // Attempt 2: Final Check (25s) with 3s breather
+                    await new Promise(r => setTimeout(r, 3000))
+                    console.log(`[Boot] Manifest attempt 2/2 (Final Check 25s)...`)
+                    if (await fetchManifest(stored, 25000)) {
+                        bootOk = true
+                    }
+                }
+
+                if (bootOk) setPhase(p => p === 'standby' ? 'standby' : 'playing')
                 else setPhase('error')
-            })
+            }
+
+            bootFetch()
         } else {
             setPhase('pairing')
             initPairing()
@@ -1599,24 +1654,30 @@ export default function PlayerPage() {
         if (hbTimerRef.current) clearInterval(hbTimerRef.current)
 
         manifestTimerRef.current = setInterval(async () => {
+            if (isTransitioningRef.current) return
             const ok = await fetchManifest(secretRef.current)
             if (ok && phase === 'standby') setPhase('playing')
         }, pollMs)
 
-        hbTimerRef.current = setInterval(() => {
-            sendHeartbeat(secretRef.current)
-        }, HEARTBEAT_INTERVAL_MS)
-
-        // Initial heartbeat (debounced/prevented if just sent)
-        const lastHb = localStorage.getItem('last_hb_sent') || '0'
-        if (Date.now() - parseInt(lastHb) > 5000) {
-            sendHeartbeat(secretRef.current)
-            localStorage.setItem('last_hb_sent', Date.now().toString())
+        // ─── STAGGERED HEARTBEAT FIX ──────────────────────────────────────────
+        // Stagger heartbeat by 15s to ensure it perfectly alternates with 
+        // the 3s manifest poll on older Amlogic devices.
+        const staggerMs = 15000 + (Math.random() * 5000) // Add 5s jitter
+        const startHeartbeat = () => {
+            hbTimerRef.current = setInterval(() => {
+                sendHeartbeat(secretRef.current)
+            }, HEARTBEAT_INTERVAL_MS)
         }
+
+        const initialHbTimeout = setTimeout(() => {
+            sendHeartbeat(secretRef.current)
+            startHeartbeat()
+        }, staggerMs)
 
         return () => {
             if (manifestTimerRef.current) clearInterval(manifestTimerRef.current)
             if (hbTimerRef.current) clearInterval(hbTimerRef.current)
+            clearTimeout(initialHbTimeout)
         }
     }, [phase, !!secret, manifest?.poll_seconds]) // Stable dependencies
 
@@ -1801,36 +1862,54 @@ export default function PlayerPage() {
                         <button onClick={() => {
                             setDebugJSON(JSON.stringify(manifest, null, 2))
                             setShowDebugManifest(true)
+                            setShowLogs(false)
                         }} style={btnStyle('rgba(255,255,255,0.05)', '#94a3b8')}>
                             🔍 Debug Manifest
+                        </button>
+                        <button onClick={() => {
+                            setShowLogs(true)
+                            setShowDebugManifest(false)
+                        }} style={btnStyle('rgba(255,255,255,0.05)', '#f1f5f9')}>
+                            📄 View Logs
                         </button>
                         <button onClick={() => {
                             window.dispatchEvent(new CustomEvent('omnipush_force_play'))
                             setShowAdminPanel(false)
                         }} style={btnStyle('#14532d', '#86efac')}>
-                            ▶ Force Play
+                            ▶ Force Play (Reset Logic)
                         </button>
                     </div>
 
                     {showDebugManifest && (
-                        <div style={{ padding: '0 2rem 1.5rem', maxHeight: '400px', overflow: 'auto' }}>
+                        <div style={{ padding: '0 2rem 1.5rem', flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#475569', marginBottom: '0.5rem' }}>INTERNAL MANIFEST STATE</div>
                             <pre style={{
-                                background: '#020617', padding: '1rem', borderRadius: 8,
+                                flex: 1, background: '#020617', padding: '1rem', borderRadius: 8,
                                 fontSize: '0.65rem', color: '#64748b', fontFamily: 'monospace',
-                                border: '1px solid #1e293b', whiteSpace: 'pre-wrap', wordBreak: 'break-all'
+                                border: '1px solid #1e293b', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                                overflowY: 'auto'
                             }}>
                                 {debugJSON}
                             </pre>
-                            <button
-                                onClick={() => setShowDebugManifest(false)}
-                                style={{
-                                    marginTop: '0.75rem', width: '100%', padding: '0.5rem',
-                                    borderRadius: 6, background: '#1e293b', color: 'white',
-                                    border: 'none', cursor: 'pointer', fontSize: '0.75rem'
-                                }}
-                            >
-                                Close Debug View
-                            </button>
+                            <button onClick={() => setShowDebugManifest(false)} style={{ marginTop: '0.75rem', padding: '0.6rem', borderRadius: 6, background: '#1e293b', color: 'white', border: 'none', cursor: 'pointer' }}>Close</button>
+                        </div>
+                    )}
+
+                    {showLogs && (
+                        <div style={{ padding: '0 2rem 1.5rem', flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#475569', marginBottom: '0.5rem' }}>DEVICE DIAGNOSTIC LOGS (Last 50)</div>
+                            <div style={{
+                                flex: 1, background: '#020617', padding: '1rem', borderRadius: 8,
+                                fontSize: '0.65rem', color: '#94a3b8', fontFamily: 'monospace',
+                                border: '1px solid #1e293b', overflowY: 'auto'
+                            }}>
+                                {consoleLogs.length === 0 ? "No logs available yet." : consoleLogs.map((log, i) => (
+                                    <div key={i} style={{ borderBottom: '1px solid #0f172a', padding: '2px 0', color: log.includes('ERR') ? '#ef4444' : log.includes('WARN') ? '#f59e0b' : '#94a3b8' }}>
+                                        {log}
+                                    </div>
+                                ))}
+                            </div>
+                            <button onClick={() => setShowLogs(false)} style={{ marginTop: '0.75rem', padding: '0.6rem', borderRadius: 6, background: '#1e293b', color: 'white', border: 'none', cursor: 'pointer' }}>Close</button>
                         </div>
                     )}
                     <div style={{ padding: '1.5rem 2rem', fontSize: '0.7rem', color: '#334155', textAlign: 'center' }}>
@@ -1961,8 +2040,8 @@ export default function PlayerPage() {
             <div style={{
                 position: 'fixed',
                 top: 0, left: 0, right: 0, bottom: 0,
-                width: '100vw',
-                height: '100dvh',
+                width: '100%',
+                height: '100%',
                 background: '#000',
                 overflow: 'hidden',
                 margin: 0, padding: 0,
@@ -1984,13 +2063,16 @@ export default function PlayerPage() {
                 {/* Overlays */}
                 {offline && (
                     <div style={{
-                        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
-                        background: 'rgba(239,68,68,0.85)', padding: '0.5rem',
+                        position: 'fixed', top: 16, right: 16, zIndex: 10000,
+                        background: '#ef4444',
+                        width: 32, height: 32,
+                        borderRadius: '50%',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        gap: '0.5rem', fontSize: '0.8125rem', fontWeight: 500, color: 'white',
-                        backdropFilter: 'blur(4px)',
+                        color: '#ffffff',
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+                        border: '2px solid #ffffff'
                     }}>
-                        <WifiOff size={14} /> Offline — playing cached content
+                        <WifiOff size={18} strokeWidth={2.5} />
                     </div>
                 )}
                 <style>{`
@@ -1998,13 +2080,18 @@ export default function PlayerPage() {
                         from { transform: translateY(20px); opacity: 0; }
                         to { transform: translateY(0); opacity: 1; }
                     }
+                    @keyframes spin {
+                        from { transform: rotate(0deg); }
+                        to { transform: rotate(360deg); }
+                    }
+                    /* Removed heavy pulse keyframes with box-shadow */
                 `}</style>
             </div>
         )
     }
 
     return (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', overflow: 'hidden', background: '#000', touchAction: 'none' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', overflow: 'hidden', background: '#000', touchAction: 'none' }}>
             {renderMain()}
             {cornerTapZone}
             <AdminPanel />

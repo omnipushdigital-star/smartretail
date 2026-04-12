@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useState, useCallback, useMemo, useLayoutEffect } from 'react'
+import React, { useEffect, useRef, useState, useCallback, useMemo, useLayoutEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { WifiOff, Tv2, Lock, RefreshCw, Clock, Image as ImageIcon } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
@@ -867,7 +867,7 @@ function ErrorState({ device_code, msg, onRetry }: { device_code: string; msg: s
             <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem' }}>
                 <Logo />
                 <div style={{ marginTop: '2.5rem', background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 16, padding: '1.5rem 2rem', maxWidth: 450 }}>
-                    <WifiOff size={28} color="#ef4444" style={{ margin: '0 auto 0.75rem' }} />
+                    <WifiOff size={20} color="#ef4444" style={{ margin: '0 auto 0.75rem' }} />
                     <div style={{ fontWeight: 600, color: '#ef4444', marginBottom: '0.5rem' }}>Connection Failed</div>
                     <div style={{ fontSize: '0.7rem', color: '#64748b', fontFamily: 'monospace', marginBottom: '1rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem', borderRadius: 8 }}>
                         DEVICE_CODE: {device_code}
@@ -2063,16 +2063,16 @@ export default function PlayerPage() {
                 {/* Overlays */}
                 {offline && (
                     <div style={{
-                        position: 'fixed', top: 32, right: 32, zIndex: 10000,
+                        position: 'fixed', top: 16, right: 16, zIndex: 10000,
                         background: '#ef4444',
-                        width: 52, height: 52, // Slightly larger to ensure no clipping
+                        width: 32, height: 32,
                         borderRadius: '50%',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         color: '#ffffff',
-                        boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
-                        border: '3px solid #ffffff'
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+                        border: '2px solid #ffffff'
                     }}>
-                        <WifiOff size={28} strokeWidth={2.5} />
+                        <WifiOff size={18} strokeWidth={2.5} />
                     </div>
                 )}
                 <style>{`
