@@ -1429,7 +1429,7 @@ export default function PlayerPage() {
                 device_secret: sec,
                 current_version: versionRef.current,
                 origin: window.location.origin
-            }, timeoutMs)
+            }, 45000, false) // 45s timeout, no auth
             // ── CRITICAL: Throw on edge-fn error so catch block handles it properly ──
             if (data?.error) throw new Error(data.error)
             console.log(`[Player] [MANIFEST_FETCH_SUCCESS] v=${data.resolved?.version || 'N/A'}`)
@@ -1599,7 +1599,7 @@ export default function PlayerPage() {
             }
 
             console.log('[Player] Sending heartbeat...')
-            const res = await callEdgeFn('device-heartbeat', payload, 15000) // 15s timeout
+            const res = await callEdgeFn('device-heartbeat', payload, 30000, false) // 30s timeout, no auth
 
             if (res.error) {
                 console.error('[Player] Heartbeat Server Error:', res.error)

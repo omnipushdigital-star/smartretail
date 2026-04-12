@@ -25,16 +25,25 @@ export const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000001'
  * callEdgeFn: Robust wrapper for Supabase Edge Functions with multi-layer timeout
  * specially tuned for legacy Android WebView (Chromium 87).
  */
-export async function callEdgeFn(fnName: string, payload: any, timeoutMs = 25000): Promise<any> {
+export async function callEdgeFn(fnName: string, payload: any, timeoutMs = 30000, useAuth = true): Promise<any> {
     try {
-        const { data: { session } } = await supabase.auth.getSession()
         const controller = new AbortController()
+        let authHeader = SUPABASE_ANON_KEY
+
+        if (useAuth) {
+            try {
+                const { data: { session } } = await supabase.auth.getSession()
+                if (session?.access_token) authHeader = session.access_token
+            } catch (e) {
+                console.warn(`[Supabase] Session fetch failed for ${fnName}, falling back to Anon Key`)
+            }
+        }
 
         let hasResolved = false
         const manualTimeout = new Promise<never>((_, reject) =>
             setTimeout(() => {
                 if (!hasResolved) {
-                    controller.abort() // Force kill the fetch
+                    controller.abort() 
                     reject(new Error('OMNIPUSH_TIMEOUT'))
                 }
             }, timeoutMs)
@@ -44,7 +53,7 @@ export async function callEdgeFn(fnName: string, payload: any, timeoutMs = 25000
             body: payload,
             headers: {
                 'x-app-version': '1.0.0',
-                'Authorization': `Bearer ${session?.access_token || SUPABASE_ANON_KEY}`
+                ...(useAuth ? { 'Authorization': `Bearer ${authHeader}` } : {})
             },
             signal: controller.signal
         })
