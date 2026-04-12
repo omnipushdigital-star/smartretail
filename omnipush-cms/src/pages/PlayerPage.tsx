@@ -156,6 +156,7 @@ interface PlaybackProps {
     items: ManifestItem[]
     assets: ManifestAsset[]
     region: { id: string; x: number; y: number; width: number; height: number }
+    isNative?: boolean
 }
 
 // ─── Double-Buffer Video Player ──────────────────────────────────────────────
@@ -356,6 +357,17 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
                 if (url0 && (window as any).AndroidHealth) (window as any).AndroidHealth.playNativeVideo(url0)
             } else {
                 setSlotUrls([url0, url1])
+                // ── BOOT-CRITICAL: Explicit play() required because autoPlay={false} ──
+                // Android WebView 87 will not autoplay even muted videos without an
+                // explicit .play() call. Without this, the first slot remains paused
+                // and the player shows a blank screen indefinitely.
+                setTimeout(() => {
+                    const v = videoRefs[0].current
+                    if (v) {
+                        v.muted = true
+                        v.play().catch(e => console.warn('[DoubleBufferVideo] Init play error:', e.message))
+                    }
+                }, 200)
             }
             initialSyncDone.current = true
         }
@@ -477,7 +489,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
 
 // ─── Playback Engine ──────────────────────────────────────────────────────────
 
-function PlaybackEngine({ items, assets, region }: PlaybackProps) {
+function PlaybackEngine({ items, assets, region, isNative = false }: PlaybackProps) {
     const [idx, setIdx] = useState(0)
     const [prevIdx, setPrevIdx] = useState<number | null>(null)
     const [isSwapping, setIsSwapping] = useState(false)
@@ -735,7 +747,7 @@ function PlaybackEngine({ items, assets, region }: PlaybackProps) {
             position: 'absolute',
             top: `${region.y}%`, left: `${region.x}%`,
             width: `${region.width}%`, height: `${region.height}%`,
-            background: '#000',
+            background: isNative ? 'transparent' : '#000',
             overflow: 'hidden',
             margin: 0, padding: 0,
             transform: 'translate3d(0, 0, 0)', // Create containment layer
@@ -1154,6 +1166,9 @@ export default function PlayerPage() {
     const isTransitioningRef = useRef(false)
     const bootStartedRef = useRef(false)
 
+    // Detect Android native video bridge (APK exposing AndroidHealth JS interface)
+    const isAndroidNative = !!(window as any).AndroidHealth
+
     useEffect(() => {
         // Global hook for child components to report transition states
         (window as any).setGlobalTransition = (v: boolean) => {
@@ -1181,6 +1196,22 @@ export default function PlayerPage() {
     useEffect(() => {
         updateAndroidStatus(phase)
     }, [phase, updateAndroidStatus])
+
+    // ── Native Mode: Make WebView transparent so native SurfaceView video shows through ──
+    // When the APK sets webView.setBackgroundColor(Color.TRANSPARENT), the HTML layer
+    // must also have transparent backgrounds or the native video remains occluded.
+    useEffect(() => {
+        if (!isAndroidNative || phase !== 'playing') return
+        document.documentElement.style.background = 'transparent'
+        document.body.style.background = 'transparent'
+        const root = document.getElementById('root')
+        if (root) root.style.background = 'transparent'
+        return () => {
+            document.documentElement.style.background = ''
+            document.body.style.background = ''
+            if (root) root.style.background = ''
+        }
+    }, [isAndroidNative, phase])
 
     // ── Hidden Admin Panel (5-tap top-right corner) ──
     const ADMIN_PIN = '2580'
@@ -1362,6 +1393,8 @@ export default function PlayerPage() {
                 current_version: versionRef.current,
                 origin: window.location.origin
             }, timeoutMs)
+            // ── CRITICAL: Throw on edge-fn error so catch block handles it properly ──
+            if (data?.error) throw new Error(data.error)
             console.log(`[Player] [MANIFEST_FETCH_SUCCESS] v=${data.resolved?.version || 'N/A'}`)
 
             // ── Handling "Up to Date" response ──
@@ -2043,7 +2076,7 @@ export default function PlayerPage() {
                 top: 0, left: 0, right: 0, bottom: 0,
                 width: '100%',
                 height: '100%',
-                background: '#000',
+                background: isAndroidNative ? 'transparent' : '#000',
                 overflow: 'hidden',
                 margin: 0, padding: 0,
                 zIndex: 1,
@@ -2057,6 +2090,7 @@ export default function PlayerPage() {
                             region={reg}
                             items={regionItems}
                             assets={manifest!.assets}
+                            isNative={isAndroidNative}
                         />
                     )
                 })}

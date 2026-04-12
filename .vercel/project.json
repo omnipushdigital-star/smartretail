@@ -1,0 +1,16 @@
+{
+  "projectId": "prj_c212GLVmy15eQ7Md5O2yolhc4KEj",
+  "orgId": "team_T8Z8j5mRMazmiPoLKENes7Lo",
+  "projectName": "smartretail",
+  "settings": {
+    "createdAt": 1772037763429,
+    "framework": "vite",
+    "devCommand": null,
+    "installCommand": null,
+    "buildCommand": null,
+    "outputDirectory": null,
+    "rootDirectory": null,
+    "directoryListing": false,
+    "nodeVersion": "24.x"
+  }
+}
