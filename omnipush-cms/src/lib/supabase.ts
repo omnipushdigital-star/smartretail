@@ -25,7 +25,7 @@ export const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000001'
  * callEdgeFn: Robust wrapper for Supabase Edge Functions with multi-layer timeout
  * specially tuned for legacy Android WebView (Chromium 87).
  */
-export async function callEdgeFn(fnName: string, payload: any, timeoutMs = 25000): Promise<{ data?: any; error?: string }> {
+export async function callEdgeFn(fnName: string, payload: any, timeoutMs = 25000): Promise<any> {
     try {
         const { data: { session } } = await supabase.auth.getSession()
         const controller = new AbortController()
@@ -57,7 +57,7 @@ export async function callEdgeFn(fnName: string, payload: any, timeoutMs = 25000
             return { error: String(res.error) }
         }
 
-        return { data: res.data }
+        return res.data
     } catch (err: any) {
         if (err.name === 'AbortError' || err.message === 'OMNIPUSH_TIMEOUT') {
             console.warn(`[EdgeFn] ${fnName} timed out after ${timeoutMs}ms`)
