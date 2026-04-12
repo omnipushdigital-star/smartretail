@@ -370,7 +370,9 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
             const url1 = sorted.length > 1 ? getUrl(sorted[1]) : url0
 
             if (isAndroidNative) {
+                console.log(`[DoubleBufferVideo] Booting Native Handoff: ${url0}`);
                 if (url0 && (window as any).AndroidHealth) (window as any).AndroidHealth.playNativeVideo(url0)
+                setDebug('Native-Play')
             } else {
                 // Set URLs first so <video> elements start loading
                 setSlotUrls([url0, url1])
@@ -2103,7 +2105,7 @@ export default function PlayerPage() {
                 top: 0, left: 0, right: 0, bottom: 0,
                 width: '100%',
                 height: '100%',
-                background: isAndroidNative ? 'transparent' : '#000',
+                background: (isAndroidNative && phase === 'playing') ? 'transparent' : '#000',
                 overflow: 'hidden',
                 margin: 0, padding: 0,
                 zIndex: 1,
@@ -2153,7 +2155,7 @@ export default function PlayerPage() {
     }
 
     return (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', overflow: 'hidden', background: '#000', touchAction: 'none' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', overflow: 'hidden', background: (isAndroidNative && phase === 'playing') ? 'transparent' : '#000', touchAction: 'none' }}>
             {renderMain()}
             {cornerTapZone}
             <AdminPanel />
