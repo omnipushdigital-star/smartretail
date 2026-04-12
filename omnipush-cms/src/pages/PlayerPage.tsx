@@ -197,6 +197,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
     const initialSyncDone = useRef(false)
     const [isReady, setIsReady] = useState<[boolean, boolean]>([false, false])
     const bootStartedRef = useRef(false) // LOCK: Prevent infinite boot loops
+    const bootPlayedRef = useRef(false)   // LOCK: Prevent double boot-play
 
     const sorted = React.useMemo(
         () => [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
@@ -342,9 +343,24 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
 
     advanceBufferRef.current = advanceBuffer
 
-    const onCanPlay = useCallback(() => {
-        const v = videoRefs[activeSlot === 0 ? 1 : 0].current
-        if (v) v.muted = true
+    const onCanPlay = useCallback((slotIndex: number) => {
+        // Always mute the inactive (preload) buffer
+        const inactiveSlot = activeSlot === 0 ? 1 : 0
+        const iv = videoRefs[inactiveSlot].current
+        if (iv) iv.muted = true
+
+        // Boot-play: fire play() on slot 0 when it first fires canplay
+        // This replaces the fragile setTimeout(200) approach that fails on Android
+        // when the video src hasn't actually loaded within 200ms.
+        if (slotIndex === 0 && !bootPlayedRef.current) {
+            bootPlayedRef.current = true
+            const v = videoRefs[0].current
+            if (v) {
+                v.muted = true
+                v.play().catch(e => console.warn('[DBV] Boot-canplay play err:', e.message))
+                setDebug('Boot-CanPlay')
+            }
+        }
     }, [activeSlot, videoRefs])
 
     useEffect(() => {
@@ -356,19 +372,30 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
             if (isAndroidNative) {
                 if (url0 && (window as any).AndroidHealth) (window as any).AndroidHealth.playNativeVideo(url0)
             } else {
+                // Set URLs first so <video> elements start loading
                 setSlotUrls([url0, url1])
-                // ── BOOT-CRITICAL: Explicit play() required because autoPlay={false} ──
-                // Android WebView 87 will not autoplay even muted videos without an
-                // explicit .play() call. Without this, the first slot remains paused
-                // and the player shows a blank screen indefinitely.
-                setTimeout(() => {
-                    const v = videoRefs[0].current
-                    if (v) {
-                        v.muted = true
-                        v.play().catch(e => console.warn('[DoubleBufferVideo] Init play error:', e.message))
+                initialSyncDone.current = true
+
+                // ── BOOT-CRITICAL: Event-driven play() for slot 0 ──
+                // We rely on onCanPlay(0) to fire play() once the browser
+                // signals it has enough data. The boot watchdog below is a
+                // safety net if canplay is delayed beyond 5s (e.g. slow CDN).
+                const bootWatchdog = setTimeout(() => {
+                    if (!bootPlayedRef.current) {
+                        bootPlayedRef.current = true
+                        const v = videoRefs[0].current
+                        if (v) {
+                            v.muted = true
+                            v.play().catch(e => console.warn('[DBV] Boot-watchdog play err:', e.message))
+                            setDebug('Boot-WD')
+                        }
                     }
-                }, 200)
+                }, 5000)
+
+                // Cleanup watchdog if component unmounts before it fires
+                return () => clearTimeout(bootWatchdog)
             }
+            // Native path: mark done here
             initialSyncDone.current = true
         }
     }, [sorted, getUrl, isAndroidNative])
@@ -475,7 +502,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
                         if (i === activeSlot) advanceBufferRef.current()
                     }}
                     onTimeUpdate={() => { if (i === activeSlot) triggerWatchdog(12000) }}
-                    onCanPlay={onCanPlay}
+                    onCanPlay={() => onCanPlay(i as 0 | 1)}
                 />
             ))}
             {isAndroidNative && <div id="native-layer-proxy" style={{ pointerEvents: 'none' }} />}
