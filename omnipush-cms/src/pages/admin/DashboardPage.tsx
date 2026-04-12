@@ -3,7 +3,6 @@ import { Monitor, Store, Wifi, WifiOff, AlertTriangle, ArrowUpRight, TrendingUp,
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useTenant } from '../../contexts/TenantContext'
-import { useTheme } from '../../contexts/ThemeContext'
 import { DeviceHeartbeat } from '../../types'
 import { formatDistanceToNow } from 'date-fns'
 import toast from 'react-hot-toast'
@@ -34,8 +33,6 @@ function isOnline(lastSeen: string) {
 
 export default function DashboardPage() {
     const navigate = useNavigate()
-    const { theme } = useTheme()
-    const isLight = theme === 'light'
     const [stats, setStats] = useState<Stats>({ stores: 0, devices: 0, online: 0, playing: 0, offline: 0, activePubs: 0, roles: 0 })
     const [heartbeats, setHeartbeats] = useState<ProjectHeartbeat[]>([])
     const [alerts, setAlerts] = useState<ProjectHeartbeat[]>([])
@@ -120,132 +117,84 @@ export default function DashboardPage() {
         return () => clearInterval(interval)
     }, [currentTenantId])
 
-    // ── Theme-aware tokens (Digital Atelier) ──────────────────────────────────
-    const isDark = !isLight
-    const tk = {
-        canvas: isLight ? '#f4f6fb' : '#04070a',
-        cardBg: isLight ? 'rgba(255,255,255,0.8)' : 'rgba(15, 23, 42, 0.4)',
-        cardBorder: isLight ? 'rgba(190,200,210,0.3)' : 'rgba(255,255,255,0.04)',
-        cardShadow: isLight ? '0 8px 32px rgba(0,55,81,0.06)' : '0 20px 40px rgba(0,0,0,0.4)',
-        glassFilter: 'blur(16px)',
-
-        rowBg: isLight ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.01)',
-        rowHover: isLight ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.03)',
-        rowBorder: isLight ? 'rgba(190,200,210,0.2)' : 'rgba(255,255,255,0.03)',
-
-        textPrimary: isLight ? '#0f172a' : '#f8fafc',
-        textMuted: isLight ? '#64748b' : '#64748b',
-        brand: '#10b981',
-        accent: '#3b82f6',
-
-        actionBg: isLight ? '#ffffff' : 'rgba(255,255,255,0.03)',
-        actionHover: isLight ? '#f8fafc' : 'rgba(255,255,255,0.06)',
-        actionIconBg: 'rgba(16,185,129,0.1)',
-
-        btnSecBg: isLight ? '#ffffff' : 'rgba(255,255,255,0.02)',
-        btnSecText: isLight ? '#334155' : '#94a3b8',
-        btnSecBorder: isLight ? 'rgba(190,200,210,0.4)' : 'rgba(255,255,255,0.05)',
-        arrowColor: isLight ? '#64748b' : '#475569',
-    }
-
     return (
-        <div className="p-6" style={{ background: tk.canvas, minHeight: '100%' }}>
-            {/* ── Header ─────────────────────────────────────────────── */}
+        <div className="p-6 h-full min-h-screen">
+            {/* Header */}
             <div className="flex justify-between items-start mb-8">
                 <div>
-                    <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: tk.textPrimary, display: 'flex', alignItems: 'center', gap: '0.75rem', margin: 0, letterSpacing: '-0.02em' }}>
-                        <Monitor style={{ color: '#00daf3' }} size={28} />
+                    <h1 className="text-2xl font-extrabold text-text-1 flex items-center gap-3 m-0 tracking-tight">
+                        <Monitor className="text-brand-500" size={28} />
                         Network Dashboard
                     </h1>
-                    <p style={{ color: tk.textMuted, marginTop: '0.375rem', fontSize: '0.875rem' }}>
+                    <p className="text-text-2 mt-1.5 text-sm">
                         Real-time overview of your retail display network
                     </p>
                 </div>
-                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <div className="flex gap-3">
                     <button
                         onClick={() => navigate('/admin/global')}
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', background: tk.btnSecBg, border: `1px solid ${tk.btnSecBorder}`, borderRadius: 10, color: tk.btnSecText, fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', transition: 'all 0.15s' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = tk.actionHover)}
-                        onMouseLeave={e => (e.currentTarget.style.background = tk.btnSecBg)}
+                        className="flex items-center gap-2 px-4 py-2 bg-surface-1 border border-border rounded-xl text-text-2 hover:bg-surface-2 hover:text-text-1 font-semibold text-sm cursor-pointer transition-all duration-150 outline-none"
                     >
                         <ShieldCheck size={16} /> Global Hub
                     </button>
                     <button
                         onClick={() => navigate('/admin/publish')}
-                        style={{
-                            display: 'flex', alignItems: 'center', gap: '0.625rem',
-                            padding: '0.625rem 1.5rem',
-                            background: 'linear-gradient(135deg, #ff3d00, #d32f2f)',
-                            border: 'none', borderRadius: 12, color: '#fff',
-                            fontWeight: 800, fontSize: '0.875rem', cursor: 'pointer',
-                            boxShadow: '0 8px 20px rgba(255,61,0,0.3)',
-                            transition: 'all 0.2s',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.05em'
-                        }}
-                        onMouseEnter={e => {
-                            e.currentTarget.style.transform = 'translateY(-2px)'
-                            e.currentTarget.style.boxShadow = '0 12px 24px rgba(255,61,0,0.4)'
-                        }}
-                        onMouseLeave={e => {
-                            e.currentTarget.style.transform = 'translateY(0)'
-                            e.currentTarget.style.boxShadow = '0 8px 20px rgba(255,61,0,0.3)'
-                        }}
+                        className="flex items-center gap-2.5 px-6 py-2.5 bg-gradient-to-br from-[#ff3d00] to-[#d32f2f] border-none rounded-xl text-white font-extrabold text-sm cursor-pointer shadow-[0_8px_20px_rgba(255,61,0,0.3)] hover:translate-y-[-2px] hover:shadow-[0_12px_24px_rgba(255,61,0,0.4)] transition-all duration-200 uppercase tracking-wider outline-none"
                     >
                         <Send size={18} /> Push All
                     </button>
                 </div>
             </div>
 
-            {/* ── Stat Cards Row ──────────────────────────────────────── */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
-                <StatCard icon={<Store size={20} />} label="Total Stores" value={stats.stores} color="var(--color-brand-600)" to="/admin/stores" tk={tk} />
-                <StatCard icon={<Monitor size={20} />} label="Total Devices" value={stats.devices} color="var(--color-brand-500)" to="/admin/devices" tk={tk} />
-                <StatCard icon={<Wifi size={20} />} label="Online Now" value={stats.online} subValue={`${stats.playing} Playing`} color="#22c55e" to="/admin/monitoring" tk={tk} />
-                <StatCard icon={<WifiOff size={20} />} label="Offline / Idle" value={stats.offline} subValue="Issue" color="var(--color-error-500)" to="/admin/monitoring" tk={tk} />
+            {/* Stat Cards Row */}
+            <div className="grid grid-cols-4 gap-4 mb-6">
+                <StatCard icon={<Store size={20} />} label="Total Stores" value={stats.stores} color="text-brand-600 bg-brand-600/10" to="/admin/stores" />
+                <StatCard icon={<Monitor size={20} />} label="Total Devices" value={stats.devices} color="text-brand-500 bg-brand-500/10" to="/admin/devices" />
+                <StatCard icon={<Wifi size={20} />} label="Online Now" value={stats.online} subValue={`${stats.playing} Playing`} color="text-success bg-success/10 border-success/20" to="/admin/monitoring" />
+                <StatCard icon={<WifiOff size={20} />} label="Offline / Idle" value={stats.offline} subValue="Issue" color="text-error bg-error/10 border-error/20" to="/admin/monitoring" />
             </div>
 
-            {/* ── Metric Tiles Row ────────────────────────────────────── */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '2.5rem' }}>
-                <MetricTile title="Display Uptime" value={`${((stats.online / (stats.devices || 1)) * 100).toFixed(1)}%`} trend="+0.3% vs last week" icon={<Activity size={20} />} color="green" to="/admin/monitoring" isLight={isLight} />
-                <MetricTile title="Active Campaigns" value={stats.activePubs} trend="Running layouts" icon={<Zap size={20} />} color="orange" to="/admin/publish" isLight={isLight} />
-                <MetricTile title="Network Health" value={stats.online === stats.devices && stats.devices > 0 ? 'Optimal' : stats.online > 0 ? 'Good' : 'Critical'} trend={`${stats.playing} out of ${stats.online} playing`} icon={<AlertTriangle size={20} />} color="blue" to="/admin/monitoring" isLight={isLight} />
-                <MetricTile title="System Alerts" value={alerts.length} trend="Click to resolve" icon={<AlertTriangle size={20} />} color="red" to="/admin/monitoring" isLight={isLight} />
+            {/* Metric Tiles Row */}
+            <div className="grid grid-cols-4 gap-4 mb-10">
+                <MetricTile title="Display Uptime" value={`${((stats.online / (stats.devices || 1)) * 100).toFixed(1)}%`} trend="+0.3% vs last week" icon={<Activity size={20} />} variant="success" to="/admin/monitoring" />
+                <MetricTile title="Active Campaigns" value={stats.activePubs} trend="Running layouts" icon={<Zap size={20} />} variant="warning" to="/admin/publish" />
+                <MetricTile title="Network Health" value={stats.online === stats.devices && stats.devices > 0 ? 'Optimal' : stats.online > 0 ? 'Good' : 'Critical'} trend={`${stats.playing} out of ${stats.online} playing`} icon={<AlertTriangle size={20} />} variant="info" to="/admin/monitoring" />
+                <MetricTile title="System Alerts" value={alerts.length} trend="Click to resolve" icon={<AlertTriangle size={20} />} variant="error" to="/admin/monitoring" />
             </div>
 
-            {/* ── Bottom Grid ────────────────────────────────────────── */}
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem' }}>
+            {/* Bottom Grid */}
+            <div className="grid grid-cols-3 gap-6">
 
                 {/* Live Network Status */}
-                <div style={{ background: tk.cardBg, border: `1px solid ${tk.cardBorder}`, borderRadius: 24, boxShadow: tk.cardShadow, backdropFilter: tk.glassFilter, overflow: 'hidden' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.5rem', borderBottom: `1px solid ${tk.rowBorder}` }}>
-                        <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 800, color: tk.textPrimary, display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(16,185,129,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <Wifi size={18} style={{ color: tk.brand }} />
+                <div className="col-span-2 bg-surface-1 border border-border rounded-3xl shadow-xl overflow-hidden">
+                    <div className="flex justify-between items-center p-6 border-b border-border">
+                        <h3 className="m-0 text-lg font-extrabold text-text-1 flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-brand-500/10 flex items-center justify-center">
+                                <Wifi size={18} className="text-brand-500" />
                             </div>
                             Live Displays
                         </h3>
-                        <div style={{ display: 'flex', gap: '0.375rem', background: isLight ? '#f1f5f9' : 'rgba(255,255,255,0.05)', padding: '0.25rem', borderRadius: 10 }}>
+                        <div className="flex gap-1.5 p-1 rounded-xl bg-surface-2 border border-border">
                             {['All', 'Online', 'Issues'].map((label, i) => (
                                 <button
                                     key={label}
-                                    style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.375rem 0.875rem', borderRadius: 8, border: 'none', cursor: 'pointer', background: i === 0 ? tk.brand : 'transparent', color: i === 0 ? '#fff' : tk.textMuted, transition: 'all 0.15s' }}
+                                    className={`text-xs font-bold px-3.5 py-1.5 rounded-lg border-none cursor-pointer transition-all duration-150 outline-none ${i === 0 ? 'bg-brand-500 text-white shadow-md' : 'bg-transparent text-text-3 hover:text-text-1'}`}
                                 >{label}</button>
                             ))}
                         </div>
                     </div>
 
-                    <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', maxHeight: 500, overflowY: 'auto' }}>
+                    <div className="p-6 flex flex-col gap-3.5 max-h-[500px] overflow-y-auto">
                         {loading ? (
-                            <div style={{ textAlign: 'center', padding: '3rem', color: tk.textMuted, fontSize: '0.875rem' }}>Loading devices…</div>
+                            <div className="text-center p-12 text-text-3 text-sm">Loading devices…</div>
                         ) : heartbeats.length === 0 ? (
-                            <div style={{ textAlign: 'center', padding: '3rem', color: tk.textMuted, fontSize: '0.875rem' }}>No devices active yet.</div>
+                            <div className="text-center p-12 text-text-3 text-sm">No devices active yet.</div>
                         ) : (
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                            <div className="grid grid-cols-2 gap-4">
                                 {heartbeats.map(hb => {
                                     const online = isOnline(hb.last_seen_at)
                                     return (
-                                        <DeviceGridItem key={hb.id} hb={hb} online={online} tk={tk} onEdit={() => navigate('/admin/devices')} />
+                                        <DeviceGridItem key={hb.id} hb={hb} online={online} onEdit={() => navigate('/admin/devices')} />
                                     )
                                 })}
                             </div>
@@ -254,55 +203,55 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Right column */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                <div className="flex flex-col gap-6">
 
                     {/* Quick Actions */}
-                    <div style={{ background: tk.cardBg, border: `1px solid ${tk.cardBorder}`, borderRadius: 16, boxShadow: tk.cardShadow, padding: '1.5rem' }}>
-                        <h3 style={{ margin: '0 0 1.25rem', fontSize: '1rem', fontWeight: 700, color: tk.textPrimary, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <Zap size={18} style={{ color: '#f59e0b' }} />
+                    <div className="bg-surface-1 border border-border rounded-2xl shadow-xl p-6">
+                        <h3 className="m-0 mb-5 text-base font-bold text-text-1 flex items-center gap-2">
+                            <Zap size={18} className="text-warning" />
                             Quick Actions
                         </h3>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                            <ActionTile onClick={() => navigate('/admin/menu-builder')} title="Update Menu" sub="Prices & items" icon={<Edit3 size={16} />} tk={tk} />
-                            <ActionTile onClick={() => navigate('/admin/publish')} title="Push to All" sub="Broadcast update" icon={<Send size={16} />} tk={tk} />
-                            <ActionTile onClick={() => toast.success('Reboot command sent!')} title="Reboot Screens" sub="Remote restart" icon={<RotateCcw size={16} />} tk={tk} />
-                            <ActionTile onClick={() => toast.success('Capturing screenshots…')} title="Screenshot" sub="Verify content" icon={<Camera size={16} />} tk={tk} />
+                        <div className="grid grid-cols-2 gap-3">
+                            <ActionTile onClick={() => navigate('/admin/menu-builder')} title="Update Menu" sub="Prices & items" icon={<Edit3 size={16} />} />
+                            <ActionTile onClick={() => navigate('/admin/publish')} title="Push to All" sub="Broadcast update" icon={<Send size={16} />} />
+                            <ActionTile onClick={() => toast.success('Reboot command sent!')} title="Reboot Screens" sub="Remote restart" icon={<RotateCcw size={16} />} />
+                            <ActionTile onClick={() => toast.success('Capturing screenshots…')} title="Screenshot" sub="Verify content" icon={<Camera size={16} />} />
                         </div>
                     </div>
 
                     {/* Alerts */}
-                    <div style={{ background: tk.cardBg, border: `1px solid ${tk.cardBorder}`, borderRadius: 16, boxShadow: tk.cardShadow, padding: '1.5rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-                            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: tk.textPrimary, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <AlertTriangle size={18} style={{ color: '#ef4444' }} />
+                    <div className="bg-surface-1 border border-border rounded-2xl shadow-xl p-6">
+                        <div className="flex justify-between items-center mb-5">
+                            <h3 className="m-0 text-base font-bold text-text-1 flex items-center gap-2">
+                                <AlertTriangle size={18} className="text-error" />
                                 Alerts
                             </h3>
-                            <button style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-brand-500)', background: 'none', border: 'none', cursor: 'pointer' }}>View All</button>
+                            <button className="text-xs font-bold text-brand-500 bg-transparent border-none cursor-pointer outline-none hover:underline">View All</button>
                         </div>
                         {alerts.length > 0 ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                            <div className="flex flex-col gap-3">
                                 {alerts.slice(0, 3).map((a, i) => {
                                     const isOff = !isOnline(a.last_seen_at);
                                     const hasSyncErr = (a.meta as any)?.sync_errors > 0;
                                     const errText = isOff ? 'Offline' : hasSyncErr ? `${(a.meta as any).sync_errors} Sync Error(s)` : 'Error State';
 
                                     return (
-                                        <div key={i} style={{ padding: '0.875rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, display: 'flex', gap: '0.75rem' }}>
-                                            <AlertTriangle size={14} style={{ color: '#ef4444', flexShrink: 0, marginTop: 2 }} />
+                                        <div key={i} className="p-3.5 bg-error/10 border border-error/20 rounded-xl flex gap-3">
+                                            <AlertTriangle size={14} className="text-error shrink-0 mt-0.5" />
                                             <div>
-                                                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#ef4444', marginBottom: '0.25rem' }}>{a.device_code} &middot; {errText}</div>
-                                                <div style={{ fontSize: '0.6875rem', color: tk.textMuted }}>Last seen {formatDistanceToNow(new Date(a.last_seen_at), { addSuffix: true })}</div>
+                                                <div className="text-xs font-bold text-error mb-1">{a.device_code} &middot; {errText}</div>
+                                                <div className="text-[0.6875rem] text-text-3">Last seen {formatDistanceToNow(new Date(a.last_seen_at), { addSuffix: true })}</div>
                                             </div>
                                         </div>
                                     )
                                 })}
                             </div>
                         ) : (
-                            <div style={{ textAlign: 'center', padding: '1.5rem 0' }}>
-                                <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(34,197,94,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 0.75rem' }}>
-                                    <ShieldCheck size={18} style={{ color: '#22c55e' }} />
+                            <div className="text-center py-6">
+                                <div className="w-9 h-9 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-3">
+                                    <ShieldCheck size={18} className="text-success" />
                                 </div>
-                                <span style={{ fontSize: '0.8125rem', color: tk.textMuted, fontWeight: 500 }}>All systems operational</span>
+                                <span className="text-[0.8125rem] text-text-3 font-medium">All systems operational</span>
                             </div>
                         )}
                     </div>
@@ -314,39 +263,13 @@ export default function DashboardPage() {
 
 // ── Sub-components ───────────────────────────────────────────────────────
 
-function DeviceGridItem({ hb, online, tk, onEdit }: { hb: ProjectHeartbeat, online: boolean, tk: any, onEdit: () => void }) {
-    const [hovered, setHovered] = useState(false)
+function DeviceGridItem({ hb, online, onEdit }: { hb: ProjectHeartbeat, online: boolean, onEdit: () => void }) {
     const screenshotUrl = `https://qxialnmorewjgpmpcswr.supabase.co/storage/v1/object/public/device-screenshots/screenshots/${hb.device_code}_latest.jpg`
 
     return (
-        <div
-            onMouseEnter={() => setHovered(true)}
-            onMouseLeave={() => setHovered(false)}
-            style={{
-                position: 'relative',
-                background: hovered ? tk.rowHover : tk.rowBg,
-                border: `1px solid ${hovered ? tk.brand + '40' : tk.rowBorder}`,
-                borderRadius: 20,
-                padding: '1rem',
-                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                cursor: 'default',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '1rem',
-                transform: hovered ? 'translateY(-4px)' : 'translateY(0)',
-                boxShadow: hovered ? '0 12px 30px rgba(0,0,0,0.4)' : 'none'
-            }}
-        >
+        <div className="relative bg-surface-2 hover:bg-surface-3 border border-border hover:border-brand-500/40 rounded-[20px] p-4 transition-all duration-300 cursor-default flex flex-col gap-4 hover:-translate-y-1 hover:shadow-xl group">
             {/* Live Thumbnail / Placeholder */}
-            <div style={{
-                width: '100%',
-                paddingTop: '56.25%', // 16:9 Aspect Ratio
-                position: 'relative',
-                borderRadius: 10,
-                background: '#0a0c10',
-                overflow: 'hidden',
-                border: '1px solid rgba(255,255,255,0.05)'
-            }}>
+            <div className="w-full pt-[56.25%] relative rounded-xl bg-surface-1 overflow-hidden border border-border">
                 {online ? (
                     <img
                         src={`${screenshotUrl}?t=${Date.now()}`}
@@ -354,32 +277,29 @@ function DeviceGridItem({ hb, online, tk, onEdit }: { hb: ProjectHeartbeat, onli
                             (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&q=60&w=400';
                             (e.target as HTMLImageElement).style.opacity = '0.3';
                         }}
-                        style={{
-                            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-                            objectFit: 'cover', transition: 'transform 0.5s ease'
-                        }}
+                        className="absolute top-0 left-0 w-full h-full object-cover transition-transform duration-500"
                     />
                 ) : (
-                    <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(239,68,68,0.05)' }}>
-                        <WifiOff size={24} style={{ color: '#ef4444', opacity: 0.5 }} />
+                    <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center bg-error/5">
+                        <WifiOff size={24} className="text-error/50" />
                     </div>
                 )}
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: '0.8125rem', fontWeight: 800, color: tk.textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div className="flex items-center justify-between">
+                <div className="min-w-0 pr-2">
+                    <div className="text-[0.8125rem] font-extrabold text-text-1 whitespace-nowrap overflow-hidden text-ellipsis">
                         {hb.device_code}
                     </div>
-                    <div style={{ fontSize: '0.6875rem', color: tk.textMuted, display: 'flex', alignItems: 'center', gap: '0.375rem', marginTop: '0.125rem' }}>
+                    <div className="text-[0.6875rem] text-text-3 flex items-center gap-1.5 mt-0.5">
                         {(() => {
                             const hasSyncErr = (hb.meta as any)?.sync_errors > 0;
                             const isOff = !online;
-                            const dotColor = isOff ? '#ef4444' : hasSyncErr ? '#f59e0b' : tk.brand;
+                            const dotClass = isOff ? 'bg-error shadow-[0_0_8px_rgba(255,61,0,0.5)]' : hasSyncErr ? 'bg-warning shadow-[0_0_8px_rgba(245,158,11,0.5)]' : 'bg-brand-500 shadow-[0_0_8px_rgba(0,218,243,0.5)]';
                             const statText = isOff ? 'Offline' : hasSyncErr ? `${(hb.meta as any).sync_errors} Sync Error(s)` : 'Online';
                             return (
                                 <>
-                                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: dotColor, boxShadow: `0 0 8px ${dotColor}` }} />
+                                    <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`} />
                                     {hb.device?.store?.name || 'Main Office'} &middot; {statText}
                                 </>
                             )
@@ -388,7 +308,7 @@ function DeviceGridItem({ hb, online, tk, onEdit }: { hb: ProjectHeartbeat, onli
                 </div>
                 <button
                     onClick={onEdit}
-                    style={{ padding: '0.35rem', borderRadius: 8, background: tk.actionBg, border: `1px solid ${tk.rowBorder}`, color: tk.textMuted, display: 'flex' }}
+                    className="p-1.5 rounded-lg bg-surface-1 border border-border text-text-3 hover:text-brand-500 transition-colors outline-none shrink-0"
                 >
                     <ArrowUpRight size={14} />
                 </button>
@@ -397,193 +317,80 @@ function DeviceGridItem({ hb, online, tk, onEdit }: { hb: ProjectHeartbeat, onli
     )
 }
 
-function DeviceRow({ hb, online, tk, onEdit }: { hb: ProjectHeartbeat, online: boolean, tk: any, onEdit: () => void }) {
-    const [hovered, setHovered] = useState(false)
-    return (
-        <div
-            onMouseEnter={() => setHovered(true)}
-            onMouseLeave={() => setHovered(false)}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.875rem 1rem', background: hovered ? tk.rowHover : tk.rowBg, border: `1px solid ${tk.rowBorder}`, borderRadius: 12, transition: 'all 0.15s', cursor: 'default' }}
-        >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
-                <div style={{ width: 44, height: 44, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: online ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)', border: `1px solid ${online ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`, color: online ? '#22c55e' : '#ef4444', flexShrink: 0 }}>
-                    <Monitor size={18} />
-                </div>
-                <div>
-                    <div style={{ fontSize: '0.875rem', fontWeight: 700, color: tk.textPrimary, letterSpacing: '0.01em' }}>{hb.device_code}</div>
-                    <div style={{ fontSize: '0.75rem', color: tk.textMuted, display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.125rem' }}>
-                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: online ? '#22c55e' : '#ef4444', flexShrink: 0, display: 'inline-block' }} />
-                        {hb.device?.store?.name || hb.device?.display_name || 'Main Office'} · {hb.status || 'Active'}
-                    </div>
-                </div>
-            </div>
-            {hovered && (
-                <button
-                    onClick={onEdit}
-                    style={{ padding: '0.375rem 0.875rem', background: tk.actionBg, border: `1px solid ${tk.actionBorder}`, borderRadius: 8, color: tk.textMuted, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s' }}
-                    onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-brand-500)')}
-                    onMouseLeave={e => (e.currentTarget.style.color = tk.textMuted)}
-                >
-                    Edit / Fix
-                </button>
-            )}
-        </div>
-    )
-}
-
-function ActionTile({ title, sub, icon, onClick, tk }: any) {
-    const [hovered, setHovered] = useState(false)
+function ActionTile({ title, sub, icon, onClick }: any) {
     return (
         <button
             onClick={onClick}
-            onMouseEnter={() => setHovered(true)}
-            onMouseLeave={() => setHovered(false)}
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '1.125rem 0.75rem', background: hovered ? tk.actionHover : tk.actionBg, border: `1px solid ${tk.actionBorder}`, borderRadius: 12, gap: '0.625rem', cursor: 'pointer', transition: 'all 0.2s', transform: hovered ? 'translateY(-1px)' : 'translateY(0)' }}
+            className="flex flex-col items-center justify-center p-4 bg-surface-1 hover:bg-surface-2 border border-border rounded-xl gap-2.5 cursor-pointer transition-all duration-200 hover:-translate-y-px outline-none group"
         >
-            <div style={{ padding: '0.5rem', background: tk.actionIconBg, borderRadius: 8, color: 'var(--color-brand-500)', display: 'flex', transform: hovered ? 'scale(1.1)' : 'scale(1)', transition: 'transform 0.2s' }}>
+            <div className="p-2 bg-brand-500/10 rounded-lg text-brand-500 flex transform group-hover:scale-110 transition-transform duration-200">
                 {icon}
             </div>
-            <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: tk.textPrimary, lineHeight: 1.3 }}>{title}</div>
-                <div style={{ fontSize: '0.6875rem', color: tk.textMuted, marginTop: '0.125rem' }}>{sub}</div>
+            <div className="text-center">
+                <div className="text-xs font-bold text-text-1 leading-tight">{title}</div>
+                <div className="text-[0.6875rem] text-text-3 mt-0.5">{sub}</div>
             </div>
         </button>
     )
 }
 
-function MetricTile({ title, value, trend, icon, color, to, isLight }: any) {
+function MetricTile({ title, value, trend, icon, variant = 'info', to }: any) {
     const navigate = useNavigate()
-    const [hovered, setHovered] = useState(false)
 
-    const palette: Record<string, { lightBg: string; darkBg: string; lightText: string; darkText: string; lightBorder: string; darkBorder: string }> = {
-        green: { lightBg: '#f0fdf4', darkBg: 'rgba(34,197,94,0.12)', lightText: '#15803d', darkText: '#4ade80', lightBorder: 'rgba(34,197,94,0.2)', darkBorder: 'rgba(34,197,94,0.2)' },
-        orange: { lightBg: '#fff7ed', darkBg: 'rgba(249,115,22,0.12)', lightText: '#c2410c', darkText: '#fb923c', lightBorder: 'rgba(249,115,22,0.2)', darkBorder: 'rgba(249,115,22,0.2)' },
-        blue: { lightBg: '#f0f9ff', darkBg: 'rgba(14,165,233,0.12)', lightText: '#0369a1', darkText: '#38bdf8', lightBorder: 'rgba(14,165,233,0.2)', darkBorder: 'rgba(14,165,233,0.2)' },
-        red: { lightBg: '#fff1f2', darkBg: 'rgba(239,68,68,0.12)', lightText: '#dc2626', darkText: '#f87171', lightBorder: 'rgba(239,68,68,0.2)', darkBorder: 'rgba(239,68,68,0.2)' },
-    }
-
-    const p = palette[color] || palette.blue
-    const bg = isLight ? p.lightBg : p.darkBg
-    const text = isLight ? p.lightText : p.darkText
-    const border = isLight ? p.lightBorder : p.darkBorder
-    const shadow = isLight ? `0 2px 12px rgba(0,55,81,0.05)` : '0 4px 16px rgba(0,0,0,0.15)'
+    const vClass = {
+        success: 'bg-success/5 border-success/20 text-success hover:shadow-[0_15px_35px_rgba(34,197,94,0.12)]',
+        warning: 'bg-warning/5 border-warning/20 text-warning hover:shadow-[0_15px_35px_rgba(245,158,11,0.12)]',
+        info: 'bg-brand-500/5 border-brand-500/20 text-brand-500 hover:shadow-[0_15px_35px_rgba(0,218,243,0.12)]',
+        error: 'bg-error/5 border-error/20 text-error hover:shadow-[0_15px_35px_rgba(255,61,0,0.12)]'
+    }[variant as 'success' | 'warning' | 'info' | 'error']
 
     return (
         <div
             onClick={() => to && navigate(to)}
-            onMouseEnter={() => setHovered(true)}
-            onMouseLeave={() => setHovered(false)}
-            style={{
-                padding: '1.5rem',
-                borderRadius: 20,
-                background: bg,
-                border: `1px solid ${border}`,
-                backdropFilter: 'blur(8px)',
-                boxShadow: hovered ? `0 15px 35px ${p.darkBg}` : shadow,
-                cursor: to ? 'pointer' : 'default',
-                transform: hovered ? 'translateY(-5px)' : 'translateY(0)',
-                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
-            }}
+            className={`p-6 rounded-2xl border backdrop-blur-md cursor-${to ? 'pointer' : 'default'} transition-all duration-300 transform hover:-translate-y-1 ${vClass}`}
         >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
-                <div style={{
-                    padding: '0.625rem',
-                    background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.05)',
-                    borderRadius: 12,
-                    color: text,
-                    display: 'flex',
-                    boxShadow: hovered ? `0 0 10px ${text}33` : 'none',
-                    transition: 'all 0.3s'
-                }}>
+            <div className="flex justify-between items-start mb-5">
+                <div className="p-2.5 bg-white/5 rounded-xl flex shadow-sm">
                     {icon}
                 </div>
-                <TrendingUp size={16} style={{ color: text, opacity: 0.3 }} />
+                <TrendingUp size={16} className="opacity-30" />
             </div>
-            <div style={{ fontSize: '1.75rem', fontWeight: 900, color: text, lineHeight: 1, marginBottom: '0.5rem', letterSpacing: '-0.02em' }}>{value}</div>
-            <div style={{ fontSize: '0.65rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.2em', color: text, opacity: 0.5, marginBottom: '0.75rem' }}>{title}</div>
-            <div style={{
-                fontSize: '0.6875rem',
-                fontWeight: 700,
-                color: text,
-                opacity: 0.8,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.375rem',
-                background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.05)',
-                padding: '4px 8px',
-                borderRadius: 6,
-                width: 'fit-content'
-            }}>
+            <div className="text-[1.75rem] font-black leading-none mb-2 tracking-tight">{value}</div>
+            <div className="text-[0.65rem] font-black uppercase tracking-widest opacity-60 mb-3">{title}</div>
+            <div className="text-[0.6875rem] font-bold opacity-80 flex items-center gap-1.5 bg-white/5 px-2.5 py-1.5 rounded-lg w-fit">
                 <ArrowUpRight size={12} /> {trend}
             </div>
         </div>
     )
 }
 
-function StatCard({ icon, label, value, subValue, color, to, tk }: {
+function StatCard({ icon, label, value, subValue, color, to }: {
     icon: React.ReactNode, label: string, value: number | string,
-    subValue?: string, color: string, to?: string, tk: any
+    subValue?: string, color: string, to?: string
 }) {
     const navigate = useNavigate()
-    const [hovered, setHovered] = useState(false)
 
     return (
         <div
-            className="stat-card"
             onClick={() => to && navigate(to)}
-            onMouseEnter={() => setHovered(true)}
-            onMouseLeave={() => setHovered(false)}
-            style={{
-                cursor: to ? 'pointer' : 'default',
-                transform: hovered && to ? 'translateY(-5px)' : 'translateY(0)',
-                boxShadow: hovered && to ? `0 20px 40px ${color}15` : tk.cardShadow,
-                background: tk.cardBg,
-                border: `1px solid ${hovered ? color + '44' : tk.cardBorder}`,
-                borderRadius: 24,
-                backdropFilter: tk.glassFilter,
-                padding: '1.5rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '1.125rem',
-                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                position: 'relative',
-            }}
+            className={`p-6 bg-surface-1 border border-border hover:border-brand-500/40 rounded-3xl backdrop-blur-md flex items-center gap-4 transition-all duration-300 relative group ${to ? 'cursor-pointer hover:-translate-y-1 hover:shadow-xl' : 'cursor-default shadow-lg'}`}
         >
-            <div className="stat-icon" style={{
-                background: hovered ? color : `${color}15`,
-                color: hovered ? '#fff' : color,
-                width: 48, height: 48, borderRadius: 14,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: hovered ? `0 0 20px ${color}66` : 'none',
-                transition: 'all 0.3s'
-            }}>
+            <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 transition-all duration-300 ${color}`}>
                 {icon}
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <div style={{ fontSize: '1.75rem', fontWeight: 900, color: tk.textPrimary, letterSpacing: '-0.02em', lineHeight: 1 }}>{value}</div>
+            <div className="flex-1 min-w-0">
+                <div className="flex items-baseline gap-2 flex-wrap">
+                    <div className="text-[1.75rem] font-black text-text-1 tracking-tight leading-none">{value}</div>
                     {subValue && (
-                        <div style={{
-                            fontSize: '0.65rem', fontWeight: 900, color,
-                            background: `${color}10`, padding: '3px 8px', borderRadius: 6,
-                            letterSpacing: '0.1em', whiteSpace: 'nowrap',
-                            border: `1px solid ${color}20`
-                        }}>
+                        <div className={`text-[0.65rem] font-black px-2 py-1 rounded-md tracking-widest whitespace-nowrap border ${color}`}>
                             {subValue.toUpperCase()}
                         </div>
                     )}
                 </div>
-                <div style={{ fontSize: '0.7rem', fontWeight: 800, color: tk.textMuted, textTransform: 'uppercase', letterSpacing: '0.15em', marginTop: '0.5rem', opacity: 0.5 }}>{label}</div>
+                <div className="text-[0.7rem] font-extrabold text-text-3 uppercase tracking-[0.15em] mt-2 opacity-60">{label}</div>
             </div>
             {to && (
-                <div style={{
-                    position: 'absolute', top: '1.125rem', right: '1.125rem',
-                    color: hovered ? color : tk.arrowColor,
-                    transition: 'all 0.3s',
-                    transform: hovered ? 'translate(2px,-2px) scale(1.1)' : 'translate(0,0)',
-                    display: 'flex',
-                    opacity: hovered ? 1 : 0.3
-                }}>
+                <div className="absolute top-4 right-4 text-text-3 opacity-30 group-hover:text-brand-500 group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all duration-300 flex">
                     <ArrowUpRight size={18} />
                 </div>
             )}

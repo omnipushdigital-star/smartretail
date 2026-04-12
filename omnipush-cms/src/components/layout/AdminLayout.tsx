@@ -1,8 +1,8 @@
 import React from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
-import { Moon, Sun, Bell, Check, Plus, ChevronDown, MapPin, Building2, LogOut } from 'lucide-react'
+import { Bell, Check, Plus, ChevronDown, MapPin, Building2, LogOut } from 'lucide-react'
 import Sidebar from './Sidebar'
-import { useTheme } from '../../contexts/ThemeContext'
+ 
 import { useAuth } from '../../contexts/AuthContext'
 import { useTenant } from '../../contexts/TenantContext'
 import { supabase } from '../../lib/supabase'
@@ -17,7 +17,7 @@ interface TenantSettings {
 
 export default function AdminLayout() {
     const navigate = useNavigate()
-    const { theme, toggleTheme } = useTheme()
+ 
     const { user, signOut } = useAuth()
     const { currentTenant, tenants, switchTenant, loading: tenantLoading } = useTenant()
     const currentTenantId = currentTenant?.id
@@ -59,83 +59,41 @@ export default function AdminLayout() {
 
 
     return (
-        <div style={{ display: 'flex', minHeight: '100vh', background: theme === 'dark' ? '#080c14' : '#f4f7fb' }}>
-
+        <div className="flex min-h-screen bg-bg text-text-1 transition-colors duration-200">
             <Sidebar />
-            <div className="main-content" style={{
-                flex: 1,
-                minWidth: 0,
-                overflow: 'auto',
-                display: 'flex',
-                flexDirection: 'column',
-                minHeight: '100vh',
-                background: theme === 'dark' ? '#080c14' : '#f4f7fb'
-            }}>
-                {/* Top bar — styled entirely via .topbar CSS class in index.css */}
-                <header className="topbar">
-                    <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-                        <span style={{
-                            fontSize: '1rem',
-                            fontWeight: 900,
-                            letterSpacing: '0.2em',
-                            textTransform: 'uppercase',
-                            color: '#00daf3',
-                            filter: theme === 'dark' ? `drop-shadow(0 0 8px rgba(0, 218, 243, 0.4))` : 'none'
-                        }}>
+            <div className="main-content flex-1 min-w-0 overflow-auto flex flex-col min-h-screen bg-bg transition-colors duration-200">
+                
+                {/* Topbar */}
+                <header className="topbar h-[72px] px-7 flex items-center justify-between gap-4 bg-bg/85 backdrop-blur-xl border-b border-border sticky top-0 z-50 shrink-0">
+                    <div className="flex-1 flex items-center">
+                        <span className="text-base font-black tracking-[0.2em] uppercase text-brand-500 drop-shadow-[0_0_8px_rgba(0,218,243,0.3)]">
                             SMART RETAIL DISPLAY
                         </span>
                         {(import.meta.env.VITE_APP_ENV !== 'production' || window.location.hostname.includes('smartretail-plum')) && (
-                            <span style={{
-                                marginLeft: '1rem',
-                                background: 'rgba(var(--color-brand-rgb), 0.1)',
-                                border: '1px solid var(--color-brand-500)',
-                                color: 'var(--color-brand-500)',
-                                fontSize: '0.625rem',
-                                padding: '2px 8px',
-                                borderRadius: '100px',
-                                fontWeight: 900,
-                                textTransform: 'uppercase',
-                                letterSpacing: '0.1em'
-                            }}>
+                            <span className="ml-4 bg-brand-500/10 border border-brand-500 text-brand-500 text-[0.625rem] px-2 py-0.5 rounded-full font-black uppercase tracking-widest">
                                 Staging
                             </span>
                         )}
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                        {/* Multi-Tenant Switcher (Redesigned) */}
-                        <div style={{ position: 'relative' }}>
+                    <div className="flex items-center gap-4">
+                        {/* Multi-Tenant Switcher */}
+                        <div className="relative">
                             <button
                                 onClick={() => setShowSwitcher(!showSwitcher)}
-                                style={{
-                                    display: 'flex', alignItems: 'center', gap: '0.875rem',
-                                    background: theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
-                                    border: '1px solid currentColor',
-                                    padding: '0.625rem 1rem',
-                                    borderRadius: '12px',
-                                    marginRight: '0.5rem',
-                                    cursor: 'pointer', outline: 'none',
-                                    transition: 'all 0.2s ease',
-                                    paddingRight: '1.25rem'
-                                }}
+                                className="flex items-center gap-3 bg-surface-300/30 hover:bg-surface-300/50 border border-border px-4 py-2.5 rounded-xl mr-2 outline-none transition-all duration-200 pr-5"
                             >
-                                <div style={{
-                                    width: 38, height: 38, borderRadius: '12px',
-                                    background: 'white', border: `1.5px solid ${theme === 'dark' ? 'rgba(255,255,255,0.05)' : '#e2e8f0'}`,
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    padding: '6px', overflow: 'hidden',
-                                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
-                                }}>
+                                <div className="w-9 h-9 rounded-xl bg-white border border-border flex items-center justify-center p-1.5 overflow-hidden shadow-lg shadow-black/10">
                                     <img
                                         src={tenant?.logo_url || "https://i.ibb.co/vzB7K8N/apache-pizza-logo.png"}
                                         alt={tenant?.name || "Tenant"}
-                                        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                                        className="w-full h-full object-contain"
                                     />
                                 </div>
-                                <div style={{ textAlign: 'left' }}>
-                                    <div style={{ fontSize: '0.7rem', color: theme === 'dark' ? '#94a3b8' : '#64748b', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Active Instance</div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.125rem' }}>
-                                        <span style={{ fontSize: '1rem', fontWeight: 800, color: theme === 'dark' ? '#f1f5f9' : '#1e1e2d', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                <div className="text-left">
+                                    <div className="text-[0.7rem] text-text-3 font-semibold tracking-wider uppercase">Active Instance</div>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                        <span className="text-base font-extrabold text-text-1 whitespace-nowrap overflow-hidden text-ellipsis max-w-[120px]">
                                             {tenant?.name || 'Loading...'}
                                         </span>
                                         <ChevronDown size={14} color={tenant?.primary_color || "#00daf3"} />
@@ -145,50 +103,26 @@ export default function AdminLayout() {
 
                             {showSwitcher && (
                                 <>
-                                    <div
-                                        onClick={() => setShowSwitcher(false)}
-                                        style={{ position: 'fixed', inset: 0, zIndex: 40 }}
-                                    />
-                                    <div style={{
-                                        position: 'absolute', top: '120%', right: 0, width: 280,
-                                        background: theme === 'dark' ? '#0f172a' : '#ffffff',
-                                        border: `1px solid ${theme === 'dark' ? '#1e293b' : '#e2e8f0'}`,
-                                        borderRadius: 16, boxShadow: '0 20px 50px rgba(0,0,0,0.2)',
-                                        zIndex: 50, overflow: 'hidden'
-                                    }}>
-                                        <div style={{ padding: '1rem', borderBottom: `1px solid ${theme === 'dark' ? '#1e293b' : '#f1f5f9'}`, background: 'rgba(255,255,255,0.02)' }}>
-                                            <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Switch Organization</div>
+                                    <div onClick={() => setShowSwitcher(false)} className="fixed inset-0 z-40" />
+                                    <div className="absolute top-[120%] right-0 w-72 bg-surface-1 border border-border rounded-2xl shadow-2xl z-50 overflow-hidden">
+                                        <div className="p-4 border-b border-border bg-white/5">
+                                            <div className="text-[0.7rem] text-text-3 font-extrabold uppercase tracking-widest">Switch Organization</div>
                                         </div>
-                                        <div style={{ maxHeight: 300, overflowY: 'auto', padding: '0.5rem' }}>
+                                        <div className="max-h-[300px] overflow-y-auto p-2">
                                             {tenants.map(t => (
                                                 <button
                                                     key={t.id}
                                                     onClick={() => { switchTenant(t.id); setShowSwitcher(false); }}
-                                                    style={{
-                                                        width: '100%', display: 'flex', alignItems: 'center', gap: '0.75rem',
-                                                        padding: '0.75rem',
-                                                        background: t.id === currentTenantId
-                                                            ? 'rgba(var(--color-brand-rgb), 0.1)'
-                                                            : 'transparent',
-                                                        border: 'none', borderRadius: 10, cursor: 'pointer', transition: 'all 0.2s',
-                                                        color: t.id === currentTenantId
-                                                            ? 'var(--color-brand-500)'
-                                                            : (theme === 'dark' ? '#94a3b8' : '#475569'),
-                                                        textAlign: 'left'
-                                                    }}
+                                                    className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all duration-200 text-left outline-none ${t.id === currentTenantId ? 'bg-brand-500/10 text-brand-500' : 'text-text-2 hover:bg-surface-300 hover:text-text-1'}`}
                                                 >
-                                                    <div style={{
-                                                        width: 24, height: 24, borderRadius: 6,
-                                                        background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                        padding: 3, flexShrink: 0, border: '1px solid #e2e8f0'
-                                                    }}>
-                                                        <Building2 size={14} color="#1e293b" />
+                                                    <div className="w-6 h-6 rounded-md bg-white flex items-center justify-center p-1 shrink-0 border border-border">
+                                                        <Building2 size={14} className="text-surface-2" />
                                                     </div>
-                                                    <div style={{ flex: 1, overflow: 'hidden' }}>
-                                                        <div style={{ fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</div>
-                                                        {t.id === currentTenantId && <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--color-brand-500)' }}>Current Active</div>}
+                                                    <div className="flex-1 overflow-hidden">
+                                                        <div className="text-sm font-semibold truncate">{t.name}</div>
+                                                        {t.id === currentTenantId && <div className="text-[0.65rem] font-bold text-brand-500 mt-0.5">Current Active</div>}
                                                     </div>
-                                                    {t.id === currentTenantId && <Check size={14} color="var(--color-brand-500)" />}
+                                                    {t.id === currentTenantId && <Check size={14} className="text-brand-500" />}
                                                 </button>
                                             ))}
                                         </div>
@@ -197,104 +131,47 @@ export default function AdminLayout() {
                             )}
                         </div>
 
-                        <button
-                            onClick={toggleTheme}
-                            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-                            style={{
-                                background: theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
-                                border: `1.5px solid ${theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'}`,
-                                borderRadius: 10, padding: '0.5rem',
-                                cursor: 'pointer', display: 'flex', alignItems: 'center',
-                                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                                color: theme === 'dark' ? '#94a3b8' : '#64748b'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.currentTarget.style.transform = 'translateY(-2px)'
-                                e.currentTarget.style.backgroundColor = theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'
-                            }}
-                            onMouseLeave={(e) => {
-                                e.currentTarget.style.transform = 'translateY(0)'
-                                e.currentTarget.style.backgroundColor = theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)'
-                            }}
-                        >
-                            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-                        </button>
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
 
+                        {/* Notifications */}
                         <button
                             title="Notifications"
-                            style={{
-                                background: theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
-                                border: `1.5px solid ${theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'}`,
-                                borderRadius: 10, padding: '0.5rem',
-                                cursor: 'pointer', display: 'flex', alignItems: 'center', position: 'relative',
-                                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                                color: theme === 'dark' ? '#94a3b8' : '#64748b'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.currentTarget.style.transform = 'translateY(-2px)'
-                                e.currentTarget.style.backgroundColor = theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'
-                            }}
-                            onMouseLeave={(e) => {
-                                e.currentTarget.style.transform = 'translateY(0)'
-                                e.currentTarget.style.backgroundColor = theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)'
-                            }}
+                            className="p-2.5 rounded-xl bg-surface-300/30 hover:bg-surface-300/50 border border-border text-text-2 hover:text-text-1 hover:-translate-y-0.5 transition-all outline-none relative"
                         >
                             <Bell size={18} />
-                            <span style={{
-                                position: 'absolute', top: -3, right: -3, width: 8, height: 8,
-                                borderRadius: '50%', background: '#00daf3',
-                                boxShadow: `0 0 10px rgba(0, 218, 243, 0.5)`,
-                                border: `2px solid ${theme === 'dark' ? '#0a0f1d' : '#fff'}`
-                            }} />
+                            <span className="absolute -top-[3px] -right-[3px] w-2.5 h-2.5 rounded-full bg-brand-500 border-2 border-surface-1 shadow-[0_0_10px_rgba(0,218,243,0.5)]" />
                         </button>
 
-                        <div style={{ position: 'relative' }}>
+                        {/* User Menu */}
+                        <div className="relative">
                             <button
                                 onClick={() => setShowUserMenu(!showUserMenu)}
-                                style={{
-                                    width: 36, height: 36, borderRadius: '50%',
-                                    background: `linear-gradient(135deg, ${tenant?.primary_color || '#00daf3'}, ${tenant?.secondary_color || '#007e8c'})`,
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    fontSize: '0.85rem', fontWeight: 700, color: 'white',
-                                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                                    border: 'none', cursor: 'pointer', outline: 'none',
-                                    transition: 'transform 0.2s', padding: 0
-                                }}
-                                onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.05)')}
-                                onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                                className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white shadow-lg shadow-black/15 outline-none hover:scale-105 transition-transform"
+                                style={{ background: `linear-gradient(135deg, ${tenant?.primary_color || '#00daf3'}, ${tenant?.secondary_color || '#007e8c'})` }}
                             >
                                 {user?.email?.charAt(0).toUpperCase() || 'A'}
                             </button>
 
                             {showUserMenu && (
                                 <>
-                                    <div
-                                        onClick={() => setShowUserMenu(false)}
-                                        style={{ position: 'fixed', inset: 0, zIndex: 40 }}
-                                    />
-                                    <div style={{
-                                        position: 'absolute', top: '120%', right: 0, width: 220,
-                                        background: theme === 'dark' ? '#0f172a' : '#ffffff',
-                                        border: `1px solid ${theme === 'dark' ? '#1e293b' : '#e2e8f0'}`,
-                                        borderRadius: 12, boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
-                                        zIndex: 50, overflow: 'hidden', padding: '0.5rem'
-                                    }}>
-                                        <div style={{ padding: '0.75rem', borderBottom: `1px solid ${theme === 'dark' ? '#1e293b' : '#f1f5f9'}`, marginBottom: '0.5rem' }}>
-                                            <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Signed in as</div>
-                                            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: theme === 'dark' ? '#f1f5f9' : '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    <div onClick={() => setShowUserMenu(false)} className="fixed inset-0 z-40" />
+                                    <div className="absolute top-[120%] right-0 w-56 bg-surface-1 border border-border rounded-xl shadow-2xl z-50 overflow-hidden p-2">
+                                        <div className="p-3 border-b border-border mb-2">
+                                            <div className="text-[0.75rem] text-text-3 font-semibold">Signed in as</div>
+                                            <div className="text-sm font-bold text-text-1 truncate mt-0.5">
                                                 {user?.email}
                                             </div>
                                         </div>
                                         <button
                                             onClick={() => signOut()}
-                                            style={{
-                                                width: '100%', display: 'flex', alignItems: 'center', gap: '0.75rem',
-                                                padding: '0.75rem', background: 'transparent',
-                                                border: 'none', borderRadius: 8, cursor: 'pointer', transition: 'all 0.2s',
-                                                color: '#ef4444', textAlign: 'left', fontWeight: 600, fontSize: '0.875rem'
-                                            }}
-                                            onMouseEnter={(e) => (e.currentTarget.style.background = theme === 'dark' ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.05)')}
-                                            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                                            className="w-full flex items-center gap-3 p-3 rounded-lg text-sm font-semibold text-error hover:bg-error/10 transition-colors text-left outline-none"
                                         >
                                             <LogOut size={16} />
                                             Log Out
@@ -305,13 +182,14 @@ export default function AdminLayout() {
                         </div>
                     </div>
                 </header>
-                <main className="page-content fade-in relative">
+
+                <main className="page-content fade-in relative flex-1">
                     <WorkflowBanner />
                     <div className="p-6">
                         <Outlet />
                     </div>
                 </main>
-            </div >
-        </div >
+            </div>
+        </div>
     )
-}
+} 
