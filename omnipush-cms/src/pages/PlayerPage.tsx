@@ -1438,6 +1438,7 @@ export default function PlayerPage() {
             if (data.up_to_date) {
                 console.log(`[Player] Content ${data.version} is up to date. Keep loop playing.`)
                 setOffline(false)
+                if (phaseRef.current === 'error') setPhase('playing')
                 return true
             }
 
@@ -1462,6 +1463,7 @@ export default function PlayerPage() {
             versionRef.current = newVersion
             localStorage.setItem(manifestKey(dc), JSON.stringify(data))
             setOffline(false)
+            if (phaseRef.current === 'error') setPhase('playing')
 
             if (data.assets) syncAssets(data.assets)
 
