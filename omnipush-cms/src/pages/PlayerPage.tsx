@@ -207,7 +207,14 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
 
     const getUrl = useCallback((item: ManifestItem) => {
         const asset = memoizedAssets.find(a => a.media_id === item.media_id)
-        return asset?.url || item.web_url || ''
+        const rawUrl = asset?.url || item.web_url || ''
+        if (!rawUrl) return ''
+        try {
+            // Ensure URL is absolute for Native Handoff
+            return new URL(rawUrl, window.location.href).href
+        } catch (e) {
+            return rawUrl
+        }
     }, [memoizedAssets])
 
     const advanceBufferRef = useRef<(force?: boolean) => void>(() => { })
@@ -232,10 +239,11 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
         const currentItem = sorted[idxRef.current]
         if (currentItem) {
             const url = getUrl(currentItem)
-            if (url && url.startsWith('http')) {
-                console.log(`[NativeHandoff] Slot Swap Trigger -> Play: ${url.slice(-20)}`)
+            if (url) {
+                console.log(`[NativeHandoff] SLOT_CHANGE -> Play: ${url}`)
                 const win = window as any
                 if (win.AndroidHealth) win.AndroidHealth.playNativeVideo(url)
+                setDebug(`P: ${url.split('/').pop()?.slice(-15)}`)
             }
         }
     }, [isAndroidNative, activeSlot, sorted, getUrl])
@@ -508,8 +516,8 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
                 />
             ))}
             {isAndroidNative && <div id="native-layer-proxy" style={{ pointerEvents: 'none' }} />}
-            <div style={{ position: 'absolute', bottom: 4, left: 4, fontSize: 9, color: 'rgba(255,255,255,0.2)', zIndex: 110 }}>
-                {debug} | {activeSlot === 0 ? 'V1' : 'V2'} | {effect}
+            <div style={{ position: 'absolute', bottom: 4, left: 4, fontSize: 9, color: 'rgba(255,255,255,0.4)', zIndex: 110, background: 'rgba(0,0,0,0.5)', padding: '2px 4px', borderRadius: 2 }}>
+                {debug} | {activeSlot === 0 ? 'V1' : 'V2'} | ALL_V: {String(sorted.length === items.length)} | ADDR: {window.location.hostname}
             </div>
         </div>
     )
