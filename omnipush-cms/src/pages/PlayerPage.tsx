@@ -1152,6 +1152,7 @@ export default function PlayerPage() {
     const hbTimerRef = useRef<any>(null)
     const failCountRef = useRef(0)
     const isTransitioningRef = useRef(false)
+    const bootStartedRef = useRef(false)
 
     useEffect(() => {
         // Global hook for child components to report transition states
