@@ -371,28 +371,30 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
         }
     }, [activeSlot, videoRefs])
 
+    // ─── 1. Initialization: Resolve URLs for first 2 clips ───
     useEffect(() => {
-        if (sorted.length > 0 && !initialSyncDone.current) {
-            console.log('[DoubleBufferVideo] Initializing Slots...')
+        if (sorted.length > 0) {
             const url0 = getUrl(sorted[0])
             const url1 = sorted.length > 1 ? getUrl(sorted[1]) : url0
+            
+            // Only update if URLs actually changed to prevent render loops
+            if (url0 !== slotUrls[0] || url1 !== slotUrls[1]) {
+                console.log('[DoubleBufferVideo] Updating Slot URLs...', { url0: url0.slice(0, 30), url1: url1.slice(0, 30) })
+                setSlotUrls([url0, url1])
+                setDebug('Loading...')
+            }
 
-            if (isAndroidNative) {
+            if (isAndroidNative && !bootPlayedRef.current) {
                 console.log(`[DoubleBufferVideo] Booting Native Handoff: ${url0}`);
                 if (url0 && (window as any).AndroidHealth) (window as any).AndroidHealth.playNativeVideo(url0)
                 setDebug('Native-Play')
-            } else {
-                // Set URLs first so <video> elements start loading
-                setSlotUrls([url0, url1])
-                initialSyncDone.current = true
-
+                bootPlayedRef.current = true
+            } else if (!isAndroidNative && !bootPlayedRef.current) {
                 // ── BOOT-CRITICAL: Event-driven play() for slot 0 ──
-                // We rely on onCanPlay(0) to fire play() once the browser
-                // signals it has enough data. The boot watchdog below is a
-                // safety net if canplay is delayed beyond 5s (e.g. slow CDN).
+                // On some Android TV browsers, auto-play is strictly blocked.
+                // We set a 5s watchdog to force play if onCanPlay doesn't fire.
                 const bootWatchdog = setTimeout(() => {
                     if (!bootPlayedRef.current) {
-                        bootPlayedRef.current = true
                         const v = videoRefs[0].current
                         if (v) {
                             v.muted = true
@@ -1629,7 +1631,7 @@ export default function PlayerPage() {
                 window.location.reload()
             }
         }
-    }, [dc])
+    }, [dc, phase])
 
     // ── Init: check for stored secret or URL param ──
     useEffect(() => {
