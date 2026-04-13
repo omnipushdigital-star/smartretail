@@ -755,7 +755,7 @@ function PlaybackEngine({ items, assets, region, isNative = false }: PlaybackPro
                         onEnded={advance}
                     />
                 )}
-                {type === 'web_url' && url && (
+                {(type === 'web_url' || type === 'html') && url && (
                     <iframe src={getEmbedUrl(url)} style={{ width: '100%', height: '100%', border: 'none', display: 'block' }} allow="autoplay" />
                 )}
                 {type === 'presentation' && url && (

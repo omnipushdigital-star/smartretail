@@ -145,7 +145,7 @@ export default function PlaylistsPage() {
     const [saving, setSaving] = useState(false)
     const [editingPlaylist, setEditingPlaylist] = useState<Playlist | null>(null)
     const [playlistItems, setPlaylistItems] = useState<(PlaylistItem & { media?: MediaAsset })[]>([])
-    const [addType, setAddType] = useState<'image' | 'video' | 'web_url' | 'ppt' | 'menu'>('video')
+    const [addType, setAddType] = useState<'image' | 'video' | 'web_url' | 'ppt' | 'menu' | 'html'>('video')
     const [addMediaId, setAddMediaId] = useState('')
     const [addUrl, setAddUrl] = useState('')
     const [addDuration, setAddDuration] = useState('10')
@@ -296,7 +296,7 @@ export default function PlaylistsPage() {
             payload.duration_seconds = parseInt(addDuration) || 15
         } else if (hasLibraryAsset) {
             payload.media_id = addMediaId
-            if (addType === 'image' || addType === 'web_url' || addType === 'ppt') payload.duration_seconds = parseInt(addDuration) || 15
+            if (['image', 'web_url', 'ppt', 'html'].includes(addType)) payload.duration_seconds = parseInt(addDuration) || 15
             if (addType === 'video') payload.playback_speed = parseFloat(addPlaybackSpeed) || 1.0
         } else {
             payload.web_url = addUrl
@@ -563,6 +563,7 @@ export default function PlaylistsPage() {
                                             { id: 'image', label: 'Image', icon: <ImageIcon size={12} /> },
                                             { id: 'menu', label: 'Menu', icon: <LayoutIcon size={12} /> },
                                             { id: 'web_url', label: 'Web URL', icon: <Globe size={12} /> },
+                                            { id: 'html', label: 'HTML', icon: <Globe size={12} /> },
                                             { id: 'ppt', label: 'PPT', icon: <Presentation size={12} /> },
                                         ].map(t => (
                                             <button

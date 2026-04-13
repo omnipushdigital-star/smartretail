@@ -51,7 +51,7 @@ export interface MediaAsset {
     id: string
     tenant_id: string
     name: string
-    type: 'image' | 'video' | 'web_url' | 'ppt'
+    type: 'image' | 'video' | 'web_url' | 'ppt' | 'html'
     storage_path?: string
     url?: string
     bytes?: number
@@ -75,7 +75,7 @@ export interface PlaylistItem {
     id: string
     playlist_id: string
     media_id?: string
-    type: 'image' | 'video' | 'web_url' | 'ppt'
+    type: 'image' | 'video' | 'web_url' | 'ppt' | 'html'
     web_url?: string
     duration_seconds?: number
     playback_speed?: number

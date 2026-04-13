@@ -34,7 +34,7 @@ function timeAgo(dateStr?: string) {
 
 function TypeIcon({ type }: { type: string }) {
     if (type === 'video') return <Film size={14} color="#a78bfa" />
-    if (type === 'web_url') return <Globe size={14} color="#34d399" />
+    if (type === 'web_url' || type === 'html') return <Globe size={14} color="#34d399" />
     if (type === 'ppt' || type === 'presentation') return <Presentation size={14} color="#f59e0b" />
     return <ImageIcon size={14} color="#60a5fa" />
 }
@@ -153,10 +153,11 @@ export default function MediaPage() {
                     fileNameLower.endsWith('.ppsx') ||
                     file.type === 'application/vnd.ms-powerpoint' ||
                     file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
-                    file.type === 'application/vnd.openxmlformats-officedocument.presentationml.slideshow' ||
                     file.type.includes('presentation')
+                
+                const isHTML = fileNameLower.endsWith('.html') || fileNameLower.endsWith('.htm') || file.type === 'text/html'
 
-                const type = file.type.startsWith('video') ? 'video' : (isPPT ? 'ppt' : 'image')
+                const type = file.type.startsWith('video') ? 'video' : (isPPT ? 'ppt' : (isHTML ? 'html' : 'image'))
 
                 const { error: dbErr } = await supabase.from('media_assets').insert({
                     tenant_id: currentTenantId,
@@ -282,7 +283,7 @@ export default function MediaPage() {
                         {uploading ? <Loader2 size={14} /> : <Upload size={14} />}
                         {uploading ? 'Uploading…' : 'Upload Files'}
                     </button>
-                    <input ref={fileInput} type="file" multiple accept="image/*,video/*,.ppt,.pptx" style={{ display: 'none' }} onChange={handleFileUpload} />
+                    <input ref={fileInput} type="file" multiple accept="image/*,video/*,.ppt,.pptx,.html,.htm" style={{ display: 'none' }} onChange={handleFileUpload} />
                 </div>
             </div>
 
@@ -310,6 +311,7 @@ export default function MediaPage() {
                             { value: 'video', label: 'Videos', icon: <Film size={13} color="#a78bfa" /> },
                             { value: 'ppt', label: 'Slides', icon: <Presentation size={13} color="#f59e0b" /> },
                             { value: 'web_url', label: 'Web URLs', icon: <Globe size={13} color="#34d399" /> },
+                            { value: 'html', label: 'Web Content', icon: <Globe size={13} color="#34d399" /> },
                         ] as { value: string; label: string; icon: React.ReactNode }[]).map(({ value, label, icon }) => (
                             <button
                                 key={value}
@@ -354,6 +356,7 @@ export default function MediaPage() {
                             <div>{assets.filter(a => a.type === 'video').length} videos</div>
                             <div>{assets.filter(a => a.type === 'ppt').length} slides</div>
                             <div>{assets.filter(a => a.type === 'web_url').length} URLs</div>
+                            <div>{assets.filter(a => a.type === 'html').length} web files</div>
                         </div>
                     </div>
                 </div>
@@ -487,6 +490,7 @@ export default function MediaPage() {
                                 <option value="ppt">PowerPoint</option>
                                 <option value="video">Video</option>
                                 <option value="image">Image</option>
+                                <option value="html">HTML File</option>
                             </select>
                         </div>
                         <div className="form-group">
@@ -513,11 +517,11 @@ export default function MediaPage() {
                         {preview.type === 'video' && preview.url && (
                             <video src={preview.url} controls style={{ maxWidth: '100%', maxHeight: 400, borderRadius: 8 }} />
                         )}
-                        {preview.type === 'web_url' && (
+                        {preview.type === 'web_url' || preview.type === 'html' ? (
                             <a href={preview.url} target="_blank" rel="noreferrer" className="btn-primary" style={{ display: 'inline-flex' }}>
-                                Open URL
+                                Open Content
                             </a>
-                        )}
+                        ) : null}
                         {preview.type === 'ppt' && preview.url && (
                             <iframe
                                 src={`https://docs.google.com/viewer?url=${encodeURIComponent(preview.url)}&embedded=true`}
