@@ -2,7 +2,7 @@ import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
- 
+import { ThemeProvider } from './contexts/ThemeContext'
 import AdminLayout from './components/layout/AdminLayout'
 import { TenantProvider } from './contexts/TenantContext'
 import LoginPage from './pages/LoginPage'
@@ -102,7 +102,7 @@ function AppRoutes() {
 export default function App() {
   return (
     <BrowserRouter>
- 
+      <ThemeProvider>
         <AuthProvider>
           <TenantProvider>
             <AppRoutes />
@@ -126,7 +126,7 @@ export default function App() {
             }}
           />
         </AuthProvider>
- 
+      </ThemeProvider>
     </BrowserRouter>
   )
 }

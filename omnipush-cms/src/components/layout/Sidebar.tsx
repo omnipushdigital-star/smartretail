@@ -7,7 +7,7 @@ import {
     Settings, FileVideo, LayoutList, Layers, Calendar, Maximize, Palette, Globe, Download
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
- 
+import { useTheme } from '../../contexts/ThemeContext'
 
 const navItems = [
     { icon: <LayoutDashboard size={18} />, label: 'Dashboard', path: '/admin/dashboard' },
@@ -48,26 +48,69 @@ const navItems = [
 
 export default function Sidebar() {
     const { signOut } = useAuth()
+    const { theme } = useTheme()
     const location = useLocation()
+    const isDark = theme === 'dark'
+
+    // ── Design tokens ─────────────────────────────────────────────────────────
+    const sidebarBg = isDark ? '#0f172a' : '#ffffff'
+    const borderColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,218,243,0.1)'
+    const headerColor = isDark ? 'rgba(255,255,255,0.25)' : '#94a3b8'
+    const itemColor = isDark ? 'rgba(255,255,255,0.65)' : '#475569'
+    const itemHoverBg = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,218,243,0.06)'
+    const itemHoverColor = isDark ? '#ffffff' : '#0f172a'
+    const iconColor = isDark ? '#64748b' : '#94a3b8'
+    const activeBg = isDark ? 'rgba(0,218,243,0.08)' : 'rgba(0,218,243,0.08)'
+    const activeColor = '#00daf3'
+    const activeIconColor = '#00daf3'
+    const logoutBg = isDark ? '#0f172a' : '#ffffff'
 
     return (
-        <aside className="w-64 min-w-64 bg-surface-1 border-r border-border h-screen sticky top-0 z-40 flex flex-col overflow-y-auto overflow-x-hidden">
-            {/* Logo */}
-            <div className="flex items-center justify-center p-4 min-h-[72px] border-b border-border shrink-0">
+        <aside style={{
+            width: 256,
+            minWidth: 256,
+            background: sidebarBg,
+            borderRight: `1px solid ${borderColor}`,
+            height: '100vh',
+            position: 'sticky',
+            top: 0,
+            zIndex: 40,
+            display: 'flex',
+            flexDirection: 'column',
+            overflowY: 'auto',
+            overflowX: 'hidden',
+        }}>
+            {/* ── Logo ──────────────────────────────────────────────────────── */}
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '1rem 1.25rem',
+                minHeight: 72,
+                borderBottom: `1px solid ${borderColor}`,
+                flexShrink: 0,
+            }}>
                 <img
                     src="/assets/omnipush-logo.png"
                     alt="OmniPush Logo"
-                    className="h-12 w-full object-contain"
+                    style={{ height: 48, width: '100%', objectFit: 'contain' }}
                 />
             </div>
 
-            {/* Navigation */}
-            <div className="p-3 flex-1">
+            {/* ── Navigation ────────────────────────────────────────────────── */}
+            <div style={{ padding: '0.75rem 0.5rem', flex: 1 }}>
                 <nav>
                     {navItems.map((item, idx) => {
                         if (item.type === 'header') {
                             return (
-                                <div key={`header-${idx}`} className="text-[0.6rem] font-bold uppercase tracking-widest text-text-3 px-3.5 pt-5 pb-1">
+                                <div key={`header-${idx}`} style={{
+                                    fontSize: '0.6rem',
+                                    fontWeight: 800,
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.14em',
+                                    color: headerColor,
+                                    padding: '1.25rem 0.875rem 0.4rem',
+                                }}>
                                     {item.label}
                                 </div>
                             )
@@ -80,6 +123,14 @@ export default function Sidebar() {
                                 key={item.path || `nav-${idx}`}
                                 to={item.path || '#'}
                                 isActive={isActive}
+                                itemColor={itemColor}
+                                itemHoverBg={itemHoverBg}
+                                itemHoverColor={itemHoverColor}
+                                iconColor={iconColor}
+                                activeBg={activeBg}
+                                activeColor={activeColor}
+                                activeIconColor={activeIconColor}
+                                borderColor={borderColor}
                                 label={item.label}
                                 icon={item.icon}
                             />
@@ -88,11 +139,32 @@ export default function Sidebar() {
                 </nav>
             </div>
 
-            {/* Logout */}
-            <div className="p-4 border-t border-border shrink-0 bg-surface-1">
+            {/* ── Logout ────────────────────────────────────────────────────── */}
+            <div style={{
+                padding: '1rem',
+                borderTop: `1px solid ${borderColor}`,
+                flexShrink: 0,
+                background: logoutBg,
+            }}>
                 <button
                     onClick={() => signOut()}
-                    className="flex w-full items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium text-text-2 hover:bg-error/10 hover:text-error transition-all duration-150 outline-none"
+                    style={{
+                        display: 'flex', alignItems: 'center', gap: '0.75rem',
+                        width: '100%', padding: '0.625rem 0.875rem',
+                        background: 'transparent',
+                        border: 'none', borderRadius: 8,
+                        cursor: 'pointer', transition: 'all 0.15s',
+                        fontSize: '0.875rem', fontWeight: 500,
+                        color: isDark ? '#64748b' : '#94a3b8',
+                    }}
+                    onMouseEnter={e => {
+                        e.currentTarget.style.background = 'rgba(239,68,68,0.08)'
+                        e.currentTarget.style.color = '#ef4444'
+                    }}
+                    onMouseLeave={e => {
+                        e.currentTarget.style.background = 'transparent'
+                        e.currentTarget.style.color = isDark ? '#64748b' : '#94a3b8'
+                    }}
                 >
                     <LogOut size={18} />
                     Logout
@@ -102,23 +174,42 @@ export default function Sidebar() {
     )
 }
 
-function NavLink({ to, isActive, label, icon }: { to: string, isActive: boolean, label?: string, icon?: React.ReactNode }) {
+// ── Inline NavLink with hover state ──────────────────────────────────────────
+function NavLink({ to, isActive, label, icon, itemColor, itemHoverBg, itemHoverColor,
+    iconColor, activeBg, activeColor, activeIconColor, borderColor }: any) {
+    const [hovered, setHovered] = React.useState(false)
+
     return (
         <Link
             to={to}
-            className={`
-                flex items-center gap-3 px-3.5 py-2 my-px rounded-lg text-sm transition-all duration-150 outline-none group
-                border-l-4 
-                ${isActive 
-                    ? 'bg-brand-500/10 text-brand-500 font-semibold border-brand-500' 
-                    : 'text-text-2 border-transparent hover:bg-surface-300 hover:text-text-1 hover:border-transparent'}
-            `}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            style={{
+                display: 'flex', alignItems: 'center', gap: '0.75rem',
+                padding: '0.55rem 0.875rem',
+                margin: '1px 0',
+                borderRadius: 8,
+                textDecoration: 'none',
+                fontSize: '0.875rem', fontWeight: isActive ? 600 : 500,
+                transition: 'all 0.15s ease',
+                cursor: 'pointer',
+                background: isActive ? activeBg : hovered ? itemHoverBg : 'transparent',
+                color: isActive ? activeColor : hovered ? itemHoverColor : itemColor,
+                borderLeft: `3px solid ${isActive ? '#00daf3' : 'transparent'}`,
+            }}
         >
-            <span className={`shrink-0 transition-colors duration-150 ${isActive ? 'text-brand-500' : 'text-text-3 group-hover:text-brand-500'}`}>
+            <span style={{
+                display: 'flex',
+                color: isActive ? activeIconColor : hovered ? '#00daf3' : iconColor,
+                transition: 'color 0.15s',
+                flexShrink: 0,
+            }}>
                 {icon}
             </span>
             {label}
-            {isActive && <ChevronRight size={13} className="ml-auto opacity-40" />}
+            {isActive && (
+                <ChevronRight size={13} style={{ marginLeft: 'auto', opacity: 0.4 }} />
+            )}
         </Link>
     )
 }
