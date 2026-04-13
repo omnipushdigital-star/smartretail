@@ -519,7 +519,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
             ))}
             {isAndroidNative && <div id="native-layer-proxy" style={{ pointerEvents: 'none' }} />}
             <div style={{ position: 'absolute', bottom: 4, left: 4, fontSize: 9, color: 'rgba(255,255,255,0.4)', zIndex: 110, background: 'rgba(0,0,0,0.5)', padding: '2px 4px', borderRadius: 2 }}>
-                {debug} | {activeSlot === 0 ? 'V1' : 'V2'} | ALL_V: {String(sorted.length === items.length)} | ADDR: {window.location.hostname}
+                {debug} | {activeSlot === 0 ? 'V1' : 'V2'} | ALL_V: {String(sorted.length === items.length)} | ADDR: {window.location.hostname} (v1.7.5b)
             </div>
         </div>
     )
