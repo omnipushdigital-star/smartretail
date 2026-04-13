@@ -756,12 +756,18 @@ function PlaybackEngine({ items, assets, region, isNative = false }: PlaybackPro
                     />
                 )}
                 {(type === 'web_url' || type === 'html') && url && (
-                    <iframe src={getEmbedUrl(url)} style={{ width: '100%', height: '100%', border: 'none', display: 'block' }} allow="autoplay" />
+                    <iframe 
+                        src={getEmbedUrl(url)} 
+                        style={{ width: '100%', height: '100%', border: 'none', display: 'block' }} 
+                        allow="autoplay" 
+                        onLoad={() => setTimeout(() => setReadyIdx(targetIdx), READY_TIMING)}
+                    />
                 )}
                 {type === 'presentation' && url && (
                     <iframe
                         src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`}
                         style={{ width: '100%', height: '100%', border: 'none', background: '#fff', display: 'block' }}
+                        onLoad={() => setTimeout(() => setReadyIdx(targetIdx), READY_TIMING)}
                     />
                 )}
             </div>
