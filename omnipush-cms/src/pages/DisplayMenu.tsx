@@ -119,10 +119,10 @@ export default function DisplayMenu() {
             >
                 {/* Menu Area */}
                 <div
-                    className={`${aspectRatio === '16:9' ? 'p-[4%]' : 'p-[6%]'} h-full flex flex-col ${style.text} overflow-hidden`}
+                    className={`p-6 md:p-10 lg:p-12 h-full flex flex-col ${style.text} overflow-hidden`}
                     style={{ width: showPromo ? '70%' : '100%' }}
                 >
-                    <div className={`mb-8 ${aspectRatio === '16:9' ? 'flex items-center gap-8' : 'flex flex-col'} ${logoPlacement === 'center' ? 'justify-center text-center items-center' : logoPlacement === 'left' ? 'justify-start text-left items-start' : 'justify-end text-right items-end'}`}>
+                    <div className={`mb-4 md:mb-8 ${aspectRatio === '16:9' ? 'flex items-center gap-4 md:gap-8' : 'flex flex-col'} ${logoPlacement === 'center' ? 'justify-center text-center items-center' : logoPlacement === 'left' ? 'justify-start text-left items-start' : 'justify-end text-right items-end'}`}>
                         {tenant?.logo_url ? (
                             <div className="bg-white p-3 rounded-2xl shadow-xl border border-white/10 shrink-0">
                                 <img
