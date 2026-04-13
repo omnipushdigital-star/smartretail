@@ -1202,6 +1202,7 @@ export default function PlayerPage() {
     const manifestTimerRef = useRef<any>(null)
     const hbTimerRef = useRef<any>(null)
     const failCountRef = useRef(0)
+    const lastErrorRef = useRef<string | null>(null)
     const isTransitioningRef = useRef(false)
     const bootStartedRef = useRef(false)
 
