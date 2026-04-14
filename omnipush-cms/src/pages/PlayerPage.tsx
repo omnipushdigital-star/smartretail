@@ -10,7 +10,7 @@ import html2canvas from 'html2canvas'
 
 interface ManifestAsset {
     media_id: string
-    type: 'image' | 'video' | 'web_url' | 'ppt' | 'presentation'
+    type: 'image' | 'video' | 'web_url' | 'ppt' | 'presentation' | 'html'
     url: string | null
     checksum_sha256: string | null
     bytes: number | null
