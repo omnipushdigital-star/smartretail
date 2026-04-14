@@ -731,16 +731,20 @@ export default function DevicesPage() {
                                                                 className="w-4 h-4 rounded border-slate-700 bg-slate-900"
                                                             />
                                                         </td>
-                                                        <td><span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.875rem', color: isSelected ? 'var(--color-brand-500)' : 'var(--color-text-primary)', letterSpacing: '0.05em' }}>{d.device_code}</span></td>
-                                                        <td style={{ color: 'var(--color-text-primary)' }}>{d.display_name || 'â€”'}</td>
-                                                        <td style={{ color: 'var(--color-text-primary)', fontSize: '0.875rem', fontWeight: 800 }}>{(d as any).store?.name || '—'}</td>
+                                                        <td><span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.875rem', color: isSelected ? 'var(--color-brand-500)' : 'var(--color-text-primary)', letterSpacing: '0.05em' }}>{d.device_code}</span></td>
+                                                        <td style={{ color: 'var(--color-text-primary) !important' }}><span className="force-visible" style={{ fontWeight: 900 }}>{d.display_name || '—'}</span></td>
+                                                        <td style={{ color: 'var(--color-text-primary) !important', fontSize: '0.925rem' }}>
+                                                            <span className="force-visible" style={{ fontWeight: 900 }}>{(d as any).store?.name || '—'}</span>
+                                                        </td>
                                                         <td>
                                                             {(d as any).role?.key
                                                                 ? <span className="badge badge-blue" style={{ fontFamily: 'monospace' }}>{(d as any).role.key}</span>
-                                                                : <span style={{ color: 'var(--color-text-3)' }}>â€”</span>
+                                                                : <span style={{ color: 'var(--color-text-primary) !important' }}>—</span>
                                                             }
                                                         </td>
-                                                        <td style={{ color: 'var(--color-text-primary)', fontSize: '0.875rem', fontWeight: 800, textTransform: 'capitalize' }}>{d.orientation}</td>
+                                                        <td style={{ color: 'var(--color-text-primary) !important', fontSize: '0.925rem', textTransform: 'capitalize' }}>
+                                                            <span className="force-visible" style={{ fontWeight: 900 }}>{d.orientation}</span>
+                                                        </td>
                                                         {/* â”€â”€ Device Secret cell â”€â”€ */}
                                                         <td>
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
@@ -774,8 +778,8 @@ export default function DevicesPage() {
                                                                 {online ? '• Online' : hb ? '• Offline' : 'Never'}
                                                             </span>
                                                         </td>
-                                                        <td style={{ textAlign: 'left', fontSize: '0.875rem', color: 'var(--color-text-primary)', fontWeight: 800 }}>
-                                                            {formatShorthandTime(hb?.last_seen_at)}
+                                                        <td style={{ textAlign: 'left', fontSize: '0.925rem', color: 'var(--color-text-primary) !important' }}>
+                                                            <span className="force-visible" style={{ fontWeight: 900 }}>{formatShorthandTime(hb?.last_seen_at)}</span>
                                                         </td>
                                                         <td style={{ textAlign: 'center' }}>
                                                             {hb?.current_version
@@ -1130,6 +1134,7 @@ function DeviceHealthModal({ device, heartbeat, onClose, onToggleDebug, onScreen
     const meta = (heartbeat?.meta as any) || {};
 
     const stats = [
+        { label: 'HDMI Status', value: meta.hdmi_status ? (meta.hdmi_status === 'connected' ? 'Connected' : 'Unplugged') : 'N/A', icon: Monitor, color: meta.hdmi_status === 'disconnected' ? '#ef4444' : undefined },
         { label: 'Battery', value: meta.battery_level !== undefined && meta.battery_level !== -1 ? `${meta.battery_level}%` : 'N/A', icon: Smartphone },
         { label: 'Uptime', value: meta.uptime_hours ? `${meta.uptime_hours.toFixed(1)} hrs` : 'N/A', icon: History },
         { label: 'Local IP', value: meta.local_ip || 'N/A', icon: Link },
@@ -1170,12 +1175,12 @@ function DeviceHealthModal({ device, heartbeat, onClose, onToggleDebug, onScreen
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
                     {stats.map(s => (
                         <div key={s.label} className="card" style={{ padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                            <div style={{ background: 'var(--color-surface-400)', padding: '0.5rem', borderRadius: 8, color: 'var(--color-brand-200)' }}>
+                            <div style={{ background: (s as any).color ? `${(s as any).color}15` : 'var(--color-surface-400)', padding: '0.5rem', borderRadius: 8, color: (s as any).color || 'var(--color-brand-200)', border: (s as any).color ? `1px solid ${(s as any).color}40` : 'none' }}>
                                 <s.icon size={16} />
                             </div>
                             <div>
                                 <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 600 }}>{s.label}</div>
-                                <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#f1f5f9' }}>{s.value}</div>
+                                <div style={{ fontSize: '0.875rem', fontWeight: 600, color: (s as any).color || '#f1f5f9' }}>{s.value}</div>
                             </div>
                         </div>
                     ))}

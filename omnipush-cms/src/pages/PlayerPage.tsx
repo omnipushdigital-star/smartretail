@@ -1198,6 +1198,7 @@ export default function PlayerPage() {
     const [offline, setOffline] = useState(false)
     const [errorMsg, setErrorMsg] = useState('')
     const [version, setVersion] = useState<string | null>(null)
+    const [inferredHdmi, setInferredHdmi] = useState<'connected' | 'disconnected' | 'unknown'>('unknown')
     const [syncProgress, setSyncProgress] = useState<{ current: number; total: number } | null>(null)
     const versionRef = useRef(version)
     const manifestTimerRef = useRef<any>(null)
@@ -1214,6 +1215,23 @@ export default function PlayerPage() {
         // Global hook for child components to report transition states
         (window as any).setGlobalTransition = (v: boolean) => {
             isTransitioningRef.current = v
+        }
+
+        // Standard HDMI Detection Fallback (Amlogic/Rockchip boxes remove audio output on pull)
+        const checkHardware = async () => {
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const hasOutput = devices.some(d => d.kind === 'audiooutput');
+                setInferredHdmi(hasOutput ? 'connected' : 'disconnected');
+            } catch {
+                setInferredHdmi('unknown');
+            }
+        };
+
+        checkHardware();
+        if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+            navigator.mediaDevices.addEventListener('devicechange', checkHardware);
+            return () => navigator.mediaDevices.removeEventListener('devicechange', checkHardware);
         }
     }, [])
 
@@ -1588,6 +1606,11 @@ export default function PlayerPage() {
                 if (win.AndroidHealth.getStorageFree) meta.storage_free_gb = parseFloat(Number(win.AndroidHealth.getStorageFree()).toFixed(2))
                 if (win.AndroidHealth.getModel) meta.device_model = String(win.AndroidHealth.getModel())
                 if (win.AndroidHealth.getLocalIp) meta.local_ip = String(win.AndroidHealth.getLocalIp())
+                if (win.AndroidHealth.getHdmiStatus) {
+                    meta.hdmi_status = String(win.AndroidHealth.getHdmiStatus()) // Should return 'connected' or 'disconnected'
+                } else {
+                    meta.hdmi_status = inferredHdmi;
+                }
             }
         } catch (e) {
             console.warn('[Telemetry] Error gathering stats:', e)
