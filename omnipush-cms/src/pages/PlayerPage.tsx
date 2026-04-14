@@ -1454,8 +1454,22 @@ export default function PlayerPage() {
                 current_version: versionRef.current,
                 origin: window.location.origin
             }, 45000, false) // 45s timeout, no auth
-            // ── CRITICAL: Throw on edge-fn error so catch block handles it properly ──
-            if (data?.error) throw new Error(data.error)
+
+            if (data?.error) {
+                console.error(`[Player] Manifest error from EdgeFn: ${data.error}`)
+                // Handle specific errors without throwing to keep global handlers quiet
+                if (data.error.includes('invalid credentials') || data.error.includes('inactive device')) {
+                    localStorage.removeItem(secretKey(dc))
+                    setPhase('pairing')
+                    initPairing()
+                    return false
+                }
+                
+                // For other network-level errors returned by callEdgeFn wrapper
+                setErrorMsg(data.error)
+                return false
+            }
+            
             console.log(`[Player] [MANIFEST_FETCH_SUCCESS] v=${data.resolved?.version || 'N/A'}`)
 
             // ── Handling "Up to Date" response ──
@@ -1536,6 +1550,14 @@ export default function PlayerPage() {
                 if (cached) {
                     try {
                         const c = JSON.parse(cached)
+                        
+                        // HYDRATION: Vital for reboot-without-internet
+                        // This converts remote URLs back into local blob URLs from IndexedDB
+                        if (c.assets) {
+                            const hydrated = await hydrateAssetsFromCache(c.assets)
+                            c.assets = hydrated
+                        }
+
                         setManifest(c)
                         if (c.resolved?.version) {
                             setVersion(c.resolved.version)
@@ -1547,9 +1569,9 @@ export default function PlayerPage() {
                 }
             }
 
-            // Only show a fatal error screen after 10 sequential failures
-            if (failCountRef.current >= 10) {
-                setErrorMsg(err.message || 'Multiple connection failures')
+            // Only show a fatal error screen after 30 sequential failures and ONLY if we don't have a manifest to play from cache
+            if (failCountRef.current >= 30 && !manifest) {
+                setErrorMsg(err.message || 'Connecting to OmniPush Network...')
                 setPhase('error')
             }
             return false
@@ -2186,17 +2208,13 @@ export default function PlayerPage() {
                 {/* Overlays */}
                 {offline && (
                     <div style={{
-                        position: 'fixed', top: 24, right: 24, zIndex: 10000,
-                        background: '#ef4444',
-                        width: 48, height: 48,
-                        borderRadius: '50%',
+                        position: 'fixed', top: 32, right: 32, zIndex: 10000,
+                        color: '#ef4444',
+                        opacity: 0.4,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: '#ffffff',
-                        boxShadow: '0 8px 32px rgba(239, 68, 68, 0.4)',
-                        border: '3px solid #ffffff',
-                        animation: 'pulse 2s infinite'
+                        pointerEvents: 'none'
                     }}>
-                        <WifiOff size={24} strokeWidth={2.5} />
+                        <WifiOff size={32} strokeWidth={2.5} />
                     </div>
                 )}
                 <style>{`

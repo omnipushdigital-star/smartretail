@@ -15,29 +15,17 @@
   <meta property="og:image" content="/omnipush_dashboard_mockup.png" />
   <title>OmniPush | Smart Retail Display CMS</title>
   <script>
-    window.onerror = function (msg, url, lineNo, columnNo, error) {
-      var div = document.createElement('div');
-      div.style.position = 'fixed'; div.style.top = '0'; div.style.left = '0';
-      div.style.width = '100%'; div.style.background = 'red'; div.style.color = 'white';
-      div.style.zIndex = '1000000'; div.style.padding = '10px'; div.style.fontSize = '12px';
-      div.style.wordBreak = 'break-all';
-      div.innerHTML = 'JS Error: ' + msg + '<br/>File: ' + url + '<br/>Line: ' + lineNo + '<br/>Restarting in 60s...';
-      document.body.appendChild(div);
+    // Console-only error tracking to avoid intrusive UI bars on production signage screens
+    window.onerror = function (msg, url, lineNo) {
+      console.error(`[GlobalError] ${msg} | File: ${url} | Line: ${lineNo}`);
       if (window.location.pathname.includes('/player/')) {
-        setTimeout(function () { window.location.reload(); }, 60000);
+        // Auto-recovery: refresh after 60s if fatal error occurs in player mode
+        setTimeout(() => window.location.reload(), 60000);
       }
       return false;
     };
     window.onunhandledrejection = function (event) {
-      var div = document.createElement('div');
-      div.style.position = 'fixed'; div.style.top = '50px'; div.style.left = '0';
-      div.style.width = '100%'; div.style.background = 'orange'; div.style.color = 'white';
-      div.style.zIndex = '1000000'; div.style.padding = '10px'; div.style.fontSize = '12px';
-      div.innerHTML = 'Unhandled Promise Rejection: ' + event.reason + '<br/>Restarting in 60s...';
-      document.body.appendChild(div);
-      if (window.location.pathname.includes('/player/')) {
-        setTimeout(function () { window.location.reload(); }, 60000);
-      }
+      console.error(`[UnhandledRejection]`, event.reason);
     };
   </script>
   <style>

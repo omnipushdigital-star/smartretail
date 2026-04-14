@@ -14,9 +14,6 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
         autoRefreshToken: true,
         detectSessionInUrl: false,
     },
-    global: {
-        headers: { 'x-app-version': '1.0.0' },
-    },
 })
 
 export const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000001'
