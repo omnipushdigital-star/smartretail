@@ -1,0 +1,27 @@
+If you ever need to roll back to this exact "known good" state where the videos are working across all platforms, your current commit hash is 4f56977.
+
+Depending on what you want to achieve, here are the commands you would run in your terminal inside the omnipush-cms folder:
+
+Option A: Create a safe branch from this exact moment
+If you want to start experimenting safely without breaking this working state, you can create a new branch branching right off of where we are now:
+
+bash
+git checkout -b new-experimental-feature
+Option B: Undo future changes (Hard Reset)
+If you make changes in the future, everything breaks, and you just want to throw away all the broken changes and return exactly to this second in time (WARNING: This destroys any uncommitted work):
+
+bash
+# Throws away all changes and resets codebase to this exact commit
+git reset --hard 4f56977
+# Force push that reset to GitHub/Vercel (if you had already pushed broken code)
+git push -f origin master
+Option C: Safely Revert future changes
+If you push broken code to production in the future, but you want to keep the git history intact, you can tell git to create a new commit that is the "opposite" of everything done after this point:
+
+bash
+# This creates a new commit that simply undoes whatever broke it
+git revert HEAD
+# Push the reverted code to production
+git push origin master
+I strongly recommend keeping the commit hash 4f569775a48ebcca98025866a94ed6e090332689 saved in your personal notes or Slack so you always have a safe restore point to anchor to!
+
