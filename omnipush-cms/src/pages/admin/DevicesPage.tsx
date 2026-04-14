@@ -700,38 +700,39 @@ export default function DevicesPage() {
                                                         </td>
                                                         <td><span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.875rem', color: isSelected ? 'var(--color-brand-500)' : 'var(--color-text-primary)', letterSpacing: '0.05em' }}>{d.device_code}</span></td>
                                                         <td style={{ color: 'var(--color-text-primary)' }}>{d.display_name || 'â€”'}</td>
-                                                        <td style={{ color: 'var(--color-text-2)', fontSize: '0.8125rem' }}>{(d as any).store?.name || 'â€”'}</td>
+                                                        <td style={{ color: 'var(--color-text-1)', fontSize: '0.875rem', fontWeight: 500 }}>{(d as any).store?.name || '—'}</td>
                                                         <td>
                                                             {(d as any).role?.key
                                                                 ? <span className="badge badge-blue" style={{ fontFamily: 'monospace' }}>{(d as any).role.key}</span>
                                                                 : <span style={{ color: 'var(--color-text-3)' }}>â€”</span>
                                                             }
                                                         </td>
-                                                        <td style={{ color: 'var(--color-text-2)', fontSize: '0.8125rem', textTransform: 'capitalize' }}>{d.orientation}</td>
+                                                        <td style={{ color: 'var(--color-text-1)', fontSize: '0.875rem', fontWeight: 500, textTransform: 'capitalize' }}>{d.orientation}</td>
                                                         {/* â”€â”€ Device Secret cell â”€â”€ */}
                                                         <td>
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                                                                <span style={{
-                                                                    fontFamily: 'monospace', fontSize: '0.7rem',
-                                                                    color: revealedId === d.id ? 'var(--color-brand-500)' : 'var(--color-text-3)',
+                                                                 <span style={{
+                                                                    fontFamily: 'monospace', fontSize: '0.75rem',
+                                                                    color: revealedId === d.id ? 'var(--color-brand-500)' : 'var(--color-text-1)',
                                                                     maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                                                     letterSpacing: revealedId === d.id ? undefined : '0.1em',
+                                                                    fontWeight: 600
                                                                 }}>
-                                                                    {revealedId === d.id ? d.device_secret : 'â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢'}
+                                                                    {revealedId === d.id ? d.device_secret : '••••••••••••'}
                                                                 </span>
                                                                 <button
                                                                     onClick={() => setRevealedId(revealedId === d.id ? null : d.id)}
-                                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-3)', padding: '0.2rem', display: 'flex' }}
+                                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-1)', padding: '0.2rem', display: 'flex' }}
                                                                     title={revealedId === d.id ? 'Hide secret' : 'Reveal secret'}
                                                                 >
-                                                                    {revealedId === d.id ? <EyeOff size={12} /> : <Eye size={12} />}
+                                                                    {revealedId === d.id ? <EyeOff size={13} /> : <Eye size={13} />}
                                                                 </button>
                                                                 <button
                                                                     onClick={() => copyText(d.device_secret, 'Secret', d.id)}
-                                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: copiedId === d.id ? 'var(--color-success)' : 'var(--color-text-3)', padding: '0.2rem', display: 'flex' }}
+                                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: copiedId === d.id ? 'var(--color-success)' : 'var(--color-text-1)', padding: '0.2rem', display: 'flex' }}
                                                                     title="Copy secret"
                                                                 >
-                                                                    {copiedId === d.id ? <Check size={12} /> : <Copy size={12} />}
+                                                                    {copiedId === d.id ? <Check size={13} /> : <Copy size={13} />}
                                                                 </button>
                                                             </div>
                                                         </td>
@@ -740,7 +741,7 @@ export default function DevicesPage() {
                                                                 {online ? '• Online' : hb ? '• Offline' : 'Never'}
                                                             </span>
                                                         </td>
-                                                        <td style={{ textAlign: 'left', fontSize: '0.8125rem', color: 'var(--color-text-2)' }}>
+                                                        <td style={{ textAlign: 'left', fontSize: '0.875rem', color: 'var(--color-text-1)', fontWeight: 500 }}>
                                                             {formatShorthandTime(hb?.last_seen_at)}
                                                         </td>
                                                         <td style={{ textAlign: 'center' }}>
