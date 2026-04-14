@@ -15,7 +15,7 @@ import toast from 'react-hot-toast'
 import { formatDistanceToNow } from 'date-fns'
 
 const PAGE_SIZE = 10
-const ONLINE_THRESHOLD_MS = 10 * 60 * 1000 // 10 minutes (lenient for debugging)
+const ONLINE_THRESHOLD_MS = 1 * 60 * 1000 // 1 minute threshold as requested
 
 function isOnline(lastSeen?: string) {
     if (!lastSeen) return false
@@ -218,6 +218,39 @@ export default function DevicesPage() {
     }
 
     useEffect(() => { loadData() }, [loadData])
+    
+    // ─── Real-time Heartbeats & Status Tick ──────────────────────────────────
+    useEffect(() => {
+        if (!currentTenantId) return
+
+        // 1. Subscribe to real-time heartbeat updates
+        const channel = supabase
+            .channel('realtime_heartbeats')
+            .on('postgres_changes', { 
+                event: '*', 
+                schema: 'public', 
+                table: 'device_heartbeats' 
+            }, (payload) => {
+                const newHb = payload.new as DeviceHeartbeat
+                if (newHb && newHb.device_code) {
+                    setHeartbeats(prev => ({
+                        ...prev,
+                        [newHb.device_code]: { ...newHb, meta: newHb.meta || {} }
+                    }))
+                }
+            })
+            .subscribe()
+
+        // 2. Force re-render every 15s to update "Last Seen" and "Online" status
+        const tick = setInterval(() => {
+            setHeartbeats(prev => ({ ...prev })) 
+        }, 15000)
+
+        return () => {
+            supabase.removeChannel(channel)
+            clearInterval(tick)
+        }
+    }, [currentTenantId])
 
     const filtered = devices.filter(d => {
         const matchSearch = (d.device_code + (d.display_name || '') + ((d as any).store?.name || '')).toLowerCase().includes(search.toLowerCase())
@@ -671,16 +704,16 @@ export default function DevicesPage() {
                                                         className="w-4 h-4 rounded border-slate-700 bg-slate-900"
                                                     />
                                                 </th>
-                                                <th style={{ textAlign: 'left', paddingLeft: '1rem' }}>Device Code</th>
-                                                <th style={{ textAlign: 'left' }}>Display Name</th>
-                                                <th style={{ textAlign: 'left' }}>Store</th>
-                                                <th style={{ textAlign: 'left' }}>Role</th>
-                                                <th style={{ textAlign: 'left' }}>Orientation</th>
-                                                <th style={{ textAlign: 'left' }}>Secret</th>
-                                                <th style={{ textAlign: 'center' }}>Connection</th>
-                                                <th style={{ textAlign: 'left' }}>Last Seen</th>
-                                                <th style={{ textAlign: 'center' }}>Version</th>
-                                                <th style={{ textAlign: 'center' }}>Actions</th>
+                                                <th style={{ textAlign: 'left', paddingLeft: '1rem', color: 'var(--color-text-primary)', fontWeight: 900 }}>Device Code</th>
+                                                <th style={{ textAlign: 'left', color: 'var(--color-text-primary)', fontWeight: 900 }}>Display Name</th>
+                                                <th style={{ textAlign: 'left', color: 'var(--color-text-primary)', fontWeight: 900 }}>Store</th>
+                                                <th style={{ textAlign: 'left', color: 'var(--color-text-primary)', fontWeight: 900 }}>Role</th>
+                                                <th style={{ textAlign: 'left', color: 'var(--color-text-primary)', fontWeight: 900 }}>Orientation</th>
+                                                <th style={{ textAlign: 'left', color: 'var(--color-text-primary)', fontWeight: 900 }}>Secret</th>
+                                                <th style={{ textAlign: 'center', color: 'var(--color-text-primary)', fontWeight: 900 }}>Connection</th>
+                                                <th style={{ textAlign: 'left', color: 'var(--color-text-primary)', fontWeight: 900 }}>Last Seen</th>
+                                                <th style={{ textAlign: 'center', color: 'var(--color-text-primary)', fontWeight: 900 }}>Version</th>
+                                                <th style={{ textAlign: 'center', color: 'var(--color-text-primary)', fontWeight: 900 }}>Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -700,36 +733,36 @@ export default function DevicesPage() {
                                                         </td>
                                                         <td><span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.875rem', color: isSelected ? 'var(--color-brand-500)' : 'var(--color-text-primary)', letterSpacing: '0.05em' }}>{d.device_code}</span></td>
                                                         <td style={{ color: 'var(--color-text-primary)' }}>{d.display_name || 'â€”'}</td>
-                                                        <td style={{ color: 'var(--color-text-1)', fontSize: '0.875rem', fontWeight: 500 }}>{(d as any).store?.name || '—'}</td>
+                                                        <td style={{ color: 'var(--color-text-primary)', fontSize: '0.875rem', fontWeight: 800 }}>{(d as any).store?.name || '—'}</td>
                                                         <td>
                                                             {(d as any).role?.key
                                                                 ? <span className="badge badge-blue" style={{ fontFamily: 'monospace' }}>{(d as any).role.key}</span>
                                                                 : <span style={{ color: 'var(--color-text-3)' }}>â€”</span>
                                                             }
                                                         </td>
-                                                        <td style={{ color: 'var(--color-text-1)', fontSize: '0.875rem', fontWeight: 500, textTransform: 'capitalize' }}>{d.orientation}</td>
+                                                        <td style={{ color: 'var(--color-text-primary)', fontSize: '0.875rem', fontWeight: 800, textTransform: 'capitalize' }}>{d.orientation}</td>
                                                         {/* â”€â”€ Device Secret cell â”€â”€ */}
                                                         <td>
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
                                                                  <span style={{
                                                                     fontFamily: 'monospace', fontSize: '0.75rem',
-                                                                    color: revealedId === d.id ? 'var(--color-brand-500)' : 'var(--color-text-1)',
-                                                                    maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                                                    letterSpacing: revealedId === d.id ? undefined : '0.1em',
-                                                                    fontWeight: 600
-                                                                }}>
-                                                                    {revealedId === d.id ? d.device_secret : '••••••••••••'}
-                                                                </span>
-                                                                <button
-                                                                    onClick={() => setRevealedId(revealedId === d.id ? null : d.id)}
-                                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-1)', padding: '0.2rem', display: 'flex' }}
-                                                                    title={revealedId === d.id ? 'Hide secret' : 'Reveal secret'}
-                                                                >
-                                                                    {revealedId === d.id ? <EyeOff size={13} /> : <Eye size={13} />}
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => copyText(d.device_secret, 'Secret', d.id)}
-                                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: copiedId === d.id ? 'var(--color-success)' : 'var(--color-text-1)', padding: '0.2rem', display: 'flex' }}
+                                                                    color: revealedId === d.id ? 'var(--color-brand-500)' : 'var(--color-text-primary)',
+                                                                     maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                                                     letterSpacing: revealedId === d.id ? undefined : '0.1em',
+                                                                     fontWeight: 800
+                                                                 }}>
+                                                                     {revealedId === d.id ? d.device_secret : '••••••••••••'}
+                                                                 </span>
+                                                                 <button
+                                                                     onClick={() => setRevealedId(revealedId === d.id ? null : d.id)}
+                                                                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-primary)', padding: '0.2rem', display: 'flex' }}
+                                                                     title={revealedId === d.id ? 'Hide secret' : 'Reveal secret'}
+                                                                 >
+                                                                     {revealedId === d.id ? <EyeOff size={13} /> : <Eye size={13} />}
+                                                                 </button>
+                                                                 <button
+                                                                     onClick={() => copyText(d.device_secret, 'Secret', d.id)}
+                                                                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: copiedId === d.id ? 'var(--color-success)' : 'var(--color-text-primary)', padding: '0.2rem', display: 'flex' }}
                                                                     title="Copy secret"
                                                                 >
                                                                     {copiedId === d.id ? <Check size={13} /> : <Copy size={13} />}
@@ -741,7 +774,7 @@ export default function DevicesPage() {
                                                                 {online ? '• Online' : hb ? '• Offline' : 'Never'}
                                                             </span>
                                                         </td>
-                                                        <td style={{ textAlign: 'left', fontSize: '0.875rem', color: 'var(--color-text-1)', fontWeight: 500 }}>
+                                                        <td style={{ textAlign: 'left', fontSize: '0.875rem', color: 'var(--color-text-primary)', fontWeight: 800 }}>
                                                             {formatShorthandTime(hb?.last_seen_at)}
                                                         </td>
                                                         <td style={{ textAlign: 'center' }}>

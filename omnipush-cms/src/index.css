@@ -37,9 +37,25 @@ body.light {
   --color-text-1: #000000;
   --color-text-2: #000000;
   --color-text-3: #000000;
+  --color-text-1: #000000;
+  --color-text-2: #000000;
+  --color-text-3: #000000;
+  --color-text-soft: #000000;
   --color-text-primary: #000000;
   background: #f4f7fb;
   color: #000000;
+}
+
+/* ── Global Contrast Overrides ── */
+table td, table th {
+  color: inherit !important;
+  opacity: 1 !important;
+}
+body:not(.light) table td, body:not(.light) table th {
+  color: #ffffff !important;
+}
+body.light table td, body.light table th {
+  color: #000000 !important;
 }
 
 /* ── Layout ── */
