@@ -1375,6 +1375,8 @@ export default function PlayerPage() {
         if (!assetsToSync || assetsToSync.length === 0) return
 
         const assetsToActuallySync = assetsToSync.filter(a => {
+            // HTML assets are always served from origin URL — blob: URLs break relative paths inside the file
+            if (a.type === 'html') return false
             return a.url && !a.url.startsWith('blob:')
         })
 

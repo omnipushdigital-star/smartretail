@@ -173,8 +173,12 @@ export async function hydrateAssetsFromCache(
         assets.map(async (asset) => {
             if (!asset.media_id || !asset.url) return asset
 
-            // Android WebView MediaPlayer can play blob: URIs on newer builds (87+)
-            // We only skip if the asset isn't actually cached
+            // HTML assets must always load from their origin URL.
+            // Converting to blob: breaks relative paths (CSS/JS/images) inside the file.
+            if (asset.type === 'html') {
+                console.log(`[Cache] Skipping blob hydration for HTML asset ${asset.media_id} — using origin URL`)
+                return asset
+            }
 
             const blobUrl = await getCachedBlobUrl(asset.media_id)
             if (blobUrl) {
