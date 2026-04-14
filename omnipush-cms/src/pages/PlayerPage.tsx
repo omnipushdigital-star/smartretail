@@ -1221,7 +1221,8 @@ export default function PlayerPage() {
     const isRenderingRef = useRef(true)
 
     // Detect Android native video bridge (APK exposing AndroidHealth JS interface)
-    const isAndroidNative = !!(window as any).AndroidHealth
+    // CORTEX: ExoPlayer cannot play blob: URLs from offline cache, so disable native handoff if offline
+    const isAndroidNative = !!(window as any).AndroidHealth && !offline
 
     useEffect(() => {
         // Global hook for child components to report transition states
@@ -1370,17 +1371,18 @@ export default function PlayerPage() {
                 }).eq('id', cmd.id)
 
                 // 2. Perform the actual logic
-                if (cmd.command === 'REBOOT' || cmd.command === 'RELOAD') {
+                const cmdStr = (cmd.command || '').toUpperCase()
+                if (cmdStr === 'REBOOT' || cmdStr === 'RELOAD' || cmdStr === 'REFRESH') {
                     console.warn('[Player] Remote Reload/Reboot triggered. Reloading page...')
                     // Multiple layers of reload to bypass various browser locks
                     window.location.reload()
                     setTimeout(() => { window.location.href = window.location.href }, 500)
-                } else if (cmd.command === 'CLEAR_CACHE') {
+                } else if (cmdStr === 'CLEAR_CACHE') {
                     console.warn('[Player] Remote Clear Cache triggered. Purging local storage...')
                     localStorage.removeItem(manifestKey(dc))
                     window.location.reload()
                     setTimeout(() => { window.location.href = window.location.href }, 500)
-                } else if (cmd.command === 'SCREENSHOT') {
+                } else if (cmdStr === 'SCREENSHOT') {
                     console.log('[Player] Remote Screenshot requested...')
                     const win = window as any
                     if (win.AndroidHealth && win.AndroidHealth.takeScreenshot) {
