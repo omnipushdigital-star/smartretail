@@ -1671,7 +1671,7 @@ export default function PlayerPage() {
             const payload = {
                 device_code: dc,
                 device_secret: sec,
-                current_version: versionRef.current,
+                current_version: 'v1.0.1+health-' + (versionRef.current || 'init'),
                 status: phaseRef.current,
                 // Sanitize meta to ensure no illegal JSON values (NaN/Infinity)
                 ...JSON.parse(JSON.stringify(meta, (k, v) => (typeof v === 'number' && isNaN(v)) ? null : v))
