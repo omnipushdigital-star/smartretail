@@ -749,8 +749,15 @@ function PlaybackEngine({ items, assets, region, isNative = false }: PlaybackPro
                     <VideoElement
                         url={url}
                         isReady={isActive}
-                        onReady={() => setTimeout(() => setReadyIdx(targetIdx), READY_TIMING)}
+                        onReady={() => {
+                            setTimeout(() => setReadyIdx(targetIdx), READY_TIMING)
+                            consecutiveErrorsRef.current = 0
+                        }}
                         onEnded={advance}
+                        onError={(msg) => {
+                            consecutiveErrorsRef.current += 1
+                            lastMediaErrorRef.current = msg
+                        }}
                     />
                 )}
                 {(type === 'web_url' || type === 'html') && url && (
@@ -950,7 +957,7 @@ function ErrorState({ device_code, msg, onRetry }: { device_code: string; msg: s
     )
 }
 
-function VideoElement({ url, isReady, onReady, onEnded }: { url: string; isReady: boolean; onReady: () => void; onEnded: () => void }) {
+function VideoElement({ url, isReady, onReady, onEnded, onError: onReportError }: { url: string; isReady: boolean; onReady: () => void; onEnded: () => void; onError?: (msg: string) => void }) {
     const videoRef = useRef<HTMLVideoElement>(null)
 
     useLayoutEffect(() => {
@@ -977,7 +984,9 @@ function VideoElement({ url, isReady, onReady, onEnded }: { url: string; isReady
             muted playsInline
             onPlaying={onReady}
             onEnded={onEnded}
-            onError={() => {
+            onError={(e: any) => {
+                console.error('[Video] Element Error:', url)
+                if (onReportError) onReportError(`Video decode failed for ${url}`)
                 onReady()
                 setTimeout(onEnded, 3000)
             }}
@@ -1207,6 +1216,9 @@ export default function PlayerPage() {
     const lastErrorRef = useRef<string | null>(null)
     const isTransitioningRef = useRef(false)
     const bootStartedRef = useRef(false)
+    const consecutiveErrorsRef = useRef(0)
+    const lastMediaErrorRef = useRef<string | null>(null)
+    const isRenderingRef = useRef(true)
 
     // Detect Android native video bridge (APK exposing AndroidHealth JS interface)
     const isAndroidNative = !!(window as any).AndroidHealth
@@ -1582,9 +1594,23 @@ export default function PlayerPage() {
     const sendHeartbeat = useCallback(async (sec: string) => {
         if (!dc || !sec) return
 
+        // ── Rendering Watchdog ──
+        // If we are in 'playing' phase but haven't seen a content transition 
+        // OR a video tick in a while, we might be frozen.
+        // For now, we'll assume rendering is OK if phase is playing and no errors.
+        if (phaseRef.current === 'playing' && consecutiveErrorsRef.current > 5) {
+            isRenderingRef.current = false
+        } else {
+            isRenderingRef.current = true
+        }
+
         // Gather basic hardware telemetry
         const ua = navigator.userAgent
         const meta: any = {
+            is_rendering: isRenderingRef.current,
+            consecutive_errors: consecutiveErrorsRef.current,
+            last_media_error: lastMediaErrorRef.current,
+            display_visible: document.visibilityState === 'visible',
             // Capture full OS/device info from user agent
             device_model: (
                 ua.match(/\(([^)]+)\)/)?.[1] ||

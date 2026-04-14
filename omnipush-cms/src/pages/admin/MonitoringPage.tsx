@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Activity, Wifi, WifiOff, Search, RefreshCw } from 'lucide-react'
+import { Activity, Wifi, WifiOff, Search, RefreshCw, Tv2, AlertCircle, Eye, EyeOff } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { DeviceHeartbeat, Store, Role } from '../../types'
 import { useTenant } from '../../contexts/TenantContext'
@@ -185,6 +185,34 @@ export default function MonitoringPage() {
                         <div className="stat-label">Offline / Never seen</div>
                     </div>
                 </div>
+                <div className="stat-card">
+                    <div className="stat-icon" style={{ background: 'rgba(245,158,11,0.15)' }}>
+                        <RefreshCw size={22} color="#f59e0b" />
+                    </div>
+                    <div>
+                        <div className="stat-value" style={{ color: '#f59e0b' }}>
+                            {latestHbs.filter(hb => {
+                                const m = hb.meta as any || {};
+                                return isOnline(hb.last_seen_at) && (m.is_rendering === false || (m.consecutive_errors ?? 0) > 0);
+                            }).length}
+                        </div>
+                        <div className="stat-label">Playback Issues</div>
+                    </div>
+                </div>
+                <div className="stat-card">
+                    <div className="stat-icon" style={{ background: 'rgba(239,68,68,0.15)' }}>
+                        <Tv2 size={22} color="#ef4444" />
+                    </div>
+                    <div>
+                        <div className="stat-value" style={{ color: '#ef4444' }}>
+                            {latestHbs.filter(hb => {
+                                const m = hb.meta as any || {};
+                                return isOnline(hb.last_seen_at) && m.hdmi_status === 'disconnected';
+                            }).length}
+                        </div>
+                        <div className="stat-label">HDMI Disconnected</div>
+                    </div>
+                </div>
             </div>
 
             {/* Filters */}
@@ -260,9 +288,23 @@ export default function MonitoringPage() {
                                                 {device?.role && <span className="badge badge-blue" style={{ fontSize: '0.6rem', padding: '0 4px', marginTop: 4 }}>{(device.role as any).key}</span>}
                                             </td>
                                             <td>
-                                                <span className={`badge ${online ? 'badge-green' : 'badge-red'}`}>
-                                                    {online ? (hb.status === 'playing' ? 'Playing' : 'Online') : 'Offline'}
-                                                </span>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                    <span className={`badge ${online ? (hb.status === 'playing' ? 'badge-green' : 'badge-blue') : 'badge-red'}`}>
+                                                        {online ? (hb.status === 'playing' ? 'Playing' : 'Online') : 'Offline'}
+                                                    </span>
+                                                    
+                                                    {online && meta.is_rendering === false && (
+                                                        <span style={{ color: '#ef4444', fontSize: '10px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                                            <AlertCircle size={10} /> CRASHED
+                                                        </span>
+                                                    )}
+                                                    
+                                                    {online && (meta.consecutive_errors ?? 0) > 0 && (
+                                                        <span title={meta.last_media_error} style={{ color: '#f59e0b', fontSize: '10px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                                            <AlertCircle size={10} /> {meta.consecutive_errors} ERRORS
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </td>
                                             <td>
                                                 {(meta.storage_total_gb || meta.ram_total_mb) ? (
@@ -293,14 +335,33 @@ export default function MonitoringPage() {
                                                 {formatDistanceToNow(new Date(hb.last_seen_at), { addSuffix: true })}
                                             </td>
                                             <td>
-                                                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 160 }}>
-                                                    {meta.device_model || '—'}
-                                                </div>
-                                                {meta.screen && (
-                                                    <div style={{ fontSize: '0.65rem', color: 'var(--color-text-2)' }}>🖥 {meta.screen}</div>
-                                                )}
-                                                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-3)', fontFamily: 'monospace' }}>
-                                                    {meta.local_ip || hb.ip_address || '—'}
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 160 }}>
+                                                        {meta.device_model || '—'}
+                                                    </div>
+                                                    
+                                                    {/* HDMI & Visibility Indicators */}
+                                                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                                        {meta.hdmi_status === 'disconnected' ? (
+                                                            <span title="HDMI Disconnected" style={{ color: '#ef4444', display: 'flex', alignItems: 'center', gap: '2px', fontSize: '10px', fontWeight: 600 }}>
+                                                                <Tv2 size={12} /> NO HDMI
+                                                            </span>
+                                                        ) : meta.hdmi_status === 'connected' ? (
+                                                            <span title="HDMI Connected" style={{ color: '#22c55e' }}><Tv2 size={12} /></span>
+                                                        ) : null}
+
+                                                        {meta.display_visible === false ? (
+                                                            <span title="Player Hidden" style={{ color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '2px', fontSize: '10px', fontWeight: 600 }}>
+                                                                <EyeOff size={12} /> HIDDEN
+                                                            </span>
+                                                        ) : meta.display_visible === true ? (
+                                                            <span title="Player Visible" style={{ color: '#22c55e' }}><Eye size={12} /></span>
+                                                        ) : null}
+                                                    </div>
+
+                                                    <div style={{ fontSize: '0.7rem', color: 'var(--color-text-3)', fontFamily: 'monospace' }}>
+                                                        {meta.local_ip || hb.ip_address || '—'}
+                                                    </div>
                                                 </div>
                                             </td>
                                         </tr>
