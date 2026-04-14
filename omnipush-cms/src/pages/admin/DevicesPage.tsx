@@ -774,9 +774,16 @@ export default function DevicesPage() {
                                                             </div>
                                                         </td>
                                                         <td style={{ textAlign: 'center' }}>
-                                                            <span className={`badge ${online ? 'badge-green' : hb ? 'badge-red' : 'badge-gray'}`}>
-                                                                {online ? '• Online' : hb ? '• Offline' : 'Never'}
-                                                            </span>
+                                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                                                                <span className={`badge ${online ? 'badge-green' : hb ? 'badge-red' : 'badge-gray'}`}>
+                                                                    {online ? '• Online' : hb ? '• Offline' : 'Never'}
+                                                                </span>
+                                                                {hb?.meta && (hb.meta as any).hdmi_status === 'disconnected' && (
+                                                                    <span style={{ fontSize: '0.6rem', color: '#ef4444', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '2px', background: 'rgba(239, 68, 68, 0.1)', padding: '1px 4px', borderRadius: '4px' }} title="HDMI Cable Unplugged!">
+                                                                        <Monitor size={10} /> NO SIGNAL
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                         </td>
                                                         <td style={{ textAlign: 'left', fontSize: '0.925rem', color: 'var(--color-text-primary) !important' }}>
                                                             <span className="force-visible" style={{ fontWeight: 900 }}>{formatShorthandTime(hb?.last_seen_at)}</span>
