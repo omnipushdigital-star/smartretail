@@ -518,9 +518,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
                 />
             ))}
             {isAndroidNative && <div id="native-layer-proxy" style={{ pointerEvents: 'none' }} />}
-            <div style={{ position: 'absolute', bottom: 4, left: 4, fontSize: 9, color: 'rgba(255,255,255,0.4)', zIndex: 110, background: 'rgba(0,0,0,0.5)', padding: '2px 4px', borderRadius: 2 }}>
-                {debug} | {activeSlot === 0 ? 'V1' : 'V2'} | ALL_V: {String(sorted.length === items.length)} | ADDR: {window.location.hostname} (v1.7.5b)
-            </div>
+
         </div>
     )
 }
@@ -842,16 +840,18 @@ function LoadingState({ device_code }: { device_code: string }) {
             alignItems: 'center', justifyContent: 'center',
             zIndex: 99999
         }}>
+            <Logo />
             <div style={{
+                marginTop: '40px',
                 width: 40, height: 40,
-                border: '3px solid #111',
+                border: '3px solid rgba(255,255,255,0.1)',
                 borderTopColor: '#22c55e',
                 borderRadius: '50%',
                 animation: 'spin 1s linear infinite'
             }} />
-            <div style={{ color: '#666', fontSize: '14px', marginTop: '24px', fontWeight: 500 }}>Initializing System...</div>
-            <div style={{ color: '#333', fontSize: '12px', marginTop: '8px', fontFamily: 'monospace' }}>{device_code}</div>
-            <div style={{ position: 'fixed', bottom: 20, color: '#222', fontSize: '10px' }}>v1.5-hw-stabilized</div>
+            <div style={{ color: '#94a3b8', fontSize: '14px', marginTop: '24px', fontWeight: 500, letterSpacing: '0.05em' }}>Starting System...</div>
+            <div style={{ color: '#475569', fontSize: '10px', marginTop: '12px', fontFamily: 'monospace' }}>{device_code}</div>
+            <div style={{ position: 'fixed', bottom: 30, color: 'rgba(255,255,255,0.1)', fontSize: '10px', letterSpacing: '0.1em' }}>Connecting to CMS</div>
         </div>
     )
 }
@@ -1065,11 +1065,6 @@ function BottomBar({ device_code, version, offline }: { device_code: string; ver
                 <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.25)' }}>OmniPush Digital Services</span>
                 <span style={{ fontFamily: 'monospace', fontSize: '0.7rem', color: '#475569' }}>{device_code}</span>
                 {version && <span style={{ fontSize: '0.7rem', color: '#ef4444' }}>{version}</span>}
-                {offline && (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', color: '#ef4444' }}>
-                        <WifiOff size={11} /> Offline — cached content
-                    </span>
-                )}
             </div>
             <LiveClock />
         </div>
@@ -1692,21 +1687,32 @@ export default function PlayerPage() {
                 await new Promise(r => setTimeout(r, 2000)) // Give Amlogic network stack more time to settle
                 let bootOk = false
 
-                // Attempt 1: Safe Network Check (25s)
-                console.log(`[Boot] Manifest attempt 1/2 (Safe Mode 25s)...`)
+                // Attempt 1: Initial check
+                console.log(`[Boot] Manifest attempt 1/3...`)
                 if (await fetchManifest(stored, 25000)) {
                     bootOk = true
                 } else {
-                    // Attempt 2: Final Check (25s) with 3s breather
+                    // Attempt 2: Retry
                     await new Promise(r => setTimeout(r, 3000))
-                    console.log(`[Boot] Manifest attempt 2/2 (Final Check 25s)...`)
+                    console.log(`[Boot] Manifest attempt 2/3...`)
                     if (await fetchManifest(stored, 25000)) {
                         bootOk = true
+                    } else {
+                        // Attempt 3: Final retry (will trigger offline cache if network still down)
+                        await new Promise(r => setTimeout(r, 4000))
+                        console.log(`[Boot] Manifest attempt 3/3 (Triggering offline cache check)...`)
+                        if (await fetchManifest(stored, 25000)) {
+                            bootOk = true
+                        }
                     }
                 }
 
-                if (bootOk) setPhase(p => p === 'standby' ? 'standby' : 'playing')
-                else setPhase('error')
+                if (bootOk) {
+                    setPhase(p => p === 'standby' ? 'standby' : 'playing')
+                } else {
+                    // If even the 3rd attempt (cache) fails, show error
+                    setPhase('error')
+                }
             }
 
             bootFetch()
@@ -2157,16 +2163,17 @@ export default function PlayerPage() {
                 {/* Overlays */}
                 {offline && (
                     <div style={{
-                        position: 'fixed', top: 16, right: 16, zIndex: 10000,
+                        position: 'fixed', top: 24, right: 24, zIndex: 10000,
                         background: '#ef4444',
-                        width: 32, height: 32,
+                        width: 48, height: 48,
                         borderRadius: '50%',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         color: '#ffffff',
-                        boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
-                        border: '2px solid #ffffff'
+                        boxShadow: '0 8px 32px rgba(239, 68, 68, 0.4)',
+                        border: '3px solid #ffffff',
+                        animation: 'pulse 2s infinite'
                     }}>
-                        <WifiOff size={18} strokeWidth={2.5} />
+                        <WifiOff size={24} strokeWidth={2.5} />
                     </div>
                 )}
                 <style>{`
@@ -2178,7 +2185,11 @@ export default function PlayerPage() {
                         from { transform: rotate(0deg); }
                         to { transform: rotate(360deg); }
                     }
-                    /* Removed heavy pulse keyframes with box-shadow */
+                    @keyframes pulse {
+                        0% { transform: scale(1); opacity: 1; }
+                        50% { transform: scale(1.1); opacity: 0.8; }
+                        100% { transform: scale(1); opacity: 1; }
+                    }
                 `}</style>
             </div>
         )
