@@ -67,7 +67,7 @@ export default function Sidebar() {
                     {navItems.map((item, idx) => {
                         if (item.type === 'header') {
                             return (
-                                <div key={`header-${idx}`} className="text-[0.6rem] font-bold uppercase tracking-widest text-text-3 px-3.5 pt-5 pb-1">
+                                <div key={`header-${idx}`} className="text-[0.68rem] font-black uppercase tracking-[0.12em] text-text-2 px-3.5 pt-6 pb-2 opacity-90">
                                     {item.label}
                                 </div>
                             )

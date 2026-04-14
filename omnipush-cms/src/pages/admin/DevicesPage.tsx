@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
     Tv2, Layout, Activity, Shield, ArrowRight, PlayCircle, Layers, Settings,
     Plus, Monitor, Search, MoreVertical, Edit2, Trash2, RefreshCw, Smartphone,
@@ -553,9 +553,9 @@ export default function DevicesPage() {
 
             {/* Player Auth note */}
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '0.875rem 1.25rem', marginBottom: '1rem', background: 'rgba(6,182,212,0.06)', border: '1px solid rgba(6,182,212,0.2)', borderRadius: 10 }}>
-                <Info size={15} color="#06b6d4" style={{ flexShrink: 0, marginTop: 1 }} />
-                <p style={{ margin: 0, fontSize: '0.8125rem', color: '#94a3b8', lineHeight: 1.5 }}>
-                    <strong style={{ color: '#67e8f9' }}>Player Auth:</strong> The Player calls <code style={{ background: '#0f172a', padding: '0 4px', borderRadius: 3, color: '#7a8aff' }}>/device/manifest</code> with <code>device_code</code> + <code>device_secret</code> to fetch the active bundle (resolved by priority: <strong>DEVICE &gt; STORE &gt; GLOBAL</strong>).
+                <Info size={15} color="#0891b2" style={{ flexShrink: 0, marginTop: 1 }} />
+                <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--color-text-soft)', lineHeight: 1.5 }}>
+                    <strong style={{ color: '#0891b2' }}>Player Auth:</strong> The Player calls <code style={{ background: '#0f172a', padding: '0 4px', borderRadius: 3, color: '#7a8aff' }}>/device/manifest</code> with <code>device_code</code> + <code>device_secret</code> to fetch the active bundle (resolved by priority: <strong>DEVICE &gt; STORE &gt; GLOBAL</strong>).
                 </p>
             </div>
 
@@ -573,7 +573,7 @@ export default function DevicesPage() {
 
                     {/* Store Filter */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--color-text-3)', fontWeight: 700 }}>Store:</span>
+                        <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--color-text-soft)', fontWeight: 800 }}>Store:</span>
                         <select
                             className="input-field"
                             style={{ width: 'auto', height: 36, fontSize: '0.8125rem', padding: '0 2rem 0 0.75rem', background: 'var(--color-surface-900)' }}
@@ -587,7 +587,7 @@ export default function DevicesPage() {
 
                     {/* Role Filter */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--color-text-3)', fontWeight: 700 }}>Role:</span>
+                        <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--color-text-soft)', fontWeight: 800 }}>Role:</span>
                         <select
                             className="input-field"
                             style={{ width: 'auto', height: 36, fontSize: '0.8125rem', padding: '0 2rem 0 0.75rem', background: 'var(--color-surface-900)' }}
@@ -601,7 +601,7 @@ export default function DevicesPage() {
 
                     {/* Search */}
                     <div style={{ position: 'relative', flex: '1 1 200px' }}>
-                        <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-3)' }} />
+                        <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-soft)' }} />
                         <input type="text" className="input-field" placeholder={`Search ${viewMode === 'bin' ? 'bin' : 'devices'}...`} value={search}
                             onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ paddingLeft: '2rem', height: 36 }} />
                     </div>
