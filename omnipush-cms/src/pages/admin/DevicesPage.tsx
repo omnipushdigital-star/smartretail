@@ -1118,7 +1118,7 @@ function DeviceHealthModal({ device, heartbeat, onClose, onToggleDebug, onScreen
                             </div>
                             <span style={{ fontSize: '0.8125rem', fontWeight: 700, minWidth: 40 }}>{storageUsage.toFixed(0)}%</span>
                         </div>
-                        <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{meta.storage_free_gb?.toFixed(2) || 0}GB free of {meta.storage_total_gb?.toFixed(2) || 0}GB</span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--color-text-1)' }}>{meta.storage_free_gb?.toFixed(2) || 0}GB free of {meta.storage_total_gb?.toFixed(2) || 0}GB</span>
                     </div>
 
                     <div className="card" style={{ flex: 1, padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'rgba(59, 130, 246, 0.05)', borderColor: 'rgba(59, 130, 246, 0.2)' }}>
@@ -1129,7 +1129,7 @@ function DeviceHealthModal({ device, heartbeat, onClose, onToggleDebug, onScreen
                             </div>
                             <span style={{ fontSize: '0.8125rem', fontWeight: 700, minWidth: 40 }}>{ramUsage.toFixed(0)}%</span>
                         </div>
-                        <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{meta.ram_free_mb || 0}MB free of {meta.ram_total_mb || 0}MB</span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--color-text-1)' }}>{meta.ram_free_mb || 0}MB free of {meta.ram_total_mb || 0}MB</span>
                     </div>
                 </div>
 

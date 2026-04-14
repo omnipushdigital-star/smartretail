@@ -31,10 +31,10 @@
   --color-border-strong: rgba(255, 255, 255, 0.12);
 
   /* ── Dark Theme Text ── */
-  --color-text-1: #f1f5f9;
-  --color-text-2: #475569;
-  --color-text-3: #475569;
-  --color-text-soft: #475569;
+  --color-text-1: #ffffff;
+  --color-text-2: #ffffff;
+  --color-text-3: #ffffff;
+  --color-text-soft: #ffffff;
 
   /* ── Status ── */
   --color-success: #22c55e;
@@ -42,9 +42,9 @@
   --color-error: #ff3d00;
 
   /* ── Legacy aliases (for existing components) ── */
-  --color-surface-50: #f1f5f9;
-  --color-surface-100: #e2e8f0;
-  --color-surface-200: #475569;
+  --color-surface-50: #ffffff;
+  --color-surface-100: #ffffff;
+  --color-surface-200: #ffffff;
   --color-surface-300: rgba(255, 255, 255, 0.06);
   --color-surface-400: #1e2535;
   --color-surface-500: #1e2535;
@@ -53,7 +53,7 @@
   --color-surface-800: #080c14;
   --color-surface-900: #0d1117;
   --color-surface-950: #080c14;
-  --color-text-primary: #f1f5f9;
+  --color-text-primary: #ffffff;
   --color-error-500: #ff3d00;
   --color-success-500: #22c55e;
   --color-warning-500: #f59e0b;
@@ -86,14 +86,14 @@ body.light {
   --color-surface-4: #e2e8f0;
   --color-border: rgba(0, 0, 0, 0.07);
   --color-border-strong: rgba(0, 0, 0, 0.12);
-  --color-text-1: #0f172a;
-  --color-text-2: #1e293b;
-  --color-text-3: #334155;
-  --color-text-soft: #1e293b;
+  --color-text-1: #000000;
+  --color-text-2: #000000;
+  --color-text-3: #000000;
+  --color-text-soft: #000000;
   /* Legacy aliases */
   --color-surface-50: #0f172a;
   --color-surface-100: #1e293b;
-  --color-surface-200: #64748b;
+  --color-surface-200: #000000;
   --color-surface-300: rgba(0, 0, 0, 0.07);
   --color-surface-400: #e2e8f0;
   --color-surface-500: #ffffff;
@@ -102,9 +102,9 @@ body.light {
   --color-surface-800: #f4f7fb;
   --color-surface-900: #ffffff;
   --color-surface-950: #f4f7fb;
-  --color-text-primary: #0f172a;
+  --color-text-primary: #000000;
   background: #f4f7fb;
-  color: #0f172a;
+  color: #000000;
 }
 
 /* Scrollbar */
@@ -451,7 +451,7 @@ body.light thead th {
 }
 
 body.light tbody td {
-  color: #0f172a;
+  color: #000000;
   font-weight: 600;
   border-bottom: 1px solid #f1f5f9;
 }
@@ -667,7 +667,7 @@ body.light .nav-item {
 
 body.light .nav-item:hover {
   background: rgba(0, 218, 243, 0.07);
-  color: #0f172a;
+  color: #000000;
 }
 
 body.light .nav-item.active {

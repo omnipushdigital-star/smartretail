@@ -78,7 +78,7 @@ export default function LandingPage() {
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-                    <a href="#features" style={{ fontSize: '0.875rem', fontWeight: 500, color: '#94a3b8', textDecoration: 'none', transition: 'color 0.2s' }} onMouseEnter={(e) => (e.currentTarget.style.color = 'white')} onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}>Features</a>
+                    <a href="#features" style={{ fontSize: '0.875rem', fontWeight: 500, color: 'white', textDecoration: 'none', transition: 'color 0.2s' }}>Features</a>
                     <button
                         onClick={() => navigate('/login')}
                         className="btn-primary"
@@ -133,7 +133,7 @@ export default function LandingPage() {
 
                 <p style={{
                     fontSize: '1.25rem',
-                    color: '#94a3b8',
+                    color: 'white',
                     maxWidth: 750,
                     margin: '0 auto 3rem',
                     lineHeight: 1.6
@@ -204,7 +204,7 @@ export default function LandingPage() {
                     <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', fontWeight: 800, marginBottom: '1rem' }}>
                         Enterprise-Grade Control
                     </h2>
-                    <p style={{ color: '#64748b', fontSize: '1.125rem' }}>Everything you need to run a high-performance retail network.</p>
+                    <p style={{ color: 'white', fontSize: '1.125rem' }}>Everything you need to run a high-performance retail network.</p>
                 </div>
 
                 <div style={{
@@ -231,8 +231,8 @@ export default function LandingPage() {
                             }}>
                                 {f.icon}
                             </div>
-                            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.75rem', color: '#f1f5f9' }}>{f.title}</h3>
-                            <p style={{ color: '#64748b', lineHeight: 1.6, fontSize: '0.9375rem' }}>{f.description}</p>
+                            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.75rem', color: '#ffffff' }}>{f.title}</h3>
+                            <p style={{ color: '#ffffff', lineHeight: 1.6, fontSize: '0.9375rem', opacity: 0.9 }}>{f.description}</p>
                         </div>
                     ))}
                 </div>
@@ -254,7 +254,7 @@ export default function LandingPage() {
                     <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '3rem', fontWeight: 800, marginBottom: '1.5rem' }}>
                         Ready to elevate your <br /> in-store presence?
                     </h2>
-                    <p style={{ fontSize: '1.125rem', color: '#94a3b8', maxWidth: 600, margin: '0 auto 2.5rem' }}>
+                    <p style={{ fontSize: '1.125rem', color: 'white', maxWidth: 600, margin: '0 auto 2.5rem' }}>
                         Join leading retailers worldwide using OmniPush to power their digital signage strategy.
                     </p>
                     <button
@@ -272,7 +272,7 @@ export default function LandingPage() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '2rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                         <Tv2 size={24} className="text-brand-500" />
-                        <span style={{ fontWeight: 700, color: '#94a3b8' }}>OmniPush Digital</span>
+                        <span style={{ fontWeight: 700, color: 'white' }}>OmniPush Digital</span>
                     </div>
                     <div>
                         © 2026 OmniPush Digital Services. All rights reserved.
