@@ -157,6 +157,8 @@ interface PlaybackProps {
     assets: ManifestAsset[]
     region: { id: string; x: number; y: number; width: number; height: number }
     isNative?: boolean
+    showDebug?: boolean
+    deviceCode?: string
 }
 
 // ─── Double-Buffer Video Player ──────────────────────────────────────────────
@@ -173,11 +175,12 @@ interface VideoBufferProps {
 
 type TransitionEffect = 'fade' | 'slide' | 'zoom' | 'none' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right'
 
-function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
+function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', showDebug = false }: {
     items: ManifestItem[]
     assets: ManifestAsset[]
     onAdvance: () => void
     effect?: TransitionEffect
+    showDebug?: boolean
 }): React.ReactElement {
     const [activeSlot, setActiveSlot] = useState<0 | 1>(0)
     const isAndroidNative = !!(window as any).AndroidHealth
@@ -519,6 +522,16 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
             ))}
             {isAndroidNative && <div id="native-layer-proxy" style={{ pointerEvents: 'none' }} />}
 
+            {/* Micro Debug Indicator for DBV state */}
+            {showDebug && (
+                <div style={{
+                    position: 'absolute', top: 5, left: 5, zIndex: 99999,
+                    background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: '8px', 
+                    padding: '2px 4px', borderRadius: 4, fontFamily: 'monospace'
+                }}>
+                    B1:{isReady[0]?'R':'_'} B2:{isReady[1]?'R':'_'} | {debug}
+                </div>
+            )}
         </div>
     )
 }
@@ -526,7 +539,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up' }: {
 
 // ─── Playback Engine ──────────────────────────────────────────────────────────
 
-function PlaybackEngine({ items, assets, region, isNative = false }: PlaybackProps) {
+function PlaybackEngine({ items, assets, region, isNative = false, showDebug = false }: PlaybackProps) {
     const [idx, setIdx] = useState(0)
     const [prevIdx, setPrevIdx] = useState<number | null>(null)
     const [isSwapping, setIsSwapping] = useState(false)
@@ -811,6 +824,7 @@ function PlaybackEngine({ items, assets, region, isNative = false }: PlaybackPro
                     assets={assets}
                     onAdvance={advance}
                     effect={(activeItems[idx] as any)?.settings?.transition || 'slide'}
+                    showDebug={showDebug}
                 />
             ) : (
                 <>
@@ -1102,6 +1116,12 @@ console.log = (...args) => {
     const log = `[${new Date().toLocaleTimeString()}] ${msg}`
     consoleLogs.push(log)
     if (consoleLogs.length > MAX_LOGS) consoleLogs.shift()
+    
+    // NEW: Update remote logs state for debug overlay
+    if (setRemoteLogsRef.current) {
+        setRemoteLogsRef.current(prev => [{ time: new Date().toLocaleTimeString(), msg, type: 'info' }, ...prev].slice(0, 5))
+    }
+
     originalLog.apply(console, args)
 
     const win = window as any
@@ -1129,6 +1149,12 @@ console.error = (...args) => {
     const log = `[${new Date().toLocaleTimeString()}] ERROR: ${msg}`
     consoleLogs.push(log)
     if (consoleLogs.length > MAX_LOGS) consoleLogs.shift()
+
+    // NEW: Update remote logs state for debug overlay
+    if (setRemoteLogsRef.current) {
+        setRemoteLogsRef.current(prev => [{ time: new Date().toLocaleTimeString(), msg, type: 'error' }, ...prev].slice(0, 5))
+    }
+
     originalError.apply(console, args)
 
     const win = window as any
@@ -1155,6 +1181,9 @@ console.warn = (...args) => {
         win.AndroidHealth.logLine(`⚠️ WARN: ${msg}`)
     }
 }
+
+// CORTEX: Bridge for global console hijacking to React state
+const setRemoteLogsRef = { current: null as any };
 
 export default function PlayerPage() {
     const { device_code } = useParams<{ device_code: string }>()
@@ -1210,6 +1239,9 @@ export default function PlayerPage() {
     const [inferredHdmi, setInferredHdmi] = useState<'connected' | 'disconnected' | 'unknown'>('unknown')
     const [syncProgress, setSyncProgress] = useState<{ current: number; total: number } | null>(null)
     const versionRef = useRef(version)
+    const [showDebugOverlay, setShowDebugOverlay] = useState(false)
+    const [lastSyncTime, setLastSyncTime] = useState(new Date().toLocaleTimeString())
+    const [remoteLogs, setRemoteLogs] = useState<{ time: string, msg: string, type: 'info' | 'error' }[]>([])
     const manifestTimerRef = useRef<any>(null)
     const hbTimerRef = useRef<any>(null)
     const failCountRef = useRef(0)
@@ -1219,6 +1251,12 @@ export default function PlayerPage() {
     const consecutiveErrorsRef = useRef(0)
     const lastMediaErrorRef = useRef<string | null>(null)
     const isRenderingRef = useRef(true)
+
+    // Bridge state to global ref for console hijacking
+    useEffect(() => {
+        setRemoteLogsRef.current = setRemoteLogs;
+        return () => { setRemoteLogsRef.current = null; }
+    }, [])
 
     // Detect Android native video bridge (APK exposing AndroidHealth JS interface)
     // CORTEX: ExoPlayer cannot play blob: URLs from offline cache, so disable native handoff if offline
@@ -1291,11 +1329,23 @@ export default function PlayerPage() {
     const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const [showPinPrompt, setShowPinPrompt] = useState(false)
     const [showAdminPanel, setShowAdminPanel] = useState(false)
+    const [showOfflineIndicator, setShowOfflineIndicator] = useState(false)
     const [pinInput, setPinInput] = useState('')
     const [pinError, setPinError] = useState(false)
     const [showDebugManifest, setShowDebugManifest] = useState(false)
     const [showLogs, setShowLogs] = useState(false)
     const [debugJSON, setDebugJSON] = useState('')
+
+    // Reset indicator on offline status change
+    useEffect(() => {
+        if (offline) {
+            setShowOfflineIndicator(true)
+            const t = setTimeout(() => setShowOfflineIndicator(false), 10000)
+            return () => clearTimeout(t)
+        } else {
+            setShowOfflineIndicator(false)
+        }
+    }, [offline])
 
     const handleCornerTap = () => {
         tapCountRef.current += 1
@@ -1309,6 +1359,20 @@ export default function PlayerPage() {
             setShowPinPrompt(true)
             setPinInput('')
             setPinError(false)
+        }
+    }
+
+    const debugTapCountRef = useRef(0)
+    const debugTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const handleDebugCornerTap = () => {
+        debugTapCountRef.current += 1
+        console.log(`[Debug] Corner Tap ${debugTapCountRef.current}/3`)
+        if (debugTapTimerRef.current) clearTimeout(debugTapTimerRef.current)
+        debugTapTimerRef.current = setTimeout(() => { debugTapCountRef.current = 0 }, 2000)
+        if (debugTapCountRef.current >= 3) {
+            console.log(`[Debug] Toggling Debug Overlay`)
+            debugTapCountRef.current = 0
+            setShowDebugOverlay(prev => !prev)
         }
     }
 
@@ -1327,6 +1391,7 @@ export default function PlayerPage() {
     useEffect(() => {
         const handleKeys = (e: KeyboardEvent) => {
             if (e.shiftKey && e.key === 'D') setShowDiagnostics(prev => !prev)
+            if (e.shiftKey && e.key === 'X') setShowDebugOverlay(prev => !prev)
         }
         window.addEventListener('keydown', handleKeys)
         return () => window.removeEventListener('keydown', handleKeys)
@@ -1365,20 +1430,27 @@ export default function PlayerPage() {
 
             try {
                 // 1. Mark as EXECUTED immediately in Supabase
+                // We do both: Direct DB update AND heartbeat ACK in next cycle for redundancy on Amlogic
                 await supabase.from('device_commands').update({
                     status: 'EXECUTED',
                     executed_at: new Date().toISOString()
                 }).eq('id', cmd.id)
 
+                // Store for heartbeat ACK
+                ackCommandIdRef.current = cmd.id
+
                 // 2. Perform the actual logic
                 const cmdStr = (cmd.command || '').toUpperCase()
+                
                 if (cmdStr === 'REBOOT' || cmdStr === 'RELOAD' || cmdStr === 'REFRESH') {
-                    console.warn('[Player] Remote Reload/Reboot triggered. Reloading page...')
-                    // Multiple layers of reload to bypass various browser locks
+                    console.warn('[Player] Remote Reload/Reboot triggered. Delaying for DB update...')
+                    // GIVE THE NETWORK STACK 2 SECONDS TO FINISH THE DB UPDATE ABOVE
+                    await new Promise(r => setTimeout(r, 2000))
                     window.location.reload()
                     setTimeout(() => { window.location.href = window.location.href }, 500)
                 } else if (cmdStr === 'CLEAR_CACHE') {
                     console.warn('[Player] Remote Clear Cache triggered. Purging local storage...')
+                    await new Promise(r => setTimeout(r, 2000))
                     localStorage.removeItem(manifestKey(dc))
                     window.location.reload()
                     setTimeout(() => { window.location.href = window.location.href }, 500)
@@ -1390,6 +1462,9 @@ export default function PlayerPage() {
                     } else {
                         await captureBrowserScreenshot(cmd.id)
                     }
+                } else if (cmdStr === 'TOGGLE_DEBUG') {
+                    console.log('[Player] Remote Toggle Debug requested...')
+                    setShowDebugOverlay(prev => !prev)
                 }
             } catch (err: any) {
                 console.error(`[Player] Command ${cmd.id} execution failed:`, err.message)
@@ -1490,6 +1565,7 @@ export default function PlayerPage() {
             if (data.up_to_date) {
                 console.log(`[Player] Content ${data.version} is up to date. Keep loop playing.`)
                 setOffline(false)
+                setLastSyncTime(new Date().toLocaleTimeString())
                 if (phaseRef.current === 'error') setPhase('playing')
                 return true
             }
@@ -1515,6 +1591,7 @@ export default function PlayerPage() {
             versionRef.current = newVersion
             localStorage.setItem(manifestKey(dc), JSON.stringify(data))
             setOffline(false)
+            setLastSyncTime(new Date().toLocaleTimeString())
             if (phaseRef.current === 'error') setPhase('playing')
 
             if (data.assets) syncAssets(data.assets)
@@ -1675,12 +1752,19 @@ export default function PlayerPage() {
                 device_secret: sec,
                 current_version: 'v1.0.1+health-' + (versionRef.current || 'init'),
                 status: phaseRef.current,
+                ack_command_id: ackCommandIdRef.current,
                 // Sanitize meta to ensure no illegal JSON values (NaN/Infinity)
                 ...JSON.parse(JSON.stringify(meta, (k, v) => (typeof v === 'number' && isNaN(v)) ? null : v))
             }
 
             console.log('[Player] Sending heartbeat...')
             const res = await callEdgeFn('device-heartbeat', payload, 30000, false) // 30s timeout, no auth
+
+            // If heartbeat was successful and contained an ACK for a command, we can clear the ref
+            if (!res.error && ackCommandIdRef.current) {
+                console.log(`[Player] Command ${ackCommandIdRef.current} ACK confirmed by server.`)
+                ackCommandIdRef.current = null
+            }
 
             if (res.error) {
                 console.error('[Player] Heartbeat Server Error:', res.error)
@@ -2229,6 +2313,8 @@ export default function PlayerPage() {
                             items={regionItems}
                             assets={manifest!.assets}
                             isNative={isAndroidNative}
+                            showDebug={showDebugOverlay}
+                            deviceCode={dc}
                         />
                     )
                 })}
@@ -2236,10 +2322,16 @@ export default function PlayerPage() {
                 {/* Overlays */}
                 {offline && (
                     <div style={{
-                        position: 'fixed', top: 32, right: 32, zIndex: 10000,
+                        position: 'fixed', 
+                        top: 32, 
+                        right: 32, 
+                        zIndex: 10000,
                         color: '#ef4444',
-                        opacity: 0.4,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        opacity: showOfflineIndicator ? 0.6 : 0,
+                        transition: 'opacity 1s ease-in-out',
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center',
                         pointerEvents: 'none'
                     }}>
                         <WifiOff size={32} strokeWidth={2.5} />
@@ -2268,6 +2360,55 @@ export default function PlayerPage() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', overflow: 'hidden', background: (isAndroidNative && phase === 'playing') ? 'transparent' : '#000', touchAction: 'none' }}>
             {renderMain()}
             {cornerTapZone}
+            
+            {/* Debug Tap Zone (Top-Right) */}
+            <div
+                onClick={(e) => {
+                    e.stopPropagation();
+                    if (offline) {
+                        setShowOfflineIndicator(true);
+                        setTimeout(() => setShowOfflineIndicator(false), 5000);
+                    }
+                    handleDebugCornerTap();
+                }}
+                style={{
+                    position: 'fixed', top: 0, right: 0,
+                    width: 120, height: 120, zIndex: 9999999,
+                    cursor: 'pointer',
+                }}
+            />
+
+            {/* Debug Overlay UI */}
+            {showDebugOverlay && (
+                <div style={{
+                    position: 'fixed', bottom: 10, right: 10, zIndex: 100000,
+                    background: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(10px)',
+                    border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8,
+                    padding: '8px 12px', minWidth: 180, pointerEvents: 'none',
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+                }}>
+                    <div style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', marginBottom: 6, paddingBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.6rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>📡 Debug Info</span>
+                        <span style={{ fontSize: '0.6rem', color: offline ? '#ef4444' : '#22c55e', fontWeight: 700 }}>{offline ? 'OFFLINE' : 'ONLINE'}</span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'auto auto', gap: '4px 12px', fontSize: '10px', fontFamily: 'monospace' }}>
+                        <span style={{ color: '#64748b' }}>Last Sync:</span>
+                        <span style={{ color: '#f1f5f9', textAlign: 'right' }}>{lastSyncTime}</span>
+                        <span style={{ color: '#64748b' }}>Media:</span>
+                        <span style={{ color: '#f1f5f9', textAlign: 'right' }}>{manifest?.assets?.length || 0} assets</span>
+                        <span style={{ color: '#64748b' }}>Items:</span>
+                        <span style={{ color: '#f1f5f9', textAlign: 'right' }}>{Object.values(manifest?.region_playlists || {}).flat().length} in plyst</span>
+                        <span style={{ color: '#64748b' }}>Env/UA:</span>
+                        <span style={{ color: '#f1f5f9', textAlign: 'right' }}>Signage Web-V1</span>
+                    </div>
+                    {remoteLogs.length > 0 && remoteLogs[0].type === 'error' && (
+                        <div style={{ marginTop: 6, paddingTop: 4, borderTop: '1px solid rgba(255,255,255,0.05)', color: '#ef4444', fontSize: '9px', fontStyle: 'italic' }}>
+                            ⚠️ {remoteLogs[0].msg.slice(0, 50)}...
+                        </div>
+                    )}
+                </div>
+            )}
+
             <AdminPanel />
         </div>
     )

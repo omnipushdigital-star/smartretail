@@ -112,9 +112,43 @@ export default function DashboardPage() {
                 setLoading(false)
             }
         }
+
         load()
-        const interval = setInterval(load, 30000)
-        return () => clearInterval(interval)
+
+        // 1. Subscribe to heartbeats
+        const hbChannel = supabase
+            .channel('dashboard_heartbeats')
+            .on('postgres_changes', { 
+                event: '*', 
+                schema: 'public', 
+                table: 'device_heartbeats' 
+            }, () => {
+                load() 
+            })
+            .subscribe()
+
+        // 2. Subscribe to devices
+        const devChannel = supabase
+            .channel('dashboard_devices')
+            .on('postgres_changes', { 
+                event: '*', 
+                schema: 'public', 
+                table: 'devices' 
+            }, () => {
+                load()
+            })
+            .subscribe()
+
+        // 3. Status Tick: Force re-render every 15s to update "Online" relative to now
+        const tick = setInterval(() => {
+            setHeartbeats(prev => [...prev]) 
+        }, 15000)
+
+        return () => {
+            supabase.removeChannel(hbChannel)
+            supabase.removeChannel(devChannel)
+            clearInterval(tick)
+        }
     }, [currentTenantId])
 
     return (

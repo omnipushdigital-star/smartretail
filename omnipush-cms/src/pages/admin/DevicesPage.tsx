@@ -241,13 +241,33 @@ export default function DevicesPage() {
             })
             .subscribe()
 
-        // 2. Force re-render every 15s to update "Last Seen" and "Online" status
+        // 2. Subscribe to device changes (metadata updates)
+        const devChannel = supabase
+            .channel('realtime_devices')
+            .on('postgres_changes', { 
+                event: '*', 
+                schema: 'public', 
+                table: 'devices' 
+            }, (payload) => {
+                // If a device is deleted or moved to bin, we should just reload for simplicity
+                // but for updates we can merge into existing state
+                if (payload.eventType === 'UPDATE') {
+                    const up = payload.new as Device
+                    setDevices(prev => prev.map(d => d.id === up.id ? { ...d, ...up } : d))
+                } else {
+                    loadData()
+                }
+            })
+            .subscribe()
+
+        // 3. Force re-render every 15s to update "Last Seen" and "Online" status
         const tick = setInterval(() => {
             setHeartbeats(prev => ({ ...prev })) 
         }, 15000)
 
         return () => {
             supabase.removeChannel(channel)
+            supabase.removeChannel(devChannel)
             clearInterval(tick)
         }
     }, [currentTenantId])
@@ -733,8 +753,8 @@ export default function DevicesPage() {
                                                         </td>
                                                         <td><span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.875rem', color: isSelected ? 'var(--color-brand-500)' : 'var(--color-text-primary)', letterSpacing: '0.05em' }}>{d.device_code}</span></td>
                                                         <td style={{ color: 'var(--color-text-primary) !important' }}><span className="force-visible" style={{ fontWeight: 900 }}>{d.display_name || '—'}</span></td>
-                                                        <td style={{ color: 'var(--color-text-primary) !important', fontSize: '0.925rem' }}>
-                                                            <span className="force-visible" style={{ fontWeight: 900 }}>{(d as any).store?.name || '—'}</span>
+                                                        <td style={{ fontSize: '0.925rem' }}>
+                                                            <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.875rem', color: isSelected ? 'var(--color-brand-500)' : 'var(--color-text-primary)', letterSpacing: '0.05em' }}>{(d as any).store?.name || '—'}</span>
                                                         </td>
                                                         <td>
                                                             {(d as any).role?.key
@@ -742,18 +762,18 @@ export default function DevicesPage() {
                                                                 : <span style={{ color: 'var(--color-text-primary) !important' }}>—</span>
                                                             }
                                                         </td>
-                                                        <td style={{ color: 'var(--color-text-primary) !important', fontSize: '0.925rem', textTransform: 'capitalize' }}>
-                                                            <span className="force-visible" style={{ fontWeight: 900 }}>{d.orientation}</span>
+                                                        <td style={{ fontSize: '0.925rem', textTransform: 'capitalize' }}>
+                                                            <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.875rem', color: isSelected ? 'var(--color-brand-500)' : 'var(--color-text-primary)', letterSpacing: '0.05em' }}>{d.orientation}</span>
                                                         </td>
                                                         {/* â”€â”€ Device Secret cell â”€â”€ */}
                                                         <td>
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
                                                                  <span style={{
-                                                                    fontFamily: 'monospace', fontSize: '0.75rem',
+                                                                    fontFamily: 'monospace', fontSize: '0.875rem',
                                                                     color: revealedId === d.id ? 'var(--color-brand-500)' : 'var(--color-text-primary)',
                                                                      maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                                                     letterSpacing: revealedId === d.id ? undefined : '0.1em',
-                                                                     fontWeight: 800
+                                                                     letterSpacing: revealedId === d.id ? '0.05em' : '0.1em',
+                                                                     fontWeight: 900
                                                                  }}>
                                                                      {revealedId === d.id ? d.device_secret : '••••••••••••'}
                                                                  </span>
@@ -785,8 +805,8 @@ export default function DevicesPage() {
                                                                 )}
                                                             </div>
                                                         </td>
-                                                        <td style={{ textAlign: 'left', fontSize: '0.925rem', color: 'var(--color-text-primary) !important' }}>
-                                                            <span className="force-visible" style={{ fontWeight: 900 }}>{formatShorthandTime(hb?.last_seen_at)}</span>
+                                                        <td style={{ textAlign: 'left', fontSize: '0.925rem' }}>
+                                                            <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.875rem', color: isSelected ? 'var(--color-brand-500)' : 'var(--color-text-primary)', letterSpacing: '0.05em' }}>{formatShorthandTime(hb?.last_seen_at)}</span>
                                                         </td>
                                                         <td style={{ textAlign: 'center' }}>
                                                             {hb?.current_version

@@ -84,8 +84,52 @@ export default function MonitoringPage() {
 
     useEffect(() => {
         loadAll()
-        const timer = setInterval(loadAll, 60000)
-        return () => clearInterval(timer)
+
+        if (!currentTenantId) return
+
+        // 1. Subscribe to real-time heartbeat updates
+        const hbChannel = supabase
+            .channel('monitoring_heartbeats')
+            .on('postgres_changes', { 
+                event: '*', 
+                schema: 'public', 
+                table: 'device_heartbeats' 
+            }, (payload) => {
+                if (payload.eventType === 'INSERT') {
+                    setHeartbeats(prev => [payload.new as DeviceHeartbeat, ...prev].slice(0, 500))
+                } else if (payload.eventType === 'UPDATE') {
+                    setHeartbeats(prev => prev.map(hb => hb.id === (payload.new as any).id ? (payload.new as DeviceHeartbeat) : hb))
+                }
+            })
+            .subscribe()
+
+        // 2. Subscribe to device changes (metadata updates)
+        const devChannel = supabase
+            .channel('monitoring_devices')
+            .on('postgres_changes', { 
+                event: '*', 
+                schema: 'public', 
+                table: 'devices' 
+            }, (payload) => {
+                if (payload.eventType === 'UPDATE') {
+                    const updated = payload.new as DeviceInfo
+                    setDeviceMap(prev => ({ ...prev, [updated.device_code]: updated }))
+                } else if (payload.eventType === 'INSERT') {
+                    loadAll() // Reload all metadata for new device
+                }
+            })
+            .subscribe()
+
+        // 3. Status Tick: Force re-render every 15s to update "Online Status" relative to current time
+        const tick = setInterval(() => {
+            setHeartbeats(prev => [...prev]) 
+        }, 15000)
+
+        return () => {
+            supabase.removeChannel(hbChannel)
+            supabase.removeChannel(devChannel)
+            clearInterval(tick)
+        }
     }, [currentTenantId])
 
     // Dedupe: latest heartbeat per device
