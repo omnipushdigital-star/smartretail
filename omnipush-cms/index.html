@@ -30,12 +30,12 @@
   </script>
   <style>
     :root {
-      --color-surface-950: #020617;
+      --color-surface-950: #0A0A0A;
     }
 
     html,
     body {
-      background-color: #020617;
+      background-color: #0A0A0A;
       /* Dark background before JS/CSS loads */
       margin: 0;
       padding: 0;
@@ -50,14 +50,8 @@
     }
 
     #root:empty::before {
-      content: 'Initializing OmniPush...';
+      content: '';
       position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      color: rgba(255, 255, 255, 0.2);
-      font-family: sans-serif;
-      font-size: 14px;
     }
   </style>
 </head>
@@ -65,8 +59,7 @@
 <body>
   <div id="root">
     <div
-      style="position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); color:rgba(255,255,255,0.4); font-family:sans-serif; font-size:14px;">
-      JS Booting...
+      style="position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);">
     </div>
   </div>
 

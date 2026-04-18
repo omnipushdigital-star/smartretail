@@ -852,27 +852,24 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
 
 // ─── UI States ────────────────────────────────────────────────────────────────
 
-function LoadingState({ device_code }: { device_code: string }) {
+function LoadingState() {
     return (
         <div style={{
             position: 'fixed', inset: 0,
-            background: '#000000',
+            background: '#0A0A0A',
             display: 'flex', flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center',
             zIndex: 99999
         }}>
             <Logo />
             <div style={{
-                marginTop: '40px',
-                width: 40, height: 40,
-                border: '3px solid rgba(255,255,255,0.1)',
-                borderTopColor: '#22c55e',
+                marginTop: '32px',
+                width: 32, height: 32,
+                border: '3px solid rgba(255,255,255,0.05)',
+                borderTopColor: '#444444',
                 borderRadius: '50%',
                 animation: 'spin 1s linear infinite'
             }} />
-            <div style={{ color: '#94a3b8', fontSize: '14px', marginTop: '24px', fontWeight: 500, letterSpacing: '0.05em' }}>Starting System...</div>
-            <div style={{ color: '#475569', fontSize: '10px', marginTop: '12px', fontFamily: 'monospace' }}>{device_code}</div>
-            <div style={{ position: 'fixed', bottom: 30, color: 'rgba(255,255,255,0.1)', fontSize: '10px', letterSpacing: '0.1em' }}>Connecting to CMS</div>
         </div>
     )
 }
@@ -1546,17 +1543,8 @@ export default function PlayerPage() {
 
             if (data?.error) {
                 console.error(`[Player] Manifest error from EdgeFn: ${data.error}`)
-                // Handle specific errors without throwing to keep global handlers quiet
-                if (data.error.includes('invalid credentials') || data.error.includes('inactive device')) {
-                    localStorage.removeItem(secretKey(dc))
-                    setPhase('pairing')
-                    initPairing()
-                    return false
-                }
-                
-                // For other network-level errors returned by callEdgeFn wrapper
-                setErrorMsg(data.error)
-                return false
+                // Throw so the catch block can run the offline hydration logic.
+                throw new Error(String(data.error))
             }
             
             console.log(`[Player] [MANIFEST_FETCH_SUCCESS] v=${data.resolved?.version || 'N/A'}`)
@@ -2182,7 +2170,7 @@ export default function PlayerPage() {
 
     const renderMain = () => {
         if (phase === 'loading' || (!manifest && phase !== 'pairing' && phase !== 'secret' && phase !== 'error')) {
-            return <LoadingState device_code={dc} />
+            return <LoadingState />
         }
         if (phase === 'pairing') return (
             <div style={bgStyle}>
