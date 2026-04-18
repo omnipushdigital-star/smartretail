@@ -1646,6 +1646,8 @@ export default function PlayerPage() {
                             versionRef.current = c.resolved.version
                         }
                         setOffline(true)
+                        setShowOfflineIndicator(true)
+                        setTimeout(() => setShowOfflineIndicator(false), 5000)
                         return true
                     } catch { /* ignore */ }
                 }
