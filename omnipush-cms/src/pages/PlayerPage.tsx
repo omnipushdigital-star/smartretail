@@ -159,6 +159,8 @@ interface PlaybackProps {
     isNative?: boolean
     showDebug?: boolean
     deviceCode?: string
+    consecutiveErrorsRef?: React.MutableRefObject<number>
+    lastMediaErrorRef?: React.MutableRefObject<string | null>
 }
 
 // ─── Double-Buffer Video Player ──────────────────────────────────────────────
@@ -539,7 +541,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
 
 // ─── Playback Engine ──────────────────────────────────────────────────────────
 
-function PlaybackEngine({ items, assets, region, isNative = false, showDebug = false }: PlaybackProps) {
+function PlaybackEngine({ items, assets, region, isNative = false, showDebug = false, consecutiveErrorsRef, lastMediaErrorRef }: PlaybackProps) {
     const [idx, setIdx] = useState(0)
     const [prevIdx, setPrevIdx] = useState<number | null>(null)
     const [isSwapping, setIsSwapping] = useState(false)
@@ -764,12 +766,12 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
                         isReady={isActive}
                         onReady={() => {
                             setTimeout(() => setReadyIdx(targetIdx), READY_TIMING)
-                            consecutiveErrorsRef.current = 0
+                            if (consecutiveErrorsRef) consecutiveErrorsRef.current = 0
                         }}
                         onEnded={advance}
                         onError={(msg) => {
-                            consecutiveErrorsRef.current += 1
-                            lastMediaErrorRef.current = msg
+                            if (consecutiveErrorsRef) consecutiveErrorsRef.current += 1
+                            if (lastMediaErrorRef) lastMediaErrorRef.current = msg
                         }}
                     />
                 )}
@@ -1116,7 +1118,7 @@ console.log = (...args) => {
     
     // NEW: Update remote logs state for debug overlay
     if (setRemoteLogsRef.current) {
-        setRemoteLogsRef.current(prev => [{ time: new Date().toLocaleTimeString(), msg, type: 'info' }, ...prev].slice(0, 5))
+        setRemoteLogsRef.current((prev: any[]) => [{ time: new Date().toLocaleTimeString(), msg, type: 'info' }, ...prev].slice(0, 5))
     }
 
     originalLog.apply(console, args)
@@ -1149,7 +1151,7 @@ console.error = (...args) => {
 
     // NEW: Update remote logs state for debug overlay
     if (setRemoteLogsRef.current) {
-        setRemoteLogsRef.current(prev => [{ time: new Date().toLocaleTimeString(), msg, type: 'error' }, ...prev].slice(0, 5))
+        setRemoteLogsRef.current((prev: any[]) => [{ time: new Date().toLocaleTimeString(), msg, type: 'error' }, ...prev].slice(0, 5))
     }
 
     originalError.apply(console, args)
@@ -1247,6 +1249,7 @@ export default function PlayerPage() {
     const bootStartedRef = useRef(false)
     const consecutiveErrorsRef = useRef(0)
     const lastMediaErrorRef = useRef<string | null>(null)
+    const ackCommandIdRef = useRef<string | null>(null)
     const isRenderingRef = useRef(true)
 
     // Bridge state to global ref for console hijacking
@@ -2303,6 +2306,8 @@ export default function PlayerPage() {
                             isNative={isAndroidNative}
                             showDebug={showDebugOverlay}
                             deviceCode={dc}
+                            consecutiveErrorsRef={consecutiveErrorsRef}
+                            lastMediaErrorRef={lastMediaErrorRef}
                         />
                     )
                 })}
