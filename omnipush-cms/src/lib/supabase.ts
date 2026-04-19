@@ -19,57 +19,55 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 export const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000001'
 
 /**
- * callEdgeFn: Robust wrapper for Supabase Edge Functions with multi-layer timeout
- * specially tuned for legacy Android WebView (Chromium 87).
+ * callEdgeFn: Robust wrapper for Supabase Edge Functions with timeout.
+ * Uses direct fetch() to avoid supabase.functions.invoke wrapping errors.
  */
 export async function callEdgeFn(fnName: string, payload: any, timeoutMs = 30000, useAuth = true): Promise<any> {
-    try {
-        const controller = new AbortController()
-        let authHeader = SUPABASE_ANON_KEY
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
 
+    try {
+        let authToken = SUPABASE_ANON_KEY
         if (useAuth) {
             try {
                 const { data: { session } } = await supabase.auth.getSession()
-                if (session?.access_token) authHeader = session.access_token
+                if (session?.access_token) authToken = session.access_token
             } catch (e) {
-                console.warn(`[Supabase] Session fetch failed for ${fnName}, falling back to Anon Key`)
+                console.warn(`[EdgeFn] Session fetch failed for ${fnName}, using anon key`)
             }
         }
 
-        let hasResolved = false
-        const manualTimeout = new Promise<never>((_, reject) =>
-            setTimeout(() => {
-                if (!hasResolved) {
-                    controller.abort() 
-                    reject(new Error('OMNIPUSH_TIMEOUT'))
-                }
-            }, timeoutMs)
-        )
-
-        const fetchPromise = supabase.functions.invoke(fnName, {
-            body: payload,
+        const url = `${SUPABASE_URL}/functions/v1/${fnName}`
+        const response = await fetch(url, {
+            method: 'POST',
             headers: {
+                'Content-Type': 'application/json',
+                'apikey': SUPABASE_ANON_KEY,
+                'Authorization': `Bearer ${authToken}`,
                 'x-app-version': '1.0.0',
-                ...(useAuth ? { 'Authorization': `Bearer ${authHeader}` } : {})
             },
-            signal: controller.signal
+            body: JSON.stringify(payload),
+            signal: controller.signal,
         })
 
-        const res = await Promise.race([fetchPromise, manualTimeout]) as any
-        hasResolved = true
+        clearTimeout(timer)
 
-        if (res.error) {
-            console.error(`[EdgeFn] ${fnName} internal error:`, res.error)
-            return { error: String(res.error) }
+        const data = await response.json().catch(() => ({}))
+
+        if (!response.ok) {
+            const msg = data?.error || `Server error ${response.status}`
+            console.error(`[EdgeFn] ${fnName} HTTP ${response.status}:`, msg)
+            return { error: msg }
         }
 
-        return res.data
+        return data
     } catch (err: any) {
-        if (err.name === 'AbortError' || err.message === 'OMNIPUSH_TIMEOUT') {
+        clearTimeout(timer)
+        if (err.name === 'AbortError') {
             console.warn(`[EdgeFn] ${fnName} timed out after ${timeoutMs}ms`)
             return { error: 'Request timed out' }
         }
         console.error(`[EdgeFn] ${fnName} network error:`, err.message)
-        return { error: err.message || 'Unknown network error' }
+        return { error: `Cannot reach server — check if Supabase project is active` }
     }
 }
