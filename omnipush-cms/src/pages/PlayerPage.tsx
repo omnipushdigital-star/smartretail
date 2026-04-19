@@ -2317,15 +2317,14 @@ export default function PlayerPage() {
                 {/* Overlays */}
                 {offline && (
                     <div style={{
-                        position: 'fixed', 
-                        top: 32, 
-                        right: 32, 
+                        position: 'fixed',
+                        top: 32,
+                        right: 32,
                         zIndex: 10000,
                         color: '#ef4444',
-                        opacity: showOfflineIndicator ? 0.6 : 0,
-                        transition: 'opacity 1s ease-in-out',
-                        display: 'flex', 
-                        alignItems: 'center', 
+                        opacity: 0.6,
+                        display: 'flex',
+                        alignItems: 'center',
                         justifyContent: 'center',
                         pointerEvents: 'none'
                     }}>
