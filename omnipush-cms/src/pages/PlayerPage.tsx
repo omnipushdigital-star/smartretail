@@ -403,9 +403,16 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
         if (initialSyncDone.current) return
 
         if (sorted.length > 0) {
+            // Mark as initialized IMMEDIATELY — must happen before any early return
+            // so the guard at the top of this effect always fires on subsequent runs.
+            // Previously this was set AFTER a `return () => cleanup` in the browser path,
+            // meaning it was never reached, so the guard never armed, and the effect kept
+            // resetting slotUrls after every transition → blank screen + 'Loading...' mid-playback.
+            initialSyncDone.current = true
+
             const url0 = getUrl(sorted[0])
             const url1 = sorted.length > 1 ? getUrl(sorted[1]) : url0
-            
+
             // Only update if URLs actually changed to prevent render loops
             if (url0 !== slotUrls[0] || url1 !== slotUrls[1]) {
                 console.log('[DoubleBufferVideo] Updating Slot URLs...', { url0: url0.slice(0, 30), url1: url1.slice(0, 30) })
@@ -414,9 +421,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
             }
 
             if (isAndroidNative && !bootPlayedRef.current) {
-                // CRITICAL FIX: Only lock the boot ref when we actually have a valid URL to play.
-                // Previously, bootPlayedRef was set true even when url0 was empty (null asset URL),
-                // permanently preventing a retry when the manifest finally delivered a real URL.
+                // Only lock the boot ref when we actually have a valid URL to play.
                 if (url0) {
                     console.log(`[DoubleBufferVideo] Booting Native Handoff: ${url0}`);
                     if ((window as any).AndroidHealth) (window as any).AndroidHealth.playNativeVideo(url0)
@@ -428,8 +433,6 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
                 }
             } else if (!isAndroidNative && !bootPlayedRef.current) {
                 // ── BOOT-CRITICAL: Event-driven play() for slot 0 ──
-                // On some Android TV browsers, auto-play is strictly blocked.
-                // We set a 5s watchdog to force play if onCanPlay doesn't fire.
                 const bootWatchdog = setTimeout(() => {
                     if (!bootPlayedRef.current) {
                         const v = videoRefs[0].current
@@ -441,11 +444,8 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
                     }
                 }, 5000)
 
-                // Cleanup watchdog if component unmounts before it fires
                 return () => clearTimeout(bootWatchdog)
             }
-            // Native path: mark done here
-            initialSyncDone.current = true
         }
     }, [sorted, getUrl, isAndroidNative])
 
