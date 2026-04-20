@@ -223,6 +223,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
     }, [memoizedAssets])
 
     const advanceBufferRef = useRef<(force?: boolean) => void>(() => { })
+    const triggerWatchdogRef = useRef<(delay?: number) => void>(() => { })
 
     // ── Native Handoff Lifecycle ──
     useEffect(() => {
@@ -231,9 +232,17 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
                 console.log("[NativeHandoff] Video ended successfully. Advancing loop.")
                 advanceBufferRef.current(true)
             }
+            // CRITICAL FIX: Register error handler so ExoPlayer failures advance the
+            // playlist instead of silently hanging on a black screen forever.
+            // Android APK calls window.onNativeVideoError(errorCode) on ExoPlayer failure.
+            (window as any).onNativeVideoError = (errorCode: string) => {
+                console.error(`[NativeHandoff] ExoPlayer error: ${errorCode}. Skipping to next item.`)
+                advanceBufferRef.current(true)
+            }
         }
         return () => {
             if ((window as any).onNativeVideoEnded) delete (window as any).onNativeVideoEnded
+            if ((window as any).onNativeVideoError) delete (window as any).onNativeVideoError
             if (isAndroidNative && (window as any).AndroidHealth) (window as any).AndroidHealth.stopNativeVideo()
         }
     }, [isAndroidNative])
@@ -249,6 +258,13 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
                 const win = window as any
                 if (win.AndroidHealth) win.AndroidHealth.playNativeVideo(url)
                 setDebug(`P: ${url.split('/').pop()?.slice(-15)}`)
+                // CRITICAL FIX: Arm watchdog in native mode. In WebView mode, triggerWatchdog
+                // is called from onTimeUpdate events on <video> elements — but those elements
+                // don't exist in native mode (isAndroidNative=true renders no <video> tags).
+                // This watchdog ensures the player advances if ExoPlayer hangs without calling
+                // onNativeVideoEnded or onNativeVideoError (e.g. stuck buffering, network drop).
+                // Use ref to avoid TDZ error (triggerWatchdog useCallback declared after this effect).
+                triggerWatchdogRef.current(30000)
             }
         }
     }, [isAndroidNative, activeSlot, sorted, getUrl])
@@ -262,6 +278,8 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
             }
         }, delay)
     }, [sorted.length])
+
+    triggerWatchdogRef.current = triggerWatchdog
 
     const advanceBuffer = useCallback((forceNext = false) => {
         if (sorted.length === 0) return
@@ -378,6 +396,12 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
 
     // ─── 1. Initialization: Resolve URLs for first 2 clips ───
     useEffect(() => {
+        // CRITICAL FIX: Skip after boot. This effect always looks at sorted[0]/sorted[1].
+        // After the first transition, the preload effect updates slotUrls to point at the
+        // next upcoming item. If this effect re-runs for any reason it would see a mismatch
+        // and reset slotUrls back to the beginning → blank screen + 'Loading...' mid-playback.
+        if (initialSyncDone.current) return
+
         if (sorted.length > 0) {
             const url0 = getUrl(sorted[0])
             const url1 = sorted.length > 1 ? getUrl(sorted[1]) : url0
@@ -390,10 +414,18 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
             }
 
             if (isAndroidNative && !bootPlayedRef.current) {
-                console.log(`[DoubleBufferVideo] Booting Native Handoff: ${url0}`);
-                if (url0 && (window as any).AndroidHealth) (window as any).AndroidHealth.playNativeVideo(url0)
-                setDebug('Native-Play')
-                bootPlayedRef.current = true
+                // CRITICAL FIX: Only lock the boot ref when we actually have a valid URL to play.
+                // Previously, bootPlayedRef was set true even when url0 was empty (null asset URL),
+                // permanently preventing a retry when the manifest finally delivered a real URL.
+                if (url0) {
+                    console.log(`[DoubleBufferVideo] Booting Native Handoff: ${url0}`);
+                    if ((window as any).AndroidHealth) (window as any).AndroidHealth.playNativeVideo(url0)
+                    setDebug('Native-Play')
+                    bootPlayedRef.current = true
+                } else {
+                    console.warn('[DoubleBufferVideo] Native boot skipped: url0 is empty. Will retry when URL resolves.')
+                    setDebug('Native-Wait')
+                }
             } else if (!isAndroidNative && !bootPlayedRef.current) {
                 // ── BOOT-CRITICAL: Event-driven play() for slot 0 ──
                 // On some Android TV browsers, auto-play is strictly blocked.
