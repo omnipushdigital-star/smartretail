@@ -213,36 +213,12 @@ Deno.serve(async (req: Request) => {
             };
         });
 
-        // 7. Generate signed URLs only for assets WITHOUT a direct CDN/R2 URL
-        // NOTE: Prefer media.url (R2/CDN) over signed Supabase URLs — ExoPlayer handles
-        // direct URLs more reliably than signed Supabase Storage redirect chains.
-        const storageItems = (items || []).filter((i: any) =>
-            i.media && (i.media.type === 'image' || i.media.type === 'video' || i.media.type === 'ppt' || i.media.type === 'presentation' || i.media.type === 'html') && i.media.storage_path
-        );
-        const uniquePaths = [...new Set(storageItems.map((i: any) => i.media.storage_path))];
-
-        let signedUrlsMap: Record<string, string> = {};
-        if (uniquePaths.length > 0) {
-            // Only sign paths that have NO direct URL (no R2, no CDN, no public URL)
-            const pathsToSign = uniquePaths.filter(path => {
-                const asset = allMedia?.find(m => m.storage_path === path);
-                return !asset?.url; // Skip if any direct URL exists
-            });
-
-            if (pathsToSign.length > 0) {
-                const { data: signedResults, error: signedErr } = await supabase.storage
-                    .from('signage_media')
-                    .createSignedUrls(pathsToSign as string[], 3600);
-
-                if (!signedErr && signedResults) {
-                    signedUrlsMap = Object.fromEntries(
-                        signedResults
-                            .filter((s: any) => s.signedUrl)
-                            .map((s: any) => [s.path, s.signedUrl])
-                    );
-                }
-            }
-        }
+        // 7. Resolve asset URLs
+        // Priority: media.url (R2/CDN direct) → Supabase public URL → null
+        // NOTE: Do NOT use signed Supabase URLs for ExoPlayer — their JWT redirect chain
+        // causes error_code_io_network_connection_failed on Android native HTTP stack.
+        // Use direct public storage URLs instead (no token, no redirect).
+        const supabaseStorageBase = `${Deno.env.get('SUPABASE_URL')}/storage/v1/object/public/signage_media`;
 
         const mediaAssets: any[] = [];
         const seenMedia = new Set<string>();
@@ -250,8 +226,13 @@ Deno.serve(async (req: Request) => {
         for (const media of allMedia || []) {
             if (seenMedia.has(media.id)) continue;
             seenMedia.add(media.id);
-            // Prefer direct URL (R2/CDN) → signed URL → null
-            const url = media.url || signedUrlsMap[media.storage_path] || null;
+
+            // 1st choice: direct CDN/R2 URL stored in DB
+            // 2nd choice: Supabase public URL (direct, no token, ExoPlayer-compatible)
+            // 3rd choice: null
+            const url = media.url ||
+                (media.storage_path ? `${supabaseStorageBase}/${media.storage_path}` : null);
+
             mediaAssets.push({
                 media_id: media.id,
                 type: media.type,
