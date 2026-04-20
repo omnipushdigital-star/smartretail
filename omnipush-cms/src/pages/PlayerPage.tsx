@@ -374,7 +374,17 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
                     performSwitch()
                 }
             }, 100)
-            setTimeout(() => clearInterval(checkReady), 8000)
+            // CRITICAL FIX: The 8s timeout previously just cleared the interval with NO fallback.
+            // If the preloaded video wasn't ready (e.g. because the preload effect reloaded it
+            // after syncAssets changed URLs to blob URLs), the player would hang permanently on
+            // a blank screen. Now we force-switch after 8s regardless of readyState.
+            setTimeout(() => {
+                clearInterval(checkReady)
+                if (nextVideo && nextVideo.readyState < 3) {
+                    console.warn(`[DoubleBufferVideo] V${nextIdx} not ready after 8s. Force switching.`)
+                    performSwitch()
+                }
+            }, 8000)
         }
     }, [activeSlot, sorted, videoRefs, onAdvance, triggerWatchdog, setIsTransitioning, isAndroidNative, getUrl])
 
@@ -459,7 +469,14 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
                 })
                 const nBuffer = videoRefs[nextSlot].current
                 if (nBuffer) {
-                    nBuffer.load()
+                    // CRITICAL FIX: Don't reload if already buffered (readyState >= 2).
+                    // syncAssets runs ~30s after boot and replaces direct URLs with blob URLs,
+                    // which changes getUrl's output and triggers this effect. Calling .load()
+                    // resets readyState to 0 on an already-preloaded video, causing the
+                    // advanceBuffer 8s wait path to trigger → blank screen on transition.
+                    if (nBuffer.readyState < 2) {
+                        nBuffer.load()
+                    }
                     nBuffer.muted = true
                 }
             }
