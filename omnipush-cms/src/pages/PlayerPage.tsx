@@ -183,9 +183,10 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
     onAdvance: () => void
     effect?: TransitionEffect
     showDebug?: boolean
+    isNative?: boolean
 }): React.ReactElement {
     const [activeSlot, setActiveSlot] = useState<0 | 1>(0)
-    const isAndroidNative = !!(window as any).AndroidHealth
+    const isAndroidNative = isNative
     const [isTransitioning, setIsTransitioningState] = useState(false)
     const setIsTransitioning = useCallback((v: boolean) => {
         setIsTransitioningState(v)
@@ -196,6 +197,17 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
     const v2 = useRef<HTMLVideoElement>(null)
     const videoRefs = [v1, v2]
     const [slotUrls, setSlotUrls] = useState<[string, string]>(['', ''])
+    
+    const getUrl = useCallback((item: ManifestItem) => {
+        const asset = assets.find(a => a.media_id === item.media_id)
+        if (asset?.url) return asset.url
+        const rawUrl = item.web_url || ''
+        if (rawUrl.startsWith('http') || rawUrl.startsWith('blob:') || rawUrl.startsWith('data:')) return rawUrl
+        return new URL(rawUrl, window.location.origin).href
+    }, [assets])
+
+    const isBlob = useCallback((url: string) => url.startsWith('blob:'), [])
+
     const idxRef = useRef(0)
     const [debug, setDebug] = useState<string>('Init')
     const watchdogRef = useRef<any>(null)
@@ -209,18 +221,6 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
         [items]
     )
     const memoizedAssets = React.useMemo(() => assets, [JSON.stringify(assets)])
-
-    const getUrl = useCallback((item: ManifestItem) => {
-        const asset = memoizedAssets.find(a => a.media_id === item.media_id)
-        const rawUrl = asset?.url || item.web_url || ''
-        if (!rawUrl) return ''
-        try {
-            // Ensure URL is absolute for Native Handoff
-            return new URL(rawUrl, window.location.href).href
-        } catch (e) {
-            return rawUrl
-        }
-    }, [memoizedAssets])
 
     const advanceBufferRef = useRef<(force?: boolean) => void>(() => { })
     const triggerWatchdogRef = useRef<(delay?: number) => void>(() => { })
@@ -256,24 +256,46 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
     // ── Native Playback Sync ──
     useEffect(() => {
         if (!isAndroidNative) return
-        const currentItem = sorted[idxRef.current]
-        if (currentItem) {
-            const url = getUrl(currentItem)
-            if (url) {
-                console.log(`[NativeHandoff] SLOT_CHANGE -> Play: ${url}`)
-                const win = window as any
-                if (win.AndroidHealth) win.AndroidHealth.playNativeVideo(url)
-                setDebug(`P: ${url.split('/').pop()?.slice(-15)}`)
-                // CRITICAL FIX: Arm watchdog in native mode. In WebView mode, triggerWatchdog
-                // is called from onTimeUpdate events on <video> elements — but those elements
-                // don't exist in native mode (isAndroidNative=true renders no <video> tags).
-                // This watchdog ensures the player advances if ExoPlayer hangs without calling
-                // onNativeVideoEnded or onNativeVideoError (e.g. stuck buffering, network drop).
-                // Use ref to avoid TDZ error (triggerWatchdog useCallback declared after this effect).
-                triggerWatchdogRef.current(30000)
+        const nextItem = sorted[idxRef.current]
+        if (nextItem) {
+            const url = getUrl(nextItem)
+            const slotIdx = activeSlot === 0 ? 1 : 0
+            
+            // Native Handoff logic
+            if (isAndroidNative && !isBlob(url)) {
+                if ((window as any).AndroidHealth) {
+                    (window as any).AndroidHealth.playNativeVideo(url)
+                }
+                setDebug(`Native-Play`)
+            } else if (isAndroidNative && isBlob(url)) {
+                // FALLBACK: If use-native is on but we have a blob, we MUST use HTML player
+                // Stop native player so we see the HTML content
+                if ((window as any).AndroidHealth) {
+                    (window as any).AndroidHealth.stopNativeVideo()
+                }
+                setDebug(`Native-Blob-Fallback`)
             }
+
+            setSlotUrls(prev => {
+                const next = [...prev]
+                if (next[slotIdx] !== url) {
+                    next[slotIdx] = url
+                    const nr = [...isReady]
+                    nr[slotIdx] = false
+                    setIsReady(nr)
+                }
+                return next
+            })
+            
+            // CRITICAL FIX: Arm watchdog in native mode. In WebView mode, triggerWatchdog
+            // is called from onTimeUpdate events on <video> elements — but those elements
+            // don't exist in native mode (isAndroidNative=true renders no <video> tags).
+            // This watchdog ensures the player advances if ExoPlayer hangs without calling
+            // onNativeVideoEnded or onNativeVideoError (e.g. stuck buffering, network drop).
+            // Use ref to avoid TDZ error (triggerWatchdog useCallback declared after this effect).
+            triggerWatchdogRef.current(30000)
         }
-    }, [isAndroidNative, activeSlot, sorted, getUrl])
+    }, [isAndroidNative, activeSlot, sorted, getUrl, isBlob, isReady])
 
     const triggerWatchdog = useCallback((delay = 10000) => {
         if (watchdogRef.current) clearTimeout(watchdogRef.current)
@@ -293,7 +315,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
         if (sorted.length === 1) {
             if (isAndroidNative) {
                 const url = getUrl(sorted[0])
-                if (url && (window as any).AndroidHealth) (window as any).AndroidHealth.playNativeVideo(url)
+                if (url && !isBlob(url) && (window as any).AndroidHealth) (window as any).AndroidHealth.playNativeVideo(url)
             } else {
                 const v = videoRefs[activeSlot].current
                 if (v) {
@@ -386,7 +408,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
                 }
             }, 8000)
         }
-    }, [activeSlot, sorted, videoRefs, onAdvance, triggerWatchdog, setIsTransitioning, isAndroidNative, getUrl])
+    }, [activeSlot, sorted, videoRefs, onAdvance, triggerWatchdog, setIsTransitioning, isAndroidNative, getUrl, isBlob])
 
     advanceBufferRef.current = advanceBuffer
 
@@ -411,10 +433,6 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
     }, [activeSlot, videoRefs])
 
     // ─── 1. Initialization: Resolve URLs for first 2 clips (runs ONCE on mount) ───
-    // CRITICAL: This effect must run exactly once. Using [] deps and refs to read
-    // sorted/getUrl prevents it from re-triggering when assets change (e.g. after
-    // syncAssets swaps direct URLs to blob URLs ~30s after boot), which previously
-    // caused slotUrls to reset mid-playback → blank screen + 'Loading...' debug.
     useEffect(() => {
         const sorted = sortedRef.current
         const getUrl = getUrlRef.current
@@ -424,22 +442,30 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
             const url1 = sorted.length > 1 ? getUrl(sorted[1]) : url0
 
             console.log('[DoubleBufferVideo] Init Slot URLs', { url0: url0.slice(0, 40), url1: url1.slice(0, 40) })
-            setSlotUrls([url0, url1])
-            setDebug('Loading...')
+            
+            // OPTIMIZATION: Only update slotUrls if they differ from current state to prevent re-load
+            setSlotUrls(prev => {
+                if (prev[0] === url0 && prev[1] === url1) return prev
+                return [url0, url1]
+            })
+
             initialSyncDone.current = true
 
             if (isAndroidNative && !bootPlayedRef.current) {
-                if (url0) {
+                if (url0 && !isBlob(url0)) {
                     console.log(`[DoubleBufferVideo] Booting Native Handoff: ${url0}`)
                     if ((window as any).AndroidHealth) (window as any).AndroidHealth.playNativeVideo(url0)
                     setDebug('Native-Play')
                     bootPlayedRef.current = true
+                } else if (url0 && isBlob(url0)) {
+                    console.log(`[DoubleBufferVideo] Booting HTML Fallback (Blob)`)
+                    setDebug('HTML-Fallback')
+                    // Let the HTML watchdog/canplay handle it
                 } else {
                     console.warn('[DoubleBufferVideo] Native boot skipped: url0 empty')
                     setDebug('Native-Wait')
                 }
             } else if (!isAndroidNative) {
-                // Boot watchdog: force play() if onCanPlay never fires (Android TV strict autoplay block)
                 const bootWatchdog = setTimeout(() => {
                     if (!bootPlayedRef.current) {
                         const v = videoRefs[0].current
@@ -454,7 +480,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
             }
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []) // [] = run once on mount. sorted/getUrl read via refs above.
+    }, [])
 
     useEffect(() => {
         if (!isAndroidNative && sorted.length > 1) {
@@ -522,7 +548,11 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
     }
 
     return (
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: isAndroidNative ? 'transparent' : '#000', overflow: 'hidden' }}>
+        <div style={{ 
+            position: 'absolute', inset: 0, 
+            background: isAndroidNative ? 'transparent' : '#000', 
+            overflow: 'hidden' 
+        }}>
             {!isAndroidNative && [0, 1].map(i => (
                 <video
                     key={i}
@@ -752,6 +782,7 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
             opacity: isActive ? (isTargetReady ? 1 : 0) : (isTargetReady ? 0 : 1),
             transform: 'translate3d(0, 0, 0)',
             transition: transitionType === 'none' ? 'none' : `all ${TRANSITION_DURATION}ms cubic-bezier(0.4, 0, 0.2, 1)`,
+            background: isNative ? 'transparent' : '#000',
             willChange: 'transform, opacity',
             backfaceVisibility: 'hidden',
             pointerEvents: isActive ? 'auto' : 'none'
@@ -793,7 +824,7 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
                 position: 'absolute',
                 top: 0, left: 0, width: '100%', height: '100%',
                 zIndex: isActive ? 10 : 5,
-                background: '#000',
+                background: isNative ? 'transparent' : '#000',
                 margin: 0, padding: 0, overflow: 'hidden',
                 visibility: visible ? 'visible' : 'hidden',
                 ...getTransitionStyles(isActive, transitionType),
@@ -872,6 +903,7 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
                     assets={assets}
                     onAdvance={advance}
                     effect={(activeItems[idx] as any)?.settings?.transition || 'slide'}
+                    isNative={isNative}
                     showDebug={showDebug}
                 />
             ) : (
@@ -1305,8 +1337,10 @@ export default function PlayerPage() {
     }, [])
 
     // Detect Android native video bridge (APK exposing AndroidHealth JS interface)
-    // CORTEX: ExoPlayer cannot play blob: URLs from offline cache, so disable native handoff if offline
-    const isAndroidNative = !!(window as any).AndroidHealth && !offline
+    // CORTEX: Robust check must include userAgent to prevent Chrome spoofing/mockers
+    const isAndroidNative = !!(window as any).AndroidHealth && 
+                           /android/i.test(navigator.userAgent) && 
+                           !offline
 
     useEffect(() => {
         // Global hook for child components to report transition states
@@ -1703,6 +1737,10 @@ export default function PlayerPage() {
             if (failCountRef.current >= 30 && !manifest) {
                 setErrorMsg(err.message || 'Connecting to OmniPush Network...')
                 setPhase('error')
+            } else if (failCountRef.current >= 30) {
+                // If we HAVE a manifest (likely playing from cache), don't jump to error phase 
+                // as that blanks the screen. Just log it and keep testing the network.
+                console.warn('[Player] Network down (30+ failures), but continuing playback from cache.')
             }
             return false
         }
