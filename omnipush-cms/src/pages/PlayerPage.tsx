@@ -430,14 +430,19 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
     advanceBufferRef.current = advanceBuffer
 
     const onCanPlay = useCallback((slotIndex: number) => {
-        // Always mute the inactive (preload) buffer
-        const inactiveSlot = activeSlot === 0 ? 1 : 0
+        // Important: Mark as ready so advanceBuffer knows it can switch to this slot
+        setIsReady(prev => {
+            if (prev[slotIndex]) return prev
+            const up = [...prev] as [boolean, boolean]
+            up[slotIndex] = true
+            return up
+        })
+
+        const activeRef = activeSlot 
+        const inactiveSlot = activeRef === 0 ? 1 : 0
         const iv = videoRefs[inactiveSlot].current
         if (iv) iv.muted = true
 
-        // Boot-play: fire play() on slot 0 when it first fires canplay
-        // This replaces the fragile setTimeout(200) approach that fails on Android
-        // when the video src hasn't actually loaded within 200ms.
         if (slotIndex === 0 && !bootPlayedRef.current) {
             bootPlayedRef.current = true
             const v = videoRefs[0].current
@@ -449,54 +454,45 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
         }
     }, [activeSlot, videoRefs])
 
-    // ─── 1. Initialization: Resolve URLs for first 2 clips (runs ONCE on mount) ───
     useEffect(() => {
-        const sorted = sortedRef.current
-        const getUrl = getUrlRef.current
-
         if (sorted.length > 0) {
             const url0 = getUrl(sorted[0])
             const url1 = sorted.length > 1 ? getUrl(sorted[1]) : url0
 
-            console.log('[DoubleBufferVideo] Init Slot URLs', { url0: url0.slice(0, 40), url1: url1.slice(0, 40) })
-            
             setSlotUrls(prev => {
                 if (prev[0] === url0 && prev[1] === url1) return prev
+                console.log('[DoubleBufferVideo] Syncing Slot URLs', { url0: url0.slice(0, 40), url1: url1.slice(0, 40) })
                 return [url0, url1] as [string, string]
             })
 
-            initialSyncDone.current = true
-
-            if (isAndroidNative && !bootPlayedRef.current) {
-                if (url0 && !isBlob(url0)) {
-                    console.log(`[DoubleBufferVideo] Booting Native Handoff: ${url0}`)
-                    if ((window as any).AndroidHealth) (window as any).AndroidHealth.playNativeVideo(url0)
-                    setDebug('Native-Play')
-                    bootPlayedRef.current = true
-                } else if (url0 && isBlob(url0)) {
-                    console.log(`[DoubleBufferVideo] Booting HTML Fallback (Blob)`)
-                    setDebug('HTML-Fallback')
-                    // Let the HTML watchdog/canplay handle it
-                } else {
-                    console.warn('[DoubleBufferVideo] Native boot skipped: url0 empty')
-                    setDebug('Native-Wait')
-                }
-            } else if (!isAndroidNative) {
-                const bootWatchdog = setTimeout(() => {
-                    if (!bootPlayedRef.current) {
-                        const v = videoRefs[0].current
-                        if (v) {
-                            v.muted = true
-                            v.play().catch(e => console.warn('[DBV] Boot-watchdog play err:', e.message))
-                            setDebug('Boot-WD')
-                        }
+            if (!initialSyncDone.current) {
+                initialSyncDone.current = true
+                if (isAndroidNative && !bootPlayedRef.current) {
+                    if (url0 && !isBlob(url0)) {
+                        console.log(`[DoubleBufferVideo] Booting Native Handoff: ${url0}`)
+                        if ((window as any).AndroidHealth) (window as any).AndroidHealth.playNativeVideo(url0)
+                        setDebug('Native-Play')
+                        bootPlayedRef.current = true
+                    } else if (url0 && isBlob(url0)) {
+                        console.log(`[DoubleBufferVideo] Booting HTML Fallback (Blob)`)
+                        setDebug('HTML-Fallback')
                     }
-                }, 5000)
-                return () => clearTimeout(bootWatchdog)
+                } else if (!isAndroidNative && !bootPlayedRef.current) {
+                    const bootWatchdog = setTimeout(() => {
+                        if (!bootPlayedRef.current) {
+                            const v = videoRefs[0].current
+                            if (v) {
+                                v.muted = true
+                                v.play().catch(e => console.warn('[DBV] Boot-watchdog play err:', e.message))
+                                setDebug('Boot-WD')
+                            }
+                        }
+                    }, 5000)
+                    return () => clearTimeout(bootWatchdog)
+                }
             }
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [])
+    }, [sorted, getUrl, isAndroidNative, videoRefs, isBlob])
 
     useEffect(() => {
         if (!isAndroidNative && sorted.length > 1) {
@@ -532,7 +528,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
             top: 0, left: 0, width: '100%', height: '100%',
             objectFit: 'fill',
             transition: isTransitioning ? `all ${TRANSITION_DURATION}ms ease-in-out` : 'none',
-            visibility: isActive ? 'visible' : 'hidden',
+            visibility: (isActive || isTransitioning) ? 'visible' : 'hidden',
             opacity: isActive ? 1 : 0,
             zIndex: isActive ? 10 : 5,
             background: 'black'
@@ -589,10 +585,9 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
                         'x-webkit-airplay': 'deny',
                         'controlsList': 'nodownload nofullscreen noremoteplayback'
                     }}
+                    onLoadedMetadata={() => onCanPlay(i as 0 | 1)}
                     onPlaying={() => {
                         console.log(`[DoubleBufferVideo] Video Slot ${i} Playing...`)
-                        const v = videoRefs[i].current
-                        const readyDelay = (v && v.readyState >= 4) ? 50 : READY_TIMING
 
                         setTimeout(() => {
                             setIsReady(prev => {
