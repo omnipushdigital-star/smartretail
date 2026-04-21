@@ -233,7 +233,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
     
     const idxRef = useRef(0)
     const initialSyncDone = useRef(false)
-    const advanceBufferRef = useRef<any>()
+    const advanceBufferRef = useRef<any>(null)
     const bootPlayedRef = useRef(false)
     const watchdogRef = useRef<any>(null)
 
@@ -855,43 +855,6 @@ function ErrorState({ device_code, msg, onRetry }: { device_code: string; msg: s
             </div>
             <BottomBar device_code={device_code} />
         </div >
-    )
-}
-
-function VideoElement({ url, isReady, onReady, onEnded, onError: onReportError }: { url: string; isReady: boolean; onReady: () => void; onEnded: () => void; onError?: (msg: string) => void }) {
-    const videoRef = useRef<HTMLVideoElement>(null)
-
-    useLayoutEffect(() => {
-        if (!videoRef.current) return
-        if (isReady) {
-            const playPromise = videoRef.current.play()
-            if (playPromise !== undefined) {
-                playPromise.catch(err => {
-                    if (err.name !== 'AbortError') {
-                        console.warn('[Video] Play Error:', err.message)
-                    }
-                })
-            }
-        } else {
-            videoRef.current.pause()
-        }
-    }, [isReady, url])
-
-    return (
-        <video
-            ref={videoRef}
-            src={url}
-            style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }}
-            muted playsInline
-            onPlaying={onReady}
-            onEnded={onEnded}
-            onError={(e: any) => {
-                console.error('[Video] Element Error:', url)
-                if (onReportError) onReportError(`Video decode failed for ${url}`)
-                onReady()
-                setTimeout(onEnded, 3000)
-            }}
-        />
     )
 }
 
