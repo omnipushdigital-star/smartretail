@@ -213,10 +213,11 @@ interface VideoBufferProps {
 
 type TransitionEffect = 'fade' | 'slide' | 'zoom' | 'none' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right'
 
-function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', showDebug = false, isNative = false }: {
+function DoubleBufferVideo({ items, assets, onAdvance, currentIndex, effect = 'slide-up', showDebug = false, isNative = false }: {
     items: ManifestItem[]
     assets: ManifestAsset[]
-    onAdvance: () => void
+    onAdvance: (newIdx: number) => void
+    currentIndex: number
     effect?: string
     showDebug?: boolean
     isNative?: boolean
@@ -231,11 +232,20 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
     const v2 = useRef<HTMLVideoElement>(null)
     const videoRefs = [v1, v2]
     
-    const idxRef = useRef(0)
+    const idxRef = useRef(currentIndex)
     const initialSyncDone = useRef(false)
     const advanceBufferRef = useRef<any>(null)
     const bootPlayedRef = useRef(false)
     const watchdogRef = useRef<any>(null)
+    const syncRef = useRef(currentIndex)
+
+    // Sync internal index if parent forces a change (e.g. from watchdog or remote command)
+    useEffect(() => {
+        if (currentIndex !== idxRef.current) {
+            console.log(`[DBV] Syncing internal index ${idxRef.current} -> ${currentIndex}`)
+            idxRef.current = currentIndex
+        }
+    }, [currentIndex])
 
     const isAndroidNative = isNative || !!(window as any).AndroidHealth
     const sorted = useMemo(() => [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)), [items])
@@ -249,10 +259,11 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
         return new URL(rawUrl, window.location.origin).href
     }, [assets])
 
-    const triggerWatchdog = useCallback((delay = 30000) => {
+    const triggerWatchdog = useCallback((delay = 120000) => {
         if (watchdogRef.current) clearTimeout(watchdogRef.current)
         watchdogRef.current = setTimeout(() => {
             if (sorted.length > 1) {
+                console.warn('[DBV] Internal watchdog triggered skip')
                 setDebug("WD Skip")
                 advanceBufferRef.current(true)
             }
@@ -263,7 +274,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
         if (sorted.length === 0) return
         if (sorted.length === 1) {
             if (forceNext) {
-                onAdvance()
+                onAdvance(0)
             } else {
                 const v = videoRefs[activeSlot].current
                 if (v) {
@@ -295,18 +306,23 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
             }
 
             if (isAndroidNative) {
+                const nextV = videoRefs[nextSlot].current
+                if (nextV) {
+                    nextV.muted = true
+                    nextV.play().catch(e => console.warn('[DBV] Native play err:', e.message))
+                }
                 idxRef.current = nextIdx
                 setActiveSlot(nextSlot)
-                onAdvance()
+                onAdvance(nextIdx)
             } else {
-                triggerWatchdog(45000)
+                triggerWatchdog(120000)
                 nextVideo!.muted = true
                 nextVideo!.currentTime = 0
                 nextVideo!.play().then(() => {
                     setIsTransitioning(true)
                     setActiveSlot(nextSlot)
                     idxRef.current = nextIdx
-                    onAdvance()
+                    onAdvance(nextIdx)
                     setTimeout(releaseOld, 250)
                     setTimeout(() => setIsTransitioning(false), 1000)
                 }).catch(e => {
@@ -393,9 +409,20 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
             visibility: (isActive || isTransitioning) ? 'visible' : 'hidden',
             opacity: isActive ? 1 : 0,
             zIndex: isActive ? 10 : 5,
-            background: 'black'
+            background: '#000',
+            pointerEvents: 'none'
         }
     }
+
+    // Monitor: Ensure active video is actually playing
+    useEffect(() => {
+        const v = videoRefs[activeSlot].current
+        if (v && v.paused && sorted.length > 0 && !isTransitioning) {
+            v.play().catch(e => {
+                if (e.name !== 'AbortError') console.warn('[DBV] Play monitor resume failed:', e.message)
+            })
+        }
+    }, [activeSlot, sorted, isTransitioning, videoRefs])
 
     return (
         <div style={{ position: 'absolute', inset: 0, background: '#000', overflow: 'hidden' }}>
@@ -413,7 +440,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
                     onPlaying={() => onCanPlay(i)}
                     onCanPlay={() => onCanPlay(i)}
                     onEnded={() => i === activeSlot && advanceBuffer()}
-                    onTimeUpdate={() => i === activeSlot && triggerWatchdog(45000)}
+                    onTimeUpdate={() => i === activeSlot && triggerWatchdog(120000)}
                     onError={() => i === activeSlot && advanceBuffer(true)}
                 />
             ))}
@@ -509,13 +536,14 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
         }
     }, [activeItems.length, idx])
 
-    const advance = useCallback(() => {
+    const advance = useCallback((forcedIdx?: number) => {
         const len = activeItems.length
         if (len === 0) return
-        const nextIdx = len === 1 ? 0 : (idxRef.current + 1) % len
+        const nextIdx = forcedIdx !== undefined ? forcedIdx : (len === 1 ? 0 : (idx % len + 1) % len)
+        console.log(`[Playback] Advancing to ${nextIdx}`)
         setIdx(nextIdx)
-        setReadyIdx(null) // Reset ready state for next item
-    }, [activeItems.length])
+        setReadyIdx(null) 
+    }, [activeItems.length, idx])
 
     // Track state for transitions
     useEffect(() => {
@@ -711,7 +739,8 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
                     key={activeItems.map(i => i.playlist_item_id).join(',')}
                     items={activeItems}
                     assets={assets}
-                    onAdvance={advance}
+                    onAdvance={(newIdx) => advance(newIdx)}
+                    currentIndex={idx}
                     effect={(activeItems[idx] as any)?.settings?.transition || 'slide'}
                     isNative={isNative}
                     showDebug={showDebug}
