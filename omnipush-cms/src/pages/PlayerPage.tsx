@@ -301,6 +301,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
         if (watchdogRef.current) clearTimeout(watchdogRef.current)
         watchdogRef.current = setTimeout(() => {
             if (sorted.length > 1) {
+                console.warn("[DoubleBufferVideo] Watchdog fired. Forcing skip.")
                 setDebug("WD Skip")
                 advanceBufferRef.current(true)
             }
@@ -349,13 +350,13 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
             const releaseOld = () => {
                 if (!currentVideo) return;
                 try {
+                    console.log("[DoubleBufferVideo] Releasing hardware decoder for slot", currentSlot)
+                    currentVideo.pause();
                     currentVideo.style.opacity = '0';
                     currentVideo.style.visibility = 'hidden';
-                    currentVideo.pause();
-                    if (sorted.length > 2) {
-                        currentVideo.removeAttribute('src');
-                        currentVideo.load();
-                    }
+                    // CRITICAL for Amlogic: Remove src and load() to flush the chip's buffer
+                    currentVideo.removeAttribute('src');
+                    currentVideo.load();
                 } catch (e) { /* ignore */ }
             };
 
@@ -602,15 +603,25 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
                         }, readyDelay)
                     }}
                     onEnded={() => {
+                        console.log(`[DoubleBufferVideo] Slot ${i} ended.`)
                         setIsReady(prev => {
                             const up = [...prev] as [boolean, boolean]
                             up[i] = false
                             return up
                         })
-                        if (i === activeSlot) advanceBufferRef.current()
+                        if (i === activeSlot) {
+                            if (watchdogRef.current) clearTimeout(watchdogRef.current)
+                            advanceBufferRef.current()
+                        }
                     }}
-                    onTimeUpdate={() => { if (i === activeSlot) triggerWatchdog(12000) }}
+                    onTimeUpdate={() => { 
+                        if (i === activeSlot) triggerWatchdog(45000) 
+                    }}
                     onCanPlay={() => onCanPlay(i as 0 | 1)}
+                    onError={(e) => {
+                        console.error(`[DoubleBufferVideo] Slot ${i} error:`, (e.target as any).error)
+                        if (i === activeSlot) advanceBufferRef.current(true)
+                    }}
                 />
             ))}
             {isAndroidNative && <div id="native-layer-proxy" style={{ pointerEvents: 'none' }} />}
