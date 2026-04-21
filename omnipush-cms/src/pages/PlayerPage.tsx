@@ -588,14 +588,12 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
                     onLoadedMetadata={() => onCanPlay(i as 0 | 1)}
                     onPlaying={() => {
                         console.log(`[DoubleBufferVideo] Video Slot ${i} Playing...`)
-
-                        setTimeout(() => {
-                            setIsReady(prev => {
-                                const up = [...prev] as [boolean, boolean]
-                                up[i] = true
-                                return up
-                            })
-                        }, readyDelay)
+                        setIsReady(prev => {
+                            if (prev[i]) return prev
+                            const up = [...prev] as [boolean, boolean]
+                            up[i] = true
+                            return up
+                        })
                     }}
                     onEnded={() => {
                         console.log(`[DoubleBufferVideo] Slot ${i} ended.`)
