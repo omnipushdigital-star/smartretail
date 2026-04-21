@@ -152,6 +152,42 @@ const globalStyle = `
   }
 `;
 
+interface VideoElementProps {
+    url: string
+    isReady: boolean
+    onReady: () => void
+    onEnded: () => void
+    onError: (msg: string) => void
+}
+
+function VideoElement({ url, isReady, onReady, onEnded, onError }: VideoElementProps) {
+    const videoRef = useRef<HTMLVideoElement>(null)
+
+    useEffect(() => {
+        if (isReady && videoRef.current) {
+            videoRef.current.play().catch(err => {
+                console.warn('[VideoElement] Play error:', err)
+                onError(err.message)
+            })
+        }
+    }, [isReady, url, onError])
+
+    return (
+        <video
+            ref={videoRef}
+            src={url}
+            style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }}
+            muted
+            playsInline
+            preload="auto"
+            controls={false}
+            onCanPlay={onReady}
+            onEnded={onEnded}
+            onError={(e) => onError('Video Error')}
+        />
+    )
+}
+
 interface PlaybackProps {
     items: ManifestItem[]
     assets: ManifestAsset[]
@@ -181,24 +217,31 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
     items: ManifestItem[]
     assets: ManifestAsset[]
     onAdvance: () => void
-    effect?: TransitionEffect
+    effect?: string
     showDebug?: boolean
     isNative?: boolean
 }): React.ReactElement {
     const [activeSlot, setActiveSlot] = useState<0 | 1>(0)
-    const isAndroidNative = isNative
-    const [isTransitioning, setIsTransitioningState] = useState(false)
-    const setIsTransitioning = useCallback((v: boolean) => {
-        setIsTransitioningState(v)
-        const win = window as any
-        if (win.setGlobalTransition) win.setGlobalTransition(v)
-    }, [])
+    const [isReady, setIsReady] = useState<[boolean, boolean]>([false, false])
+    const [slotUrls, setSlotUrls] = useState<[string, string]>(['', ''])
+    const [isTransitioning, setIsTransitioning] = useState(false)
+    const [debug, setDebug] = useState('')
+
     const v1 = useRef<HTMLVideoElement>(null)
     const v2 = useRef<HTMLVideoElement>(null)
     const videoRefs = [v1, v2]
-    const [slotUrls, setSlotUrls] = useState<[string, string]>(['', ''])
     
+    const idxRef = useRef(0)
+    const initialSyncDone = useRef(false)
+    const advanceBufferRef = useRef<any>()
+    const bootPlayedRef = useRef(false)
+    const watchdogRef = useRef<any>(null)
+
+    const isAndroidNative = isNative || !!(window as any).AndroidHealth
+    const sorted = useMemo(() => [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)), [items])
+
     const getUrl = useCallback((item: ManifestItem) => {
+        if (!item) return ''
         const asset = assets.find(a => a.media_id === item.media_id)
         if (asset?.url) return asset.url
         const rawUrl = item.web_url || ''
@@ -206,117 +249,21 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
         return new URL(rawUrl, window.location.origin).href
     }, [assets])
 
-    const isBlob = useCallback((url: string) => url.startsWith('blob:'), [])
-
-    const idxRef = useRef(0)
-    const [debug, setDebug] = useState<string>('Init')
-    const watchdogRef = useRef<any>(null)
-    const initialSyncDone = useRef(false)
-    const [isReady, setIsReady] = useState<[boolean, boolean]>([false, false])
-    const bootStartedRef = useRef(false) // LOCK: Prevent infinite boot loops
-    const bootPlayedRef = useRef(false)   // LOCK: Prevent double boot-play
-
-    const sorted = React.useMemo(
-        () => [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
-        [items]
-    )
-    const memoizedAssets = React.useMemo(() => assets, [JSON.stringify(assets)])
-
-    const advanceBufferRef = useRef<(force?: boolean) => void>(() => { })
-    const triggerWatchdogRef = useRef<(delay?: number) => void>(() => { })
-
-    // Stable refs so the run-once init effect can always read the latest sorted/getUrl
-    const sortedRef = useRef(sorted)
-    sortedRef.current = sorted
-    const getUrlRef = useRef(getUrl)
-    getUrlRef.current = getUrl
-
-    // ── Native Handoff Lifecycle ──
-    useEffect(() => {
-        if (isAndroidNative) {
-            (window as any).onNativeVideoEnded = () => {
-                console.log("[NativeHandoff] Video ended successfully. Advancing loop.")
-                advanceBufferRef.current(true)
-            }
-            // CRITICAL FIX: Register error handler so ExoPlayer failures advance the
-            // playlist instead of silently hanging on a black screen forever.
-            // Android APK calls window.onNativeVideoError(errorCode) on ExoPlayer failure.
-            (window as any).onNativeVideoError = (errorCode: string) => {
-                console.error(`[NativeHandoff] ExoPlayer error: ${errorCode}. Skipping to next item.`)
-                advanceBufferRef.current(true)
-            }
-        }
-        return () => {
-            if ((window as any).onNativeVideoEnded) delete (window as any).onNativeVideoEnded
-            if ((window as any).onNativeVideoError) delete (window as any).onNativeVideoError
-            if (isAndroidNative && (window as any).AndroidHealth) (window as any).AndroidHealth.stopNativeVideo()
-        }
-    }, [isAndroidNative])
-
-    // ── Native Playback Sync ──
-    useEffect(() => {
-        if (!isAndroidNative) return
-        const nextItem = sorted[idxRef.current]
-        if (nextItem) {
-            const url = getUrl(nextItem)
-            const slotIdx = activeSlot === 0 ? 1 : 0
-            
-            // Native Handoff logic
-            if (isAndroidNative && !isBlob(url)) {
-                if ((window as any).AndroidHealth) {
-                    (window as any).AndroidHealth.playNativeVideo(url)
-                }
-                setDebug(`Native-Play`)
-            } else if (isAndroidNative && isBlob(url)) {
-                // FALLBACK: If use-native is on but we have a blob, we MUST use HTML player
-                // Stop native player so we see the HTML content
-                if ((window as any).AndroidHealth) {
-                    (window as any).AndroidHealth.stopNativeVideo()
-                }
-                setDebug(`Native-Blob-Fallback`)
-            }
-
-            setSlotUrls(prev => {
-                const next = [...prev] as [string, string]
-                if (next[slotIdx] !== url) {
-                    next[slotIdx] = url
-                    const nr = [...isReady] as [boolean, boolean]
-                    nr[slotIdx] = false
-                    setIsReady(nr)
-                }
-                return next
-            })
-            
-            // CRITICAL FIX: Arm watchdog in native mode. In WebView mode, triggerWatchdog
-            // is called from onTimeUpdate events on <video> elements — but those elements
-            // don't exist in native mode (isAndroidNative=true renders no <video> tags).
-            // This watchdog ensures the player advances if ExoPlayer hangs without calling
-            // onNativeVideoEnded or onNativeVideoError (e.g. stuck buffering, network drop).
-            // Use ref to avoid TDZ error (triggerWatchdog useCallback declared after this effect).
-            triggerWatchdogRef.current(30000)
-        }
-    }, [isAndroidNative, activeSlot, sorted, getUrl, isBlob, isReady])
-
-    const triggerWatchdog = useCallback((delay = 10000) => {
+    const triggerWatchdog = useCallback((delay = 30000) => {
         if (watchdogRef.current) clearTimeout(watchdogRef.current)
         watchdogRef.current = setTimeout(() => {
             if (sorted.length > 1) {
-                console.warn("[DoubleBufferVideo] Watchdog fired. Forcing skip.")
                 setDebug("WD Skip")
                 advanceBufferRef.current(true)
             }
         }, delay)
     }, [sorted.length])
 
-    triggerWatchdogRef.current = triggerWatchdog
-
     const advanceBuffer = useCallback((forceNext = false) => {
         if (sorted.length === 0) return
-
         if (sorted.length === 1) {
-            if (isAndroidNative) {
-                const url = getUrl(sorted[0])
-                if (url && !isBlob(url) && (window as any).AndroidHealth) (window as any).AndroidHealth.playNativeVideo(url)
+            if (forceNext) {
+                onAdvance()
             } else {
                 const v = videoRefs[activeSlot].current
                 if (v) {
@@ -324,7 +271,6 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
                     v.play().catch(e => setDebug(`Loop Err: ${e.message.slice(0, 10)}`))
                 }
             }
-            onAdvance()
             return
         }
 
@@ -334,67 +280,35 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
         const nextVideo = videoRefs[nextSlot].current
         const nextIdx = (idxRef.current + 1) % sorted.length
 
-        if (!isAndroidNative && nextVideo && nextVideo.error && !forceNext) {
-            setDebug(`Err Skip V${nextIdx}`)
-            idxRef.current = nextIdx
-            onAdvance()
-            setTimeout(() => advanceBuffer(), 500)
-            return
-        }
-
         const performSwitch = () => {
-            if (!isAndroidNative && !nextVideo) return
-
             setDebug(`${idxRef.current}→${nextIdx}${isAndroidNative ? '|NATIVE' : '|SAFE'}`)
 
             const releaseOld = () => {
-                if (!currentVideo) return;
+                if (!currentVideo) return
                 try {
-                    console.log("[DoubleBufferVideo] Releasing hardware decoder for slot", currentSlot)
-                    currentVideo.pause();
-                    currentVideo.style.opacity = '0';
-                    currentVideo.style.visibility = 'hidden';
-                    // CRITICAL for Amlogic: Remove src and load() to flush the chip's buffer
-                    currentVideo.removeAttribute('src');
-                    currentVideo.load();
+                    currentVideo.pause()
+                    currentVideo.style.opacity = '0'
+                    currentVideo.style.visibility = 'hidden'
+                    currentVideo.removeAttribute('src')
+                    currentVideo.load()
                 } catch (e) { /* ignore */ }
-            };
+            }
 
             if (isAndroidNative) {
                 idxRef.current = nextIdx
-                setActiveSlot(nextSlot) // Triggers the sync effect
+                setActiveSlot(nextSlot)
                 onAdvance()
             } else {
-                triggerWatchdog(15000)
+                triggerWatchdog(45000)
                 nextVideo!.muted = true
                 nextVideo!.currentTime = 0
-                if (sorted[nextIdx]) {
-                    nextVideo!.playbackRate = sorted[nextIdx].playback_speed || 1
-                }
-
                 nextVideo!.play().then(() => {
                     setIsTransitioning(true)
                     setActiveSlot(nextSlot)
                     idxRef.current = nextIdx
                     onAdvance()
-                    
-                    // PRELOAD: Load the next-next item into the slot we just left
-                    const jumpIdx = (nextIdx + 1) % sorted.length
-                    const jumpItem = sorted[jumpIdx]
-                    if (jumpItem) {
-                        const jumpUrl = getUrl(jumpItem)
-                        setSlotUrls(prev => {
-                            const next = [...prev] as [string, string]
-                            next[currentSlot] = jumpUrl
-                            const nr = [...isReady] as [boolean, boolean]
-                            nr[currentSlot] = false
-                            setIsReady(nr)
-                            return next
-                        })
-                    }
-
-                    setTimeout(releaseOld, 250);
-                    setTimeout(() => setIsTransitioning(false), 800)
+                    setTimeout(releaseOld, 250)
+                    setTimeout(() => setIsTransitioning(false), 1000)
                 }).catch(e => {
                     console.error('[DoubleBufferVideo] play error:', e)
                     setDebug(`Play Err V${nextIdx}`)
@@ -403,96 +317,52 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
             }
         }
 
-        if (isAndroidNative || (nextVideo && (nextVideo.readyState >= 3 || forceNext))) {
+        const isReadyNow = isAndroidNative || (nextVideo && nextVideo.readyState >= 3)
+        if (isReadyNow || forceNext) {
             performSwitch()
         } else {
             setDebug(`Waiting V${nextIdx}`)
             const checkReady = setInterval(() => {
-                if (nextVideo && nextVideo.readyState >= 3) {
+                const nv = videoRefs[nextSlot].current
+                if (nv && nv.readyState >= 3) {
                     clearInterval(checkReady)
                     performSwitch()
                 }
-            }, 100)
-            // CRITICAL FIX: The 8s timeout previously just cleared the interval with NO fallback.
-            // If the preloaded video wasn't ready (e.g. because the preload effect reloaded it
-            // after syncAssets changed URLs to blob URLs), the player would hang permanently on
-            // a blank screen. Now we force-switch after 8s regardless of readyState.
+            }, 200)
             setTimeout(() => {
                 clearInterval(checkReady)
-                if (nextVideo && nextVideo.readyState < 3) {
-                    console.warn(`[DoubleBufferVideo] V${nextIdx} not ready after 8s. Force switching.`)
-                    performSwitch()
-                }
+                if (activeSlot === currentSlot) performSwitch() 
             }, 8000)
         }
-    }, [activeSlot, sorted, videoRefs, onAdvance, triggerWatchdog, setIsTransitioning, isAndroidNative, getUrl, isBlob])
+    }, [activeSlot, sorted, videoRefs, isAndroidNative, onAdvance, triggerWatchdog])
 
     advanceBufferRef.current = advanceBuffer
 
     const onCanPlay = useCallback((slotIndex: number) => {
-        // Important: Mark as ready so advanceBuffer knows it can switch to this slot
         setIsReady(prev => {
-            if (prev[slotIndex]) return prev
             const up = [...prev] as [boolean, boolean]
             up[slotIndex] = true
             return up
         })
-
-        const activeRef = activeSlot 
-        const inactiveSlot = activeRef === 0 ? 1 : 0
-        const iv = videoRefs[inactiveSlot].current
-        if (iv) iv.muted = true
-
         if (slotIndex === 0 && !bootPlayedRef.current) {
             bootPlayedRef.current = true
             const v = videoRefs[0].current
             if (v) {
                 v.muted = true
-                v.play().catch(e => console.warn('[DBV] Boot-canplay play err:', e.message))
-                setDebug('Boot-CanPlay')
+                v.play().catch(e => console.warn('[DBV] Boot play err:', e.message))
+                setDebug('Boot-Play')
             }
         }
-    }, [activeSlot, videoRefs])
+    }, [videoRefs])
 
     useEffect(() => {
-        if (sorted.length > 0) {
+        if (sorted.length > 0 && !initialSyncDone.current) {
             const url0 = getUrl(sorted[0])
             const url1 = sorted.length > 1 ? getUrl(sorted[1]) : url0
-
-            setSlotUrls(prev => {
-                if (prev[0] === url0 && prev[1] === url1) return prev
-                console.log('[DoubleBufferVideo] Syncing Slot URLs', { url0: url0.slice(0, 40), url1: url1.slice(0, 40) })
-                return [url0, url1] as [string, string]
-            })
-
-            if (!initialSyncDone.current) {
-                initialSyncDone.current = true
-                if (isAndroidNative && !bootPlayedRef.current) {
-                    if (url0 && !isBlob(url0)) {
-                        console.log(`[DoubleBufferVideo] Booting Native Handoff: ${url0}`)
-                        if ((window as any).AndroidHealth) (window as any).AndroidHealth.playNativeVideo(url0)
-                        setDebug('Native-Play')
-                        bootPlayedRef.current = true
-                    } else if (url0 && isBlob(url0)) {
-                        console.log(`[DoubleBufferVideo] Booting HTML Fallback (Blob)`)
-                        setDebug('HTML-Fallback')
-                    }
-                } else if (!isAndroidNative && !bootPlayedRef.current) {
-                    const bootWatchdog = setTimeout(() => {
-                        if (!bootPlayedRef.current) {
-                            const v = videoRefs[0].current
-                            if (v) {
-                                v.muted = true
-                                v.play().catch(e => console.warn('[DBV] Boot-watchdog play err:', e.message))
-                                setDebug('Boot-WD')
-                            }
-                        }
-                    }, 5000)
-                    return () => clearTimeout(bootWatchdog)
-                }
-            }
+            setSlotUrls([url0, url1])
+            initialSyncDone.current = true
         }
-    }, [sorted, getUrl, isAndroidNative, videoRefs, isBlob])
+    }, [sorted, getUrl])
 
     useEffect(() => {
         if (!isAndroidNative && sorted.length > 1) {
@@ -506,24 +376,16 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
                     return up
                 })
                 const nBuffer = videoRefs[nextSlot].current
-                if (nBuffer) {
-                    // CRITICAL FIX: Don't reload if already buffered (readyState >= 2).
-                    // syncAssets runs ~30s after boot and replaces direct URLs with blob URLs,
-                    // which changes getUrl's output and triggers this effect. Calling .load()
-                    // resets readyState to 0 on an already-preloaded video, causing the
-                    // advanceBuffer 8s wait path to trigger → blank screen on transition.
-                    if (nBuffer.readyState < 2) {
-                        nBuffer.load()
-                    }
-                    nBuffer.muted = true
+                if (nBuffer && nBuffer.readyState < 2) {
+                    nBuffer.load()
                 }
             }
         }
-    }, [activeSlot, sorted, slotUrls, videoRefs, isAndroidNative, getUrl])
+    }, [activeSlot, sorted, slotUrls, getUrl, isAndroidNative, videoRefs])
 
     const getTransitionStyle = (slot: number): React.CSSProperties => {
         const isActive = slot === activeSlot
-        const base: React.CSSProperties = {
+        return {
             position: 'absolute',
             top: 0, left: 0, width: '100%', height: '100%',
             objectFit: 'fill',
@@ -533,105 +395,40 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
             zIndex: isActive ? 10 : 5,
             background: 'black'
         }
-
-        if (!isTransitioning) return base
-
-        if (effect === 'fade') return base
-
-        const isNext = slot === activeSlot
-        if (effect === 'slide-up') {
-            base.transform = isNext ? 'translateY(0)' : 'translateY(-100%)'
-            if (isNext) base.zIndex = 15
-        } else if (effect === 'slide-down') {
-            base.transform = isNext ? 'translateY(0)' : 'translateY(100%)'
-            if (isNext) base.zIndex = 15
-        } else if (effect === 'slide-left') {
-            base.transform = isNext ? 'translateX(0)' : 'translateX(-100%)'
-            if (isNext) base.zIndex = 15
-        } else if (effect === 'slide-right') {
-            base.transform = isNext ? 'translateX(0)' : 'translateX(100%)'
-            if (isNext) base.zIndex = 15
-        } else if (effect === 'zoom') {
-            base.transform = isNext ? 'scale(1)' : 'scale(1.2)'
-            base.opacity = isNext ? 1 : 0
-        }
-
-        return base
     }
 
     return (
-        <div style={{ 
-            position: 'absolute', inset: 0, 
-            background: isAndroidNative ? 'transparent' : '#000', 
-            overflow: 'hidden' 
-        }}>
-            {!isAndroidNative && [0, 1].map(i => (
+        <div style={{ position: 'absolute', inset: 0, background: '#000', overflow: 'hidden' }}>
+            {[0, 1].map(i => (
                 <video
                     key={i}
                     ref={videoRefs[i]}
                     src={slotUrls[i]}
                     style={getTransitionStyle(i)}
                     controls={false}
-                    tabIndex={-1}
-                    disableRemotePlayback
                     muted
                     playsInline
                     preload="auto"
-                    autoPlay={false}
                     disablePictureInPicture={true}
-                    poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
-                    {...{
-                        'webkit-playsinline': 'true',
-                        'x-webkit-airplay': 'deny',
-                        'controlsList': 'nodownload nofullscreen noremoteplayback'
-                    }}
-                    onLoadedMetadata={() => onCanPlay(i as 0 | 1)}
-                    onPlaying={() => {
-                        console.log(`[DoubleBufferVideo] Video Slot ${i} Playing...`)
-                        setIsReady(prev => {
-                            if (prev[i]) return prev
-                            const up = [...prev] as [boolean, boolean]
-                            up[i] = true
-                            return up
-                        })
-                    }}
-                    onEnded={() => {
-                        console.log(`[DoubleBufferVideo] Slot ${i} ended.`)
-                        setIsReady(prev => {
-                            const up = [...prev] as [boolean, boolean]
-                            up[i] = false
-                            return up
-                        })
-                        if (i === activeSlot) {
-                            if (watchdogRef.current) clearTimeout(watchdogRef.current)
-                            advanceBufferRef.current()
-                        }
-                    }}
-                    onTimeUpdate={() => { 
-                        if (i === activeSlot) triggerWatchdog(45000) 
-                    }}
-                    onCanPlay={() => onCanPlay(i as 0 | 1)}
-                    onError={(e) => {
-                        console.error(`[DoubleBufferVideo] Slot ${i} error:`, (e.target as any).error)
-                        if (i === activeSlot) advanceBufferRef.current(true)
-                    }}
+                    onPlaying={() => onCanPlay(i)}
+                    onCanPlay={() => onCanPlay(i)}
+                    onEnded={() => i === activeSlot && advanceBuffer()}
+                    onTimeUpdate={() => i === activeSlot && triggerWatchdog(45000)}
+                    onError={() => i === activeSlot && advanceBuffer(true)}
                 />
             ))}
             {isAndroidNative && <div id="native-layer-proxy" style={{ pointerEvents: 'none' }} />}
-
-            {/* Micro Debug Indicator for DBV state */}
             {showDebug && (
-                <div style={{
-                    position: 'absolute', top: 5, left: 5, zIndex: 99999,
-                    background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: '8px', 
-                    padding: '2px 4px', borderRadius: 4, fontFamily: 'monospace'
-                }}>
-                    B1:{isReady[0]?'R':'_'} B2:{isReady[1]?'R':'_'} | {debug}
+                <div style={{ position: 'absolute', bottom: 10, left: 10, background: 'rgba(0,0,0,0.8)', color: '#00ff00', padding: 10, fontSize: 10, zIndex: 100, borderRadius: 5, pointerEvents: 'none', fontFamily: 'monospace' }}>
+                    DBV Debug: {debug} | Slot:{activeSlot} | Idx:{idxRef.current}<br/>
+                    B1:{isReady[0] ? 'R' : '_'} B2:{isReady[1] ? 'R' : '_'} | S:{sorted.length}
                 </div>
             )}
         </div>
     )
 }
+
+
 
 
 // ─── Playback Engine ──────────────────────────────────────────────────────────
@@ -691,6 +488,20 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
         return filtered.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
     }, [items, currentTime])
 
+    // Specialized All-Video Check
+    const allVideos = useMemo(() => {
+        return activeItems.length > 0 && activeItems.every(i => {
+            const asset = assets.find(a => a.media_id === i.media_id)
+            let t = asset?.type || i.type || (i.media_id ? 'video' : 'image')
+            const u = asset?.url || i.web_url
+            if (u) {
+                const ext = u.split('?')[0].split('.').pop()?.toLowerCase()
+                if (['mp4', 'webm', 'mov', 'ogg'].includes(ext || '')) t = 'video'
+            }
+            return t === 'video'
+        })
+    }, [activeItems, assets])
+
     // Safety: Reset index if active list changes significanly
     useEffect(() => {
         if (idx >= activeItems.length && activeItems.length > 0) {
@@ -727,19 +538,13 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
         const item = activeItems[safeIdx]
         const asset = assets.find(a => a.media_id === item?.media_id)
         const type = asset?.type || item?.type || (item?.media_id ? 'video' : 'image')
-
-        const isAllVideo = activeItems.every(i => {
-            const a = assets.find(as => as.media_id === i.media_id)
-            return (a?.type || i.type) === 'video'
-        })
-
         const itemDur = (item?.duration_seconds ?? 0) > 0 ? item!.duration_seconds! : 0
         const defaultDur = type === 'video' ? DEFAULT_VIDEO_DURATION : (type === 'web_url' ? DEFAULT_WEB_DURATION : DEFAULT_IMAGE_DURATION)
         const effectiveDur = (itemDur || defaultDur) * 1000
 
-        // FOR ALL-VIDEO PLAYLISTS: We still want a "Safety Watchdog" fallback
+        // Safety Watchdog fallback
         // in case the video tag fails to fire onEnded due to a crash or interruption.
-        if (isAllVideo) {
+        if (allVideos) {
             timerRef.current = setTimeout(() => {
                 console.warn('[Watchdog] Video transition took too long or stalled. Forcing advance.')
                 advance()
@@ -764,20 +569,6 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
             }
         }
     }, [idx, activeItems])
-
-    // Specialized All-Video Check
-    const allVideos = useMemo(() => {
-        return activeItems.length > 0 && activeItems.every(i => {
-            const asset = assets.find(a => a.media_id === i.media_id)
-            let t = asset?.type || i.type || (i.media_id ? 'video' : 'image')
-            const u = asset?.url || i.web_url
-            if (u) {
-                const ext = u.split('?')[0].split('.').pop()?.toLowerCase()
-                if (['mp4', 'webm', 'mov', 'ogg'].includes(ext || '')) t = 'video'
-            }
-            return t === 'video'
-        })
-    }, [activeItems, assets])
 
     function getYouTubeId(url: string) {
         const m = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/|youtube\.com\/v\/)+([\w-]{11})/)
@@ -1357,9 +1148,7 @@ export default function PlayerPage() {
 
     // Detect Android native video bridge (APK exposing AndroidHealth JS interface)
     // CORTEX: Robust check must include userAgent to prevent Chrome spoofing/mockers
-    const isAndroidNative = !!(window as any).AndroidHealth && 
-                           /android/i.test(navigator.userAgent) && 
-                           !offline
+    const isAndroidNative = !!(window as any).AndroidHealth
 
     useEffect(() => {
         // Global hook for child components to report transition states
