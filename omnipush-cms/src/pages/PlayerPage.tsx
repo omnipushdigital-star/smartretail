@@ -177,7 +177,7 @@ interface VideoBufferProps {
 
 type TransitionEffect = 'fade' | 'slide' | 'zoom' | 'none' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right'
 
-function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', showDebug = false }: {
+function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', showDebug = false, isNative = false }: {
     items: ManifestItem[]
     assets: ManifestAsset[]
     onAdvance: () => void
@@ -277,10 +277,10 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
             }
 
             setSlotUrls(prev => {
-                const next = [...prev]
+                const next = [...prev] as [string, string]
                 if (next[slotIdx] !== url) {
                     next[slotIdx] = url
-                    const nr = [...isReady]
+                    const nr = [...isReady] as [boolean, boolean]
                     nr[slotIdx] = false
                     setIsReady(nr)
                 }
@@ -376,6 +376,22 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
                     setActiveSlot(nextSlot)
                     idxRef.current = nextIdx
                     onAdvance()
+                    
+                    // PRELOAD: Load the next-next item into the slot we just left
+                    const jumpIdx = (nextIdx + 1) % sorted.length
+                    const jumpItem = sorted[jumpIdx]
+                    if (jumpItem) {
+                        const jumpUrl = getUrl(jumpItem)
+                        setSlotUrls(prev => {
+                            const next = [...prev] as [string, string]
+                            next[currentSlot] = jumpUrl
+                            const nr = [...isReady] as [boolean, boolean]
+                            nr[currentSlot] = false
+                            setIsReady(nr)
+                            return next
+                        })
+                    }
+
                     setTimeout(releaseOld, 250);
                     setTimeout(() => setIsTransitioning(false), 800)
                 }).catch(e => {
@@ -443,10 +459,9 @@ function DoubleBufferVideo({ items, assets, onAdvance, effect = 'slide-up', show
 
             console.log('[DoubleBufferVideo] Init Slot URLs', { url0: url0.slice(0, 40), url1: url1.slice(0, 40) })
             
-            // OPTIMIZATION: Only update slotUrls if they differ from current state to prevent re-load
             setSlotUrls(prev => {
                 if (prev[0] === url0 && prev[1] === url1) return prev
-                return [url0, url1]
+                return [url0, url1] as [string, string]
             })
 
             initialSyncDone.current = true
