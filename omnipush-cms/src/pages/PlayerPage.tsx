@@ -201,7 +201,7 @@ interface PlaybackProps {
 }
 
 // ─── Double-Buffer Video Player ──────────────────────────────────────────────
-function DoubleBufferVideo({ items, assets, onAdvance, currentIndex, effect = 'slide-up', showDebug = false, isNative = false }: {
+function DoubleBufferVideo({ items, assets, onAdvance, currentIndex, effect = 'fade', showDebug = false, isNative = false, consecutiveErrorsRef, lastMediaErrorRef }: {
     items: ManifestItem[]
     assets: ManifestAsset[]
     onAdvance: (newIdx: number) => void
@@ -209,6 +209,8 @@ function DoubleBufferVideo({ items, assets, onAdvance, currentIndex, effect = 's
     effect?: string
     showDebug?: boolean
     isNative?: boolean
+    consecutiveErrorsRef?: React.MutableRefObject<number>
+    lastMediaErrorRef?: React.MutableRefObject<string | null>
 }): React.ReactElement {
     const [activeSlot, setActiveSlot] = useState<0 | 1>(0)
     const [slotUrls, setSlotUrls] = useState<[string, string]>(['', ''])
@@ -218,30 +220,20 @@ function DoubleBufferVideo({ items, assets, onAdvance, currentIndex, effect = 's
 
     const v1 = useRef<HTMLVideoElement>(null)
     const v2 = useRef<HTMLVideoElement>(null)
-    const videoRefs = [v1, v2]
-    
-    const idxRef = useRef(currentIndex)
-    const watchdogRef = useRef<any>(null)
-    const initialSyncDone = useRef(false)
+    const videoRefs: [React.RefObject<HTMLVideoElement>, React.RefObject<HTMLVideoElement>] = [v1, v2]
 
-    // Sync internal index if parent forces a change (e.g. from watchdog or remote command)
-    useEffect(() => {
-        if (currentIndex !== idxRef.current) {
-            idxRef.current = currentIndex
-        }
-    }, [currentIndex])
+    // FIX: use refs for mutable values read inside callbacks
+    // so we never capture stale closure values
+    const activeSlotRef = useRef<0 | 1>(0)
+    const idxRef = useRef(0)
+    const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const advanceBufferRef = useRef<(force?: boolean) => void>(() => {})
+    const bootedRef = useRef(false)
+    const transitioningRef = useRef(false)
 
-    // Sequential Transition Logic (see BUG-001 in BUG_RESOLUTIONS.md)
-    useEffect(() => {
-        if (isTransitioning) {
-            const t = setTimeout(() => setShowNext(true), 100)
-            return () => clearTimeout(t)
-        } else {
-            setShowNext(false)
-        }
-    }, [isTransitioning])
-
-    const sorted = useMemo(() => [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)), [items])
+    const sorted = useMemo(() =>
+        [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
+    [items])
 
     const getUrl = useCallback((item: ManifestItem) => {
         if (!item) return ''
@@ -249,170 +241,245 @@ function DoubleBufferVideo({ items, assets, onAdvance, currentIndex, effect = 's
         return asset?.url || item.web_url || ''
     }, [assets])
 
-    const triggerWatchdog = useCallback((delay = 12000) => {
+    // Stable watchdog via ref — so it always calls the latest advanceBuffer
+    const triggerWatchdog = useCallback((delay = 15000) => {
         if (watchdogRef.current) clearTimeout(watchdogRef.current)
         watchdogRef.current = setTimeout(() => {
             if (sorted.length > 1) {
-                setDebug("WD Skip")
-                advanceBuffer(true)
+                setDebug('WD-Skip')
+                advanceBufferRef.current(true)
             }
         }, delay)
     }, [sorted.length])
 
     const advanceBuffer = useCallback((forceNext = false) => {
         if (sorted.length === 0) return
-        
+        if (transitioningRef.current && !forceNext) return  // debounce
+
+        // Read current slot from ref — not stale closure
+        const currentSlot = activeSlotRef.current
+        const nextSlot: 0 | 1 = currentSlot === 0 ? 1 : 0
+
+        const currentVideo = videoRefs[currentSlot].current
+        const nextVideo = videoRefs[nextSlot].current
+
         if (sorted.length === 1) {
-            const v = videoRefs[activeSlot].current
-            if (v) {
-                v.currentTime = 0
-                v.play().catch(() => setDebug('LoopErr'))
+            // Single item: loop in place
+            if (currentVideo) {
+                currentVideo.currentTime = 0
+                currentVideo.play().catch(() => setDebug('LoopErr'))
             }
+            triggerWatchdog(15000)
             return
         }
 
-        const currentSlot = activeSlot
-        const nextSlot: 0 | 1 = activeSlot === 0 ? 1 : 0
-        const currentVideo = videoRefs[currentSlot].current
-        const nextVideo = videoRefs[nextSlot].current
         const nextIdx = (idxRef.current + 1) % sorted.length
+        const nextUrl = getUrl(sorted[nextIdx])
 
-        // Step 1: Start Transition (show mask/overlay-ready state)
+        // Mark transitioning
+        transitioningRef.current = true
         setIsTransitioning(true)
         setShowNext(false)
 
-        // Step 2 & 3: Sequential Swap (BUG-001 Resolution)
-        setTimeout(() => {
-            // RELEASE OLD DECODER BEFORE PLAYING NEXT
-            if (currentVideo) {
+        // Step 1: release old decoder
+        if (currentVideo) {
+            try {
                 currentVideo.pause()
                 currentVideo.removeAttribute('src')
                 currentVideo.load()
+            } catch (_) {}
+        }
+
+        // Step 2: after a small gap, assign src DIRECTLY to DOM (not via state)
+        // then load + play. This avoids the React async setState race condition.
+        setTimeout(() => {
+            if (!nextVideo) {
+                transitioningRef.current = false
+                setIsTransitioning(false)
+                return
             }
 
-            // LOAD & PLAY NEXT
-            setTimeout(() => {
-                if (!nextVideo) return
-                
-                const nextUrl = getUrl(sorted[nextIdx])
-                setSlotUrls(prev => {
-                    const up = [...prev] as [string, string]
-                    up[nextSlot] = nextUrl
-                    return up
-                })
-                
-                nextVideo.muted = true
-                nextVideo.currentTime = 0
+            // FIX: set src directly on the element synchronously
+            nextVideo.src = nextUrl
+            nextVideo.muted = true
+            nextVideo.load()
+
+            const doPlay = () => {
                 nextVideo.play().then(() => {
-                    setActiveSlot(nextSlot)
+                    // Update state + refs atomically
+                    activeSlotRef.current = nextSlot
                     idxRef.current = nextIdx
+                    setActiveSlot(nextSlot)
+                    // Also update slotUrls state so React knows the src
+                    setSlotUrls(prev => {
+                        const up = [...prev] as [string, string]
+                        up[nextSlot] = nextUrl
+                        return up
+                    })
                     onAdvance(nextIdx)
-                    triggerWatchdog(12000)
-                    setDebug(`${idxRef.current+1}/${sorted.length}`)
-                    
-                    // Step 4: Stabilize and hide transition overlay
-                    setTimeout(() => setIsTransitioning(false), 500)
+                    setDebug(`${nextIdx + 1}/${sorted.length}`)
+                    triggerWatchdog(15000)
+
+                    // Show transition animation then finalize
+                    setTimeout(() => setShowNext(true), 80)
+                    setTimeout(() => {
+                        setIsTransitioning(false)
+                        setShowNext(false)
+                        transitioningRef.current = false
+                    }, 700)
                 }).catch(e => {
-                    console.warn('[DBV] Play error:', e)
+                    console.warn('[DBV] play() failed:', e.name, e.message)
                     setDebug('PlayErr')
-                    // Recovery: try next after a delay
-                    setTimeout(() => advanceBuffer(true), 2000)
+                    transitioningRef.current = false
+                    setIsTransitioning(false)
+                    // Recovery: try again after 1.5s
+                    setTimeout(() => advanceBufferRef.current(true), 1500)
                 })
-            }, 50)
-        }, 300)
-    }, [activeSlot, sorted, videoRefs, onAdvance, triggerWatchdog, getUrl])
+            }
 
-    // Initial Startup
+            // If video is already buffered, play now; else wait for canplay event
+            if (nextVideo.readyState >= 3) {
+                doPlay()
+            } else {
+                const onReady = () => {
+                    nextVideo.removeEventListener('canplay', onReady)
+                    doPlay()
+                }
+                nextVideo.addEventListener('canplay', onReady)
+                // Fallback: if canplay never fires in 5s, force play anyway
+                setTimeout(() => {
+                    nextVideo.removeEventListener('canplay', onReady)
+                    if (transitioningRef.current) doPlay()
+                }, 5000)
+            }
+        }, 100)
+    }, [sorted, getUrl, onAdvance, triggerWatchdog, videoRefs])
+
+    // Keep advanceBufferRef always pointing to latest version
     useEffect(() => {
-        if (sorted.length > 0 && !initialSyncDone.current) {
-            const u0 = getUrl(sorted[0])
-            const u1 = sorted.length > 1 ? getUrl(sorted[1]) : ''
-            setSlotUrls([u0, u1])
-            idxRef.current = 0
-            initialSyncDone.current = true
-            
-            setTimeout(() => {
-                const v = videoRefs[0].current
-                if (v) v.play().catch(() => setDebug('StartErr'))
-            }, 500)
-        }
-    }, [sorted, getUrl])
+        advanceBufferRef.current = advanceBuffer
+    })
 
-    // Playback Monitor Loop (every 1.5s as per stable version BUG-004)
+    // ─── Initial Startup ────────────────────────────────────────────────────────
+    useEffect(() => {
+        if (sorted.length === 0 || bootedRef.current) return
+        bootedRef.current = true
+
+        const url0 = getUrl(sorted[0])
+        const url1 = sorted.length > 1 ? getUrl(sorted[1]) : ''
+
+        // Set src directly on DOM immediately (don't wait for setState render cycle)
+        const v = videoRefs[0].current
+        if (v) {
+            v.src = url0
+            v.muted = true
+            v.load()
+        }
+        setSlotUrls([url0, url1])
+        idxRef.current = 0
+        activeSlotRef.current = 0
+        triggerWatchdog(20000)  // generous first-load window
+    }, [sorted, getUrl, triggerWatchdog, videoRefs])
+
+    // Reset boot flag if items list changes (scheduled content update)
+    useEffect(() => {
+        bootedRef.current = false
+    }, [items])
+
+    // ─── Playback Monitor (1.5s interval) ──────────────────────────────────────
     useEffect(() => {
         const interval = setInterval(() => {
-            const v = videoRefs[activeSlot].current
-            if (v && v.paused && sorted.length > 0 && !isTransitioning) {
+            const slot = activeSlotRef.current
+            const v = videoRefs[slot].current
+            if (v && v.paused && sorted.length > 0 && !transitioningRef.current) {
                 v.play().catch(() => {})
             }
         }, 1500)
         return () => clearInterval(interval)
-    }, [activeSlot, sorted.length, isTransitioning, videoRefs])
+    }, [sorted.length, videoRefs])
 
+    // ─── Slot Styles ────────────────────────────────────────────────────────────
     const getSlotStyle = (i: number): React.CSSProperties => {
         const isActive = i === activeSlot
-        const isPrev = !isActive
-        const item = sorted[idxRef.current];
-        const transitionType = item?.settings?.transition || effect || 'fade';
+        const transitionType = effect || 'fade'
 
+        // FIX: explicit top/left/right/bottom + width/height
+        // (inset: 0 alone is broken on Android WebView < 90)
         const base: React.CSSProperties = {
-            position: 'absolute', top: 0, left: 0, 
+            position: 'absolute',
+            top: 0, left: 0, right: 0, bottom: 0,
             width: '100%', height: '100%',
-            objectFit: 'fill', 
+            objectFit: 'fill',
             background: isNative ? 'transparent' : '#000',
-            transition: isTransitioning ? 'all 600ms ease-in-out' : 'none',
+            transition: isTransitioning ? 'opacity 600ms ease-in-out, transform 600ms ease-in-out' : 'none',
             zIndex: isActive ? 10 : 5,
-            pointerEvents: 'none'
+            pointerEvents: 'none',
         }
 
         if (isTransitioning) {
+            const isPrev = !isActive
             if (isPrev) {
-                // Outgoing
                 base.opacity = showNext ? 0 : 1
-                if (transitionType === 'slide' || transitionType === 'slide-up') {
-                    base.transform = showNext ? 'translate3d(0, -100%, 0)' : 'translate3d(0, 0, 0)'
-                } else if (transitionType === 'zoom') {
-                    base.transform = showNext ? 'scale(1.2)' : 'scale(1)'
-                }
+                base.transform = (transitionType === 'slide' || transitionType === 'slide-up')
+                    ? (showNext ? 'translate3d(0,-100%,0)' : 'translate3d(0,0,0)')
+                    : 'translate3d(0,0,0)'
             } else {
-                // Incoming
                 base.opacity = showNext ? 1 : 0
-                if (transitionType === 'slide' || transitionType === 'slide-up') {
-                    base.transform = showNext ? 'translate3d(0, 0, 0)' : 'translate3d(0, 100%, 0)'
-                } else if (transitionType === 'zoom') {
-                    base.transform = showNext ? 'scale(1)' : 'scale(0.8)'
-                } else if (transitionType === 'none') {
-                    base.transition = 'none'
-                    base.opacity = 1
-                }
+                base.transform = (transitionType === 'slide' || transitionType === 'slide-up')
+                    ? (showNext ? 'translate3d(0,0,0)' : 'translate3d(0,100%,0)')
+                    : 'translate3d(0,0,0)'
             }
         } else {
             base.opacity = isActive ? 1 : 0
             base.visibility = isActive ? 'visible' : 'hidden'
-            // Reset transforms
-            base.transform = 'translate3d(0,0,0) scale(1)'
+            base.transform = 'translate3d(0,0,0)'
         }
         return base
     }
 
     return (
-        <div style={{ position: 'absolute', inset: 0, background: '#000', overflow: 'hidden' }}>
-            {[0, 1].map(i => (
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', background: '#000', overflow: 'hidden' }}>
+            {([0, 1] as const).map(i => (
                 <video
                     key={i}
                     ref={videoRefs[i]}
                     src={slotUrls[i]}
                     style={getSlotStyle(i)}
-                    muted playsInline preload="auto"
-                    onEnded={() => i === activeSlot && advanceBuffer()}
-                    onTimeUpdate={() => i === activeSlot && triggerWatchdog(12000)}
-                    onError={() => i === activeSlot && advanceBuffer(true)}
+                    muted
+                    playsInline
+                    preload="auto"
+                    onCanPlay={() => {
+                        // Auto-play slot 0 on first boot when the browser is ready
+                        if (i === 0 && idxRef.current === 0 && activeSlotRef.current === 0) {
+                            const v = videoRefs[0].current
+                            if (v && v.paused) v.play().catch(() => {})
+                        }
+                    }}
+                    onPlaying={() => {
+                        if (i === 0 && idxRef.current === 0) {
+                            setDebug('1/' + sorted.length)
+                            triggerWatchdog(15000)
+                        }
+                    }}
+                    onEnded={() => {
+                        if (consecutiveErrorsRef) consecutiveErrorsRef.current = 0
+                        if (i === activeSlotRef.current) advanceBufferRef.current()
+                    }}
+                    onTimeUpdate={() => {
+                        if (i === activeSlotRef.current) triggerWatchdog(15000)
+                    }}
+                    onError={(e: any) => {
+                        console.error('[DBV] Video Error:', e)
+                        if (consecutiveErrorsRef) consecutiveErrorsRef.current += 1
+                        if (lastMediaErrorRef) lastMediaErrorRef.current = `Slot ${i} error at ${new Date().toLocaleTimeString()}`
+                        if (i === activeSlotRef.current) advanceBufferRef.current(true)
+                    }}
                     poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
                 />
             ))}
             {showDebug && (
-                <div style={{ position: 'absolute', bottom: 10, right: 10, background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: 10, padding: 4, zIndex: 1000 }}>
-                    DBV: {debug}
+                <div style={{ position: 'absolute', bottom: 8, right: 8, background: 'rgba(0,0,0,0.75)', color: '#0f0', fontSize: 11, padding: '3px 6px', zIndex: 1000, fontFamily: 'monospace', borderRadius: 4 }}>
+                    DBV {debug} | slot:{activeSlot} idx:{idxRef.current}
                 </div>
             )}
         </div>
@@ -421,6 +488,321 @@ function DoubleBufferVideo({ items, assets, onAdvance, currentIndex, effect = 's
 
 
 
+
+
+// ─── Unified Double-Buffer Engine ─────────────────────────────────────────────
+// Handles both Videos AND Images with the same gapless slot-swap architecture.
+// Videos: advance on onEnded + watchdog
+// Images: advance via per-item duration timer
+// Web/iFrame: handled by PlaybackEngine fallback when needed
+function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDebug = false, isNative = false, consecutiveErrorsRef, lastMediaErrorRef }: {
+    items: ManifestItem[]
+    assets: ManifestAsset[]
+    onAdvance: (newIdx: number) => void
+    effect?: string
+    showDebug?: boolean
+    isNative?: boolean
+    consecutiveErrorsRef?: React.MutableRefObject<number>
+    lastMediaErrorRef?: React.MutableRefObject<string | null>
+}): React.ReactElement {
+    // ── Slot State ──────────────────────────────────────────────────────────────
+    const [activeSlot, setActiveSlot] = useState<0 | 1>(0)
+    const [isTransitioning, setIsTransitioning] = useState(false)
+    const [showNext, setShowNext] = useState(false)
+    const [debug, setDebug] = useState('')
+
+    // Each slot holds: url + type to render
+    const [slotData, setSlotData] = useState<[
+        { url: string; type: string },
+        { url: string; type: string }
+    ]>([{ url: '', type: 'video' }, { url: '', type: 'video' }])
+
+    // DOM refs for the two video elements
+    const v1 = useRef<HTMLVideoElement>(null)
+    const v2 = useRef<HTMLVideoElement>(null)
+    const videoRefs: [React.RefObject<HTMLVideoElement>, React.RefObject<HTMLVideoElement>] = [v1, v2]
+
+    // Image duration timer ref
+    const imageDurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+    // Stable mutable refs — never stale in callbacks
+    const activeSlotRef = useRef<0 | 1>(0)
+    const idxRef = useRef(0)
+    const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const advanceBufferRef = useRef<(force?: boolean) => void>(() => {})
+    const bootedRef = useRef(false)
+    const transitioningRef = useRef(false)
+    const sortedRef = useRef<ManifestItem[]>([])
+
+    const sorted = useMemo(() =>
+        [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
+    [items])
+
+    useEffect(() => { sortedRef.current = sorted }, [sorted])
+
+    // ── Helpers ─────────────────────────────────────────────────────────────────
+    const getItemData = useCallback((item: ManifestItem): { url: string; type: string } => {
+        if (!item) return { url: '', type: 'video' }
+        const asset = assets.find(a => a.media_id === item.media_id)
+        const url = asset?.url || item.web_url || ''
+        let type = asset?.type || item.type || (item.media_id ? 'video' : 'image')
+        if (url) {
+            const ext = url.split('?')[0].split('.').pop()?.toLowerCase()
+            if (['mp4', 'webm', 'mov', 'ogg'].includes(ext || '')) type = 'video'
+            if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext || '')) type = 'image'
+        }
+        return { url, type }
+    }, [assets])
+
+    const getItemDuration = useCallback((item: ManifestItem): number => {
+        const dur = item?.duration_seconds ?? 0
+        if (dur > 0) return dur * 1000
+        const { type } = getItemData(item)
+        return type === 'image' ? DEFAULT_IMAGE_DURATION * 1000 : DEFAULT_VIDEO_DURATION * 1000
+    }, [getItemData])
+
+    // ── Watchdog ─────────────────────────────────────────────────────────────────
+    const triggerWatchdog = useCallback((delay = 15000) => {
+        if (watchdogRef.current) clearTimeout(watchdogRef.current)
+        watchdogRef.current = setTimeout(() => {
+            if (sortedRef.current.length > 1) {
+                setDebug('WD-Skip')
+                advanceBufferRef.current(true)
+            }
+        }, delay)
+    }, [])
+
+    // ── Core Advance ─────────────────────────────────────────────────────────────
+    const advanceBuffer = useCallback((forceNext = false) => {
+        const s = sortedRef.current
+        if (s.length === 0) return
+        if (transitioningRef.current && !forceNext) return
+
+        if (imageDurTimerRef.current) clearTimeout(imageDurTimerRef.current)
+
+        const currentSlot = activeSlotRef.current
+        const nextSlot: 0 | 1 = currentSlot === 0 ? 1 : 0
+        const currentVideo = videoRefs[currentSlot].current
+        const nextVideo = videoRefs[nextSlot].current
+
+        if (s.length === 1) {
+            const { type } = getItemData(s[0])
+            if (type === 'video' && currentVideo) {
+                currentVideo.currentTime = 0
+                currentVideo.play().catch(() => setDebug('LoopErr'))
+            } else {
+                imageDurTimerRef.current = setTimeout(() => advanceBufferRef.current(), getItemDuration(s[0]))
+            }
+            triggerWatchdog(30000)
+            return
+        }
+
+        const nextIdx = (idxRef.current + 1) % s.length
+        const nextItem = s[nextIdx]
+        const { url: nextUrl, type: nextType } = getItemData(nextItem)
+
+        transitioningRef.current = true
+        setIsTransitioning(true)
+        setShowNext(false)
+
+        const { type: currentType } = getItemData(s[idxRef.current])
+        if (currentType === 'video' && currentVideo) {
+            try { currentVideo.pause(); currentVideo.removeAttribute('src'); currentVideo.load() } catch (_) {}
+        }
+
+        const commitAdvance = () => {
+            activeSlotRef.current = nextSlot
+            idxRef.current = nextIdx
+            setActiveSlot(nextSlot)
+            setSlotData(prev => {
+                const up = [...prev] as [{ url: string; type: string }, { url: string; type: string }]
+                up[nextSlot] = { url: nextUrl, type: nextType }
+                return up
+            })
+            onAdvance(nextIdx)
+            setDebug(`${nextIdx + 1}/${s.length} [${nextType}]`)
+            setTimeout(() => setShowNext(true), 80)
+            setTimeout(() => {
+                setIsTransitioning(false)
+                setShowNext(false)
+                transitioningRef.current = false
+            }, 700)
+            if (nextType === 'image') {
+                const dur = getItemDuration(nextItem)
+                imageDurTimerRef.current = setTimeout(() => advanceBufferRef.current(), dur)
+                triggerWatchdog(dur + 10000)
+            } else {
+                triggerWatchdog(15000)
+            }
+        }
+
+        setTimeout(() => {
+            if (nextType === 'video') {
+                if (!nextVideo) { transitioningRef.current = false; setIsTransitioning(false); return }
+                nextVideo.src = nextUrl
+                nextVideo.muted = true
+                nextVideo.load()
+                const doPlay = () => {
+                    nextVideo.play().then(commitAdvance).catch(e => {
+                        console.warn('[UDB] play() failed:', e.name, e.message)
+                        setDebug('PlayErr')
+                        transitioningRef.current = false
+                        setIsTransitioning(false)
+                        setTimeout(() => advanceBufferRef.current(true), 1500)
+                    })
+                }
+                if (nextVideo.readyState >= 3) {
+                    doPlay()
+                } else {
+                    const onReady = () => { nextVideo.removeEventListener('canplay', onReady); doPlay() }
+                    nextVideo.addEventListener('canplay', onReady)
+                    setTimeout(() => { nextVideo.removeEventListener('canplay', onReady); if (transitioningRef.current) doPlay() }, 5000)
+                }
+            } else {
+                // Image: no play() needed — commit immediately
+                setSlotData(prev => {
+                    const up = [...prev] as [{ url: string; type: string }, { url: string; type: string }]
+                    up[nextSlot] = { url: nextUrl, type: nextType }
+                    return up
+                })
+                commitAdvance()
+            }
+        }, 100)
+    }, [getItemData, getItemDuration, onAdvance, triggerWatchdog, videoRefs])
+
+    useEffect(() => { advanceBufferRef.current = advanceBuffer })
+
+    // ── Boot ─────────────────────────────────────────────────────────────────────
+    useEffect(() => {
+        if (sorted.length === 0 || bootedRef.current) return
+        bootedRef.current = true
+        const item0 = sorted[0]
+        const item1 = sorted.length > 1 ? sorted[1] : null
+        const data0 = getItemData(item0)
+        const data1 = item1 ? getItemData(item1) : { url: '', type: 'video' }
+        setSlotData([data0, data1])
+        idxRef.current = 0
+        activeSlotRef.current = 0
+        if (data0.type === 'video') {
+            const v = videoRefs[0].current
+            if (v) { v.src = data0.url; v.muted = true; v.load() }
+            triggerWatchdog(20000)
+        } else {
+            const dur = getItemDuration(item0)
+            imageDurTimerRef.current = setTimeout(() => advanceBufferRef.current(), dur)
+            triggerWatchdog(dur + 10000)
+        }
+    }, [sorted, getItemData, getItemDuration, triggerWatchdog, videoRefs])
+
+    useEffect(() => { bootedRef.current = false }, [items])
+
+    // ── Stall Monitor ─────────────────────────────────────────────────────────────
+    useEffect(() => {
+        const interval = setInterval(() => {
+            const slot = activeSlotRef.current
+            if (slotData[slot].type !== 'video') return
+            const v = videoRefs[slot].current
+            if (v && v.paused && sorted.length > 0 && !transitioningRef.current) v.play().catch(() => {})
+        }, 1500)
+        return () => clearInterval(interval)
+    }, [sorted.length, videoRefs, slotData])
+
+    // ── Slot Styles ──────────────────────────────────────────────────────────────
+    const getSlotStyle = (i: number): React.CSSProperties => {
+        const isActive = i === activeSlot
+        const transitionType = effect || 'fade'
+        const base: React.CSSProperties = {
+            position: 'absolute',
+            top: 0, left: 0, right: 0, bottom: 0,
+            width: '100%', height: '100%',
+            background: isNative ? 'transparent' : '#000',
+            transition: isTransitioning ? 'opacity 600ms ease-in-out, transform 600ms ease-in-out' : 'none',
+            zIndex: isActive ? 10 : 5,
+            pointerEvents: 'none',
+            overflow: 'hidden',
+        }
+        if (isTransitioning) {
+            const isPrev = !isActive
+            if (isPrev) {
+                base.opacity = showNext ? 0 : 1
+                base.transform = (transitionType === 'slide' || transitionType === 'slide-up')
+                    ? (showNext ? 'translate3d(0,-100%,0)' : 'translate3d(0,0,0)')
+                    : 'translate3d(0,0,0)'
+            } else {
+                base.opacity = showNext ? 1 : 0
+                base.transform = (transitionType === 'slide' || transitionType === 'slide-up')
+                    ? (showNext ? 'translate3d(0,0,0)' : 'translate3d(0,100%,0)')
+                    : 'translate3d(0,0,0)'
+            }
+        } else {
+            base.opacity = isActive ? 1 : 0
+            base.visibility = isActive ? 'visible' : 'hidden'
+            base.transform = 'translate3d(0,0,0)'
+        }
+        return base
+    }
+
+    // ── Render ───────────────────────────────────────────────────────────────────
+    return (
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', background: '#000', overflow: 'hidden' }}>
+            {([0, 1] as const).map(i => {
+                const { url, type } = slotData[i]
+                const slotStyle = getSlotStyle(i)
+                const isSlotActive = i === activeSlot
+                return (
+                    <div key={i} style={slotStyle}>
+                        {type === 'video' ? (
+                            <video
+                                ref={videoRefs[i]}
+                                src={url || undefined}
+                                style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block', background: '#000' }}
+                                muted playsInline preload="auto"
+                                onCanPlay={() => {
+                                    if (i === 0 && idxRef.current === 0 && activeSlotRef.current === 0) {
+                                        const v = videoRefs[0].current
+                                        if (v && v.paused) v.play().catch(() => {})
+                                    }
+                                }}
+                                onPlaying={() => {
+                                    if (i === activeSlotRef.current) triggerWatchdog(15000)
+                                }}
+                                onEnded={() => {
+                                    if (consecutiveErrorsRef) consecutiveErrorsRef.current = 0
+                                    if (i === activeSlotRef.current) advanceBufferRef.current()
+                                }}
+                                onTimeUpdate={() => {
+                                    if (i === activeSlotRef.current) triggerWatchdog(15000)
+                                }}
+                                onError={() => {
+                                    if (consecutiveErrorsRef) consecutiveErrorsRef.current += 1
+                                    if (lastMediaErrorRef) lastMediaErrorRef.current = `Slot ${i} err @ ${new Date().toLocaleTimeString()}`
+                                    if (i === activeSlotRef.current) advanceBufferRef.current(true)
+                                }}
+                                poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+                            />
+                        ) : (
+                            <img
+                                src={url || undefined}
+                                alt=""
+                                style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }}
+                                onError={() => {
+                                    if (consecutiveErrorsRef) consecutiveErrorsRef.current += 1
+                                    if (lastMediaErrorRef) lastMediaErrorRef.current = `Img slot ${i} err @ ${new Date().toLocaleTimeString()}`
+                                    if (isSlotActive) advanceBufferRef.current(true)
+                                }}
+                            />
+                        )}
+                    </div>
+                )
+            })}
+            {showDebug && (
+                <div style={{ position: 'absolute', bottom: 8, right: 8, background: 'rgba(0,0,0,0.75)', color: '#0f0', fontSize: 11, padding: '3px 6px', zIndex: 1000, fontFamily: 'monospace', borderRadius: 4 }}>
+                    UDB {debug} | slot:{activeSlot} idx:{idxRef.current}
+                </div>
+            )}
+        </div>
+    )
+}
 
 
 // ─── Playback Engine ──────────────────────────────────────────────────────────
@@ -717,22 +1099,33 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
             backfaceVisibility: 'hidden',
             transformStyle: 'preserve-3d'
         }}>
-            {allVideos ? (
-                <DoubleBufferVideo
+            {{/* UnifiedDoubleBuffer handles video+image playlists natively; web_url/mixed uses legacy path */}
+            {(activeItems.every(it => {
+                const a = assets.find(x => x.media_id === it.media_id)
+                let t = a?.type || it.type || (it.media_id ? 'video' : 'image')
+                const u = a?.url || it.web_url
+                if (u) {
+                    const ext = u.split('?')[0].split('.').pop()?.toLowerCase()
+                    if (['mp4','webm','mov','ogg'].includes(ext||'')) t = 'video'
+                    if (['jpg','jpeg','png','gif','webp','bmp','svg'].includes(ext||'')) t = 'image'
+                }
+                return t === 'video' || t === 'image'
+            })) ? (
+                <UnifiedDoubleBuffer
                     key={activeItems.map(i => i.playlist_item_id).join(',')}
                     items={activeItems}
                     assets={assets}
                     onAdvance={(newIdx) => advance(newIdx)}
-                    currentIndex={idx}
-                    effect={(activeItems[idx] as any)?.settings?.transition || 'slide'}
+                    effect={(activeItems[idx] as any)?.settings?.transition || 'fade'}
                     isNative={isNative}
                     showDebug={showDebug}
+                    consecutiveErrorsRef={consecutiveErrorsRef}
+                    lastMediaErrorRef={lastMediaErrorRef}
                 />
             ) : (
                 <>
-                    {/* Layer 1: Previous item (for fading out) */}
+                    {/* Legacy path: web_url / iFrame / mixed playlists */}
                     {prevIdx !== null && prevIdx !== idx && renderItem(prevIdx, false)}
-                    {/* Layer 2: Current item (fading in) */}
                     {renderItem(idx, true)}
                 </>
             )}
@@ -1072,6 +1465,8 @@ export default function PlayerPage() {
         return () => window.removeEventListener('resize', syncViewport)
     }, [])
 
+    const mountTimeRef = useRef(Date.now())
+
     // ─── BOOT-CRITICAL: DO NOT CHANGE 90000 ───────────────────────────────────
     // This watchdog MUST be 90s minimum. The bootFetch loop below runs 3 attempts,
     // each with a 25s callEdgeFn timeout + internal backoff (1s, 2s).
@@ -1102,6 +1497,7 @@ export default function PlayerPage() {
     const [syncProgress, setSyncProgress] = useState<{ current: number; total: number } | null>(null)
     const versionRef = useRef(version)
     const [showDebugOverlay, setShowDebugOverlay] = useState(false)
+    const [telemetry, setTelemetry] = useState<any>(null)
     const [lastSyncTime, setLastSyncTime] = useState(new Date().toLocaleTimeString())
     const [remoteLogs, setRemoteLogs] = useState<{ time: string, msg: string, type: 'info' | 'error' }[]>([])
     const manifestTimerRef = useRef<any>(null)
@@ -1624,6 +2020,7 @@ export default function PlayerPage() {
         } catch (e) {
             console.warn('[Telemetry] Error gathering stats:', e)
         }
+        setTelemetry(meta)
 
         try {
             // CORTEX: Jitter/Stagger fix for Amlogic hardware to avoid manifest/heartbeat collisions.
@@ -2279,8 +2676,30 @@ export default function PlayerPage() {
                         <span style={{ color: '#f1f5f9', textAlign: 'right' }}>{lastSyncTime}</span>
                         <span style={{ color: '#64748b' }}>Media:</span>
                         <span style={{ color: '#f1f5f9', textAlign: 'right' }}>{manifest?.assets?.length || 0} assets</span>
-                        <span style={{ color: '#64748b' }}>Items:</span>
-                        <span style={{ color: '#f1f5f9', textAlign: 'right' }}>{Object.values(manifest?.region_playlists || {}).flat().length} in plyst</span>
+                        <span style={{ color: '#64748b' }}>Phase:</span>
+                        <span style={{ color: '#f1f5f9', textAlign: 'right', fontWeight: 700 }}>{phase.toUpperCase()}</span>
+                        <span style={{ color: '#64748b' }}>ID/DC:</span>
+                        <span style={{ color: '#f1f5f9', textAlign: 'right' }}>{dc}</span>
+                        <span style={{ color: '#64748b' }}>Uptime:</span>
+                        <span style={{ color: '#f1f5f9', textAlign: 'right' }}>{Math.floor((Date.now() - mountTimeRef.current) / 60000)}m</span>
+                        {telemetry?.local_ip && (
+                            <>
+                                <span style={{ color: '#64748b' }}>Network:</span>
+                                <span style={{ color: '#f1f5f9', textAlign: 'right' }}>{telemetry.local_ip}</span>
+                            </>
+                        )}
+                        {telemetry?.storage_total_gb && (
+                            <>
+                                <span style={{ color: '#64748b' }}>Storage:</span>
+                                <span style={{ color: '#f1f5f9', textAlign: 'right' }}>{telemetry.storage_free_gb}/{telemetry.storage_total_gb} GB free</span>
+                            </>
+                        )}
+                        {telemetry?.ram_total_mb && (
+                            <>
+                                <span style={{ color: '#64748b' }}>RAM:</span>
+                                <span style={{ color: '#f1f5f9', textAlign: 'right' }}>{Math.round(telemetry.ram_total_mb)} MB</span>
+                            </>
+                        )}
                         <span style={{ color: '#64748b' }}>Env/UA:</span>
                         <span style={{ color: '#f1f5f9', textAlign: 'right' }}>Signage Web-V1</span>
                     </div>
