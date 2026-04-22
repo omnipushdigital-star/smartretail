@@ -200,32 +200,18 @@ interface PlaybackProps {
 }
 
 // ─── Double-Buffer Video Player ──────────────────────────────────────────────
-// Uses two persistent <video> elements and crossfades between them.
-// This eliminates the browser's default "video icon" flash that appears
-// when a <video> element is destroyed and recreated (e.g., on loop restart).
-
-interface VideoBufferProps {
-    url: string
-    onEnded: () => void
-    onError: () => void
-    style?: React.CSSProperties
-}
-
-type TransitionEffect = 'fade' | 'slide' | 'zoom' | 'none' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right'
-
-function DoubleBufferVideo({ items, assets, onAdvance, currentIndex, effect = 'slide-up', showDebug = false, isNative = false }: {
+function DoubleBufferVideo({ items, assets, onAdvance, currentIndex, effect = 'slide-up', showDebug = false }: {
     items: ManifestItem[]
     assets: ManifestAsset[]
     onAdvance: (newIdx: number) => void
     currentIndex: number
     effect?: string
     showDebug?: boolean
-    isNative?: boolean
 }): React.ReactElement {
     const [activeSlot, setActiveSlot] = useState<0 | 1>(0)
-    const [isReady, setIsReady] = useState<[boolean, boolean]>([false, false])
     const [slotUrls, setSlotUrls] = useState<[string, string]>(['', ''])
     const [isTransitioning, setIsTransitioning] = useState(false)
+    const [showNext, setShowNext] = useState(false)
     const [debug, setDebug] = useState('')
 
     const v1 = useRef<HTMLVideoElement>(null)
@@ -233,40 +219,33 @@ function DoubleBufferVideo({ items, assets, onAdvance, currentIndex, effect = 's
     const videoRefs = [v1, v2]
     
     const idxRef = useRef(currentIndex)
-    const lastAdvanceTime = useRef(0)
-    const initialSyncDone = useRef(false)
-    const advanceBufferRef = useRef<any>(null)
-    const bootPlayedRef = useRef(false)
     const watchdogRef = useRef<any>(null)
-    const syncRef = useRef(currentIndex)
+    const initialSyncDone = useRef(false)
 
-    // Sync internal index if parent forces a change (e.g. from watchdog or remote command)
+    // Sequential Transition Logic (see BUG-001 in BUG_RESOLUTIONS.md)
     useEffect(() => {
-        if (currentIndex !== idxRef.current) {
-            console.log(`[DBV] Syncing internal index ${idxRef.current} -> ${currentIndex}`)
-            idxRef.current = currentIndex
+        if (isTransitioning) {
+            const t = setTimeout(() => setShowNext(true), 100)
+            return () => clearTimeout(t)
+        } else {
+            setShowNext(false)
         }
-    }, [currentIndex])
+    }, [isTransitioning])
 
-    const isAndroidNative = isNative || !!(window as any).AndroidHealth
     const sorted = useMemo(() => [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)), [items])
 
     const getUrl = useCallback((item: ManifestItem) => {
         if (!item) return ''
         const asset = assets.find(a => a.media_id === item.media_id)
-        if (asset?.url) return asset.url
-        const rawUrl = item.web_url || ''
-        if (rawUrl.startsWith('http') || rawUrl.startsWith('blob:') || rawUrl.startsWith('data:')) return rawUrl
-        return new URL(rawUrl, window.location.origin).href
+        return asset?.url || item.web_url || ''
     }, [assets])
 
-    const triggerWatchdog = useCallback((delay = 120000) => {
+    const triggerWatchdog = useCallback((delay = 12000) => {
         if (watchdogRef.current) clearTimeout(watchdogRef.current)
         watchdogRef.current = setTimeout(() => {
             if (sorted.length > 1) {
-                console.warn('[DBV] Internal watchdog triggered skip')
                 setDebug("WD Skip")
-                advanceBufferRef.current(true)
+                advanceBuffer(true)
             }
         }, delay)
     }, [sorted.length])
@@ -274,164 +253,136 @@ function DoubleBufferVideo({ items, assets, onAdvance, currentIndex, effect = 's
     const advanceBuffer = useCallback((forceNext = false) => {
         if (sorted.length === 0) return
         
-        const now = Date.now()
-        if (!forceNext && now - lastAdvanceTime.current < 2000) {
-            console.log('[DBV] Debouncing advance request')
-            return
-        }
-
         if (sorted.length === 1) {
-            if (forceNext) {
-                onAdvance(0)
-            } else {
-                const v = videoRefs[activeSlot].current
-                if (v) {
-                    v.currentTime = 0
-                    v.play().catch(e => setDebug(`Loop Err: ${e.message.slice(0, 10)}`))
-                }
+            const v = videoRefs[activeSlot].current
+            if (v) {
+                v.currentTime = 0
+                v.play().catch(() => setDebug('LoopErr'))
             }
             return
         }
 
-        lastAdvanceTime.current = now
         const currentSlot = activeSlot
         const nextSlot: 0 | 1 = activeSlot === 0 ? 1 : 0
         const currentVideo = videoRefs[currentSlot].current
         const nextVideo = videoRefs[nextSlot].current
-        const currentIdx = idxRef.current
-        const nextIdx = (currentIdx + 1) % sorted.length
+        const nextIdx = (idxRef.current + 1) % sorted.length
 
-        const performSwitch = () => {
-            setDebug(`${currentIdx}→${nextIdx}|SW`)
-            console.log(`[DBV] Transitioning slot ${currentSlot}->${nextSlot} (idx ${currentIdx}->${nextIdx})`)
+        // Step 1: Start Transition (show mask/overlay-ready state)
+        setIsTransitioning(true)
+        setShowNext(false)
 
-            const releaseOld = () => {
-                if (!currentVideo) return
-                try {
-                    currentVideo.pause()
-                    currentVideo.style.opacity = '0'
-                    currentVideo.style.visibility = 'hidden'
-                    currentVideo.removeAttribute('src')
-                    currentVideo.load()
-                } catch (e) { /* ignore */ }
+        // Step 2 & 3: Sequential Swap (BUG-001 Resolution)
+        setTimeout(() => {
+            // RELEASE OLD DECODER BEFORE PLAYING NEXT
+            if (currentVideo) {
+                currentVideo.pause()
+                currentVideo.removeAttribute('src')
+                currentVideo.load()
             }
 
-            triggerWatchdog(120000)
-            if (nextVideo) {
-                nextVideo.muted = true
-                nextVideo.currentTime = 0
-                nextVideo.play().then(() => {
-                    setIsTransitioning(true)
-                    setActiveSlot(nextSlot)
-                    idxRef.current = nextIdx
-                    onAdvance(nextIdx)
-                    setTimeout(releaseOld, 250)
-                    setTimeout(() => setIsTransitioning(false), 1000)
-                }).catch(e => {
-                    console.error('[DoubleBufferVideo] play error:', e)
-                    setDebug(`Play Err V${nextIdx}`)
-                    setIsTransitioning(false)
-                    // If play fails, try to skip to the one AFTER this one
-                    setTimeout(() => advanceBuffer(true), 2000)
-                })
-            }
-        }
-
-        const isReadyNow = (nextVideo && nextVideo.readyState >= 3)
-        if (isReadyNow || forceNext) {
-            performSwitch()
-        } else {
-            setDebug(`Waiting V${nextIdx}`)
-            const checkReady = setInterval(() => {
-                const nv = videoRefs[nextSlot].current
-                if (nv && nv.readyState >= 3) {
-                    clearInterval(checkReady)
-                    performSwitch()
-                }
-            }, 200)
+            // LOAD & PLAY NEXT
             setTimeout(() => {
-                clearInterval(checkReady)
-                if (activeSlot === currentSlot) performSwitch() 
-            }, 8000)
-        }
-    }, [activeSlot, sorted, videoRefs, isAndroidNative, onAdvance, triggerWatchdog])
-
-    advanceBufferRef.current = advanceBuffer
-
-    const onCanPlay = useCallback((slotIndex: number) => {
-        setIsReady(prev => {
-            const up = [...prev] as [boolean, boolean]
-            up[slotIndex] = true
-            return up
-        })
-        if (slotIndex === 0 && !bootPlayedRef.current) {
-            bootPlayedRef.current = true
-            const v = videoRefs[0].current
-            if (v) {
-                v.muted = true
-                v.play().catch(e => console.warn('[DBV] Boot play err:', e.message))
-                setDebug('Boot-Play')
-            }
-        }
-    }, [videoRefs])
-
-    useEffect(() => {
-        if (sorted.length > 0 && !initialSyncDone.current) {
-            const startIdx = currentIndex % sorted.length
-            const urlActive = getUrl(sorted[startIdx])
-            const nextIdx = (startIdx + 1) % sorted.length
-            const urlNext = getUrl(sorted[nextIdx])
-            
-            setSlotUrls([urlActive, urlNext])
-            idxRef.current = startIdx
-            setActiveSlot(0) 
-            initialSyncDone.current = true
-        }
-    }, [sorted, getUrl, currentIndex])
-
-    useEffect(() => {
-        if (!isAndroidNative && sorted.length > 1) {
-            const nextIdx = (idxRef.current + 1) % sorted.length
-            const nextSlot = activeSlot === 0 ? 1 : 0
-            const nextUrl = getUrl(sorted[nextIdx])
-            if (nextUrl !== slotUrls[nextSlot]) {
+                if (!nextVideo) return
+                
+                const nextUrl = getUrl(sorted[nextIdx])
                 setSlotUrls(prev => {
                     const up = [...prev] as [string, string]
                     up[nextSlot] = nextUrl
                     return up
                 })
-                const nBuffer = videoRefs[nextSlot].current
-                if (nBuffer && nBuffer.readyState < 2) {
-                    nBuffer.load()
-                }
-            }
-        }
-    }, [activeSlot, sorted, slotUrls, getUrl, isAndroidNative, videoRefs])
+                
+                nextVideo.muted = true
+                nextVideo.currentTime = 0
+                nextVideo.play().then(() => {
+                    setActiveSlot(nextSlot)
+                    idxRef.current = nextIdx
+                    onAdvance(nextIdx)
+                    triggerWatchdog(12000)
+                    setDebug(`${idxRef.current+1}/${sorted.length}`)
+                    
+                    // Step 4: Stabilize and hide transition overlay
+                    setTimeout(() => setIsTransitioning(false), 500)
+                }).catch(e => {
+                    console.warn('[DBV] Play error:', e)
+                    setDebug('PlayErr')
+                    // Recovery: try next after a delay
+                    setTimeout(() => advanceBuffer(true), 2000)
+                })
+            }, 50)
+        }, 300)
+    }, [activeSlot, sorted, videoRefs, onAdvance, triggerWatchdog, getUrl])
 
-    const getTransitionStyle = (slot: number): React.CSSProperties => {
-        const isActive = slot === activeSlot
-        return {
-            position: 'absolute',
-            top: 0, left: 0, width: '100%', height: '100%',
-            objectFit: 'fill',
-            transition: isTransitioning ? `all ${TRANSITION_DURATION}ms ease-in-out` : 'none',
-            visibility: (isActive || isTransitioning) ? 'visible' : 'hidden',
-            opacity: isActive ? 1 : 0,
+    // Initial Startup
+    useEffect(() => {
+        if (sorted.length > 0 && !initialSyncDone.current) {
+            const u0 = getUrl(sorted[0])
+            const u1 = sorted.length > 1 ? getUrl(sorted[1]) : ''
+            setSlotUrls([u0, u1])
+            idxRef.current = 0
+            initialSyncDone.current = true
+            
+            setTimeout(() => {
+                const v = videoRefs[0].current
+                if (v) v.play().catch(() => setDebug('StartErr'))
+            }, 500)
+        }
+    }, [sorted, getUrl])
+
+    // Playback Monitor Loop (every 1.5s as per stable version BUG-004)
+    useEffect(() => {
+        const interval = setInterval(() => {
+            const v = videoRefs[activeSlot].current
+            if (v && v.paused && sorted.length > 0 && !isTransitioning) {
+                v.play().catch(() => {})
+            }
+        }, 1500)
+        return () => clearInterval(interval)
+    }, [activeSlot, sorted.length, isTransitioning, videoRefs])
+
+    const getSlotStyle = (i: number): React.CSSProperties => {
+        const isActive = i === activeSlot
+        const isPrev = !isActive
+        const item = sorted[idxRef.current];
+        const transitionType = item?.settings?.transition || effect || 'fade';
+
+        const base: React.CSSProperties = {
+            position: 'absolute', inset: 0, 
+            objectFit: 'fill', background: '#000',
+            transition: isTransitioning ? 'all 600ms ease-in-out' : 'none',
             zIndex: isActive ? 10 : 5,
-            background: '#000',
             pointerEvents: 'none'
         }
-    }
 
-    // Monitor: Ensure active video is actually playing
-    useEffect(() => {
-        const v = videoRefs[activeSlot].current
-        if (v && v.paused && sorted.length > 0 && !isTransitioning) {
-            v.play().catch(e => {
-                if (e.name !== 'AbortError') console.warn('[DBV] Play monitor resume failed:', e.message)
-            })
+        if (isTransitioning) {
+            if (isPrev) {
+                // Outgoing
+                base.opacity = showNext ? 0 : 1
+                if (transitionType === 'slide' || transitionType === 'slide-up') {
+                    base.transform = showNext ? 'translate3d(0, -100%, 0)' : 'translate3d(0, 0, 0)'
+                } else if (transitionType === 'zoom') {
+                    base.transform = showNext ? 'scale(1.2)' : 'scale(1)'
+                }
+            } else {
+                // Incoming
+                base.opacity = showNext ? 1 : 0
+                if (transitionType === 'slide' || transitionType === 'slide-up') {
+                    base.transform = showNext ? 'translate3d(0, 0, 0)' : 'translate3d(0, 100%, 0)'
+                } else if (transitionType === 'zoom') {
+                    base.transform = showNext ? 'scale(1)' : 'scale(0.8)'
+                } else if (transitionType === 'none') {
+                    base.transition = 'none'
+                    base.opacity = 1
+                }
+            }
+        } else {
+            base.opacity = isActive ? 1 : 0
+            base.visibility = isActive ? 'visible' : 'hidden'
+            // Reset transforms
+            base.transform = 'translate3d(0,0,0) scale(1)'
         }
-    }, [activeSlot, sorted, isTransitioning, videoRefs])
+        return base
+    }
 
     return (
         <div style={{ position: 'absolute', inset: 0, background: '#000', overflow: 'hidden' }}>
@@ -440,29 +391,23 @@ function DoubleBufferVideo({ items, assets, onAdvance, currentIndex, effect = 's
                     key={i}
                     ref={videoRefs[i]}
                     src={slotUrls[i]}
-                    style={getTransitionStyle(i)}
-                    controls={false}
-                    muted
-                    playsInline
-                    preload="auto"
-                    disablePictureInPicture={true}
-                    onPlaying={() => onCanPlay(i)}
-                    onCanPlay={() => onCanPlay(i)}
+                    style={getSlotStyle(i)}
+                    muted playsInline preload="auto"
                     onEnded={() => i === activeSlot && advanceBuffer()}
-                    onTimeUpdate={() => i === activeSlot && triggerWatchdog(120000)}
+                    onTimeUpdate={() => i === activeSlot && triggerWatchdog(12000)}
                     onError={() => i === activeSlot && advanceBuffer(true)}
+                    poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
                 />
             ))}
-            {isAndroidNative && <div id="native-layer-proxy" style={{ pointerEvents: 'none' }} />}
             {showDebug && (
-                <div style={{ position: 'absolute', bottom: 10, left: 10, background: 'rgba(0,0,0,0.8)', color: '#00ff00', padding: 10, fontSize: 10, zIndex: 100, borderRadius: 5, pointerEvents: 'none', fontFamily: 'monospace' }}>
-                    DBV Debug: {debug} | Slot:{activeSlot} | Idx:{idxRef.current}<br/>
-                    B1:{isReady[0] ? 'R' : '_'} B2:{isReady[1] ? 'R' : '_'} | S:{sorted.length}
+                <div style={{ position: 'absolute', bottom: 10, right: 10, background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: 10, padding: 4, zIndex: 1000 }}>
+                    DBV: {debug}
                 </div>
             )}
         </div>
     )
 }
+
 
 
 
