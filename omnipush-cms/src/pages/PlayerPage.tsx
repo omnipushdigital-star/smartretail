@@ -871,17 +871,19 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
         }
     }, [items, currentTime])
 
-    // Specialized All-Video Check
-    const allVideos = useMemo(() => {
-        return activeItems.length > 0 && activeItems.every(i => {
-            const asset = assets.find(a => a.media_id === i.media_id)
-            let t = asset?.type || i.type || (i.media_id ? 'video' : 'image')
-            const u = asset?.url || i.web_url
-            if (u) {
-                const ext = u.split('?')[0].split('.').pop()?.toLowerCase()
-                if (['mp4', 'webm', 'mov', 'ogg'].includes(ext || '')) t = 'video'
+    // Logic to determine if we can use the high-performance UnifiedDoubleBuffer engine
+    const isUDB = useMemo(() => {
+        if (activeItems.length === 0) return false
+        return activeItems.every(it => {
+            const asset = assets.find(a => a.media_id === it.media_id)
+            let type = asset?.type || it.type || (it.media_id ? 'video' : 'image')
+            const url = asset?.url || it.web_url
+            if (url) {
+                const ext = url.split('?')[0].split('.').pop()?.toLowerCase()
+                if (['mp4', 'webm', 'mov', 'ogg'].includes(ext || '')) type = 'video'
+                if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext || '')) type = 'image'
             }
-            return t === 'video'
+            return type === 'video' || type === 'image'
         })
     }, [activeItems, assets])
 
@@ -932,14 +934,14 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
         const effectiveDur = (itemDur || defaultDur) * 1000
 
         // Safety Watchdog fallback
-        // in case the video tag fails to fire onEnded due to a crash or interruption.
-        // CORTEX: If allVideos is true, DoubleBufferVideo handles its own logic and watchdog.
+        // in case the video tag or image timer fails.
+        // If isUDB is true, UnifiedDoubleBuffer handles its own logic and watchdog.
         // We MUST NOT have a competing timer here or it will cause double-play/desync.
-        if (allVideos) {
-            // No timer here; DoubleBufferVideo is autonomous.
-            // We set a very long 10-minute fallback just in case DBV itself dies.
+        if (isUDB) {
+            // No timer here; UnifiedDoubleBuffer is autonomous.
+            // We set a very long 10-minute fallback just in case the engine itself hangs.
             timerRef.current = setTimeout(() => {
-                console.warn('[Watchdog] DBV seems stuck for 10min. Performing emergency advance.')
+                console.warn('[Watchdog] UDB seems stuck for 10min. Performing emergency advance.')
                 advance()
             }, 600000)
         } else {
@@ -947,7 +949,7 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
         }
 
         return () => { if (timerRef.current) clearTimeout(timerRef.current) }
-    }, [idx, activeItems, assets, advance, allVideos])
+    }, [idx, activeItems, assets, advance, isUDB])
 
     // Android Status Sync
     useEffect(() => {
@@ -1099,18 +1101,8 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
             backfaceVisibility: 'hidden',
             transformStyle: 'preserve-3d'
         }}>
-            {{/* UnifiedDoubleBuffer handles video+image playlists natively; web_url/mixed uses legacy path */}
-            {(activeItems.every(it => {
-                const a = assets.find(x => x.media_id === it.media_id)
-                let t = a?.type || it.type || (it.media_id ? 'video' : 'image')
-                const u = a?.url || it.web_url
-                if (u) {
-                    const ext = u.split('?')[0].split('.').pop()?.toLowerCase()
-                    if (['mp4','webm','mov','ogg'].includes(ext||'')) t = 'video'
-                    if (['jpg','jpeg','png','gif','webp','bmp','svg'].includes(ext||'')) t = 'image'
-                }
-                return t === 'video' || t === 'image'
-            })) ? (
+            {/* UnifiedDoubleBuffer handles video+image playlists natively; web_url/mixed uses legacy path */}
+            {isUDB ? (
                 <UnifiedDoubleBuffer
                     key={activeItems.map(i => i.playlist_item_id).join(',')}
                     items={activeItems}
@@ -1136,7 +1128,7 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
                 const nextAsset = assets.find(a => a.media_id === nextItem?.media_id)
                 const nextUrl = nextAsset?.url || nextItem?.web_url
                 const nextType = nextAsset?.type || nextItem?.type || (nextItem?.media_id ? 'video' : 'image')
-                if (nextType === 'image' && nextUrl && !allVideos) {
+                if (nextType === 'image' && nextUrl && !isUDB) {
                     return <img src={nextUrl} alt="" style={{ display: 'none' }} />
                 }
                 return null
