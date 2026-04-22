@@ -233,6 +233,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, currentIndex, effect = 's
     const videoRefs = [v1, v2]
     
     const idxRef = useRef(currentIndex)
+    const lastAdvanceTime = useRef(0)
     const initialSyncDone = useRef(false)
     const advanceBufferRef = useRef<any>(null)
     const bootPlayedRef = useRef(false)
@@ -272,6 +273,13 @@ function DoubleBufferVideo({ items, assets, onAdvance, currentIndex, effect = 's
 
     const advanceBuffer = useCallback((forceNext = false) => {
         if (sorted.length === 0) return
+        
+        const now = Date.now()
+        if (!forceNext && now - lastAdvanceTime.current < 2000) {
+            console.log('[DBV] Debouncing advance request')
+            return
+        }
+
         if (sorted.length === 1) {
             if (forceNext) {
                 onAdvance(0)
@@ -285,6 +293,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, currentIndex, effect = 's
             return
         }
 
+        lastAdvanceTime.current = now
         const currentSlot = activeSlot
         const nextSlot: 0 | 1 = activeSlot === 0 ? 1 : 0
         const currentVideo = videoRefs[currentSlot].current
@@ -292,7 +301,8 @@ function DoubleBufferVideo({ items, assets, onAdvance, currentIndex, effect = 's
         const nextIdx = (idxRef.current + 1) % sorted.length
 
         const performSwitch = () => {
-            setDebug(`${idxRef.current}→${nextIdx}${isAndroidNative ? '|NATIVE' : '|SAFE'}`)
+            setDebug(`${idxRef.current}→${nextIdx}|SW`)
+            console.log(`[DBV] Transitioning slot ${currentSlot}->${nextSlot} (idx ${idxRef.current}->${nextIdx})`)
 
             const releaseOld = () => {
                 if (!currentVideo) return
@@ -305,20 +315,11 @@ function DoubleBufferVideo({ items, assets, onAdvance, currentIndex, effect = 's
                 } catch (e) { /* ignore */ }
             }
 
-            if (isAndroidNative) {
-                const nextV = videoRefs[nextSlot].current
-                if (nextV) {
-                    nextV.muted = true
-                    nextV.play().catch(e => console.warn('[DBV] Native play err:', e.message))
-                }
-                idxRef.current = nextIdx
-                setActiveSlot(nextSlot)
-                onAdvance(nextIdx)
-            } else {
-                triggerWatchdog(120000)
-                nextVideo!.muted = true
-                nextVideo!.currentTime = 0
-                nextVideo!.play().then(() => {
+            triggerWatchdog(120000)
+            if (nextVideo) {
+                nextVideo.muted = true
+                nextVideo.currentTime = 0
+                nextVideo.play().then(() => {
                     setIsTransitioning(true)
                     setActiveSlot(nextSlot)
                     idxRef.current = nextIdx
@@ -333,7 +334,7 @@ function DoubleBufferVideo({ items, assets, onAdvance, currentIndex, effect = 's
             }
         }
 
-        const isReadyNow = isAndroidNative || (nextVideo && nextVideo.readyState >= 3)
+        const isReadyNow = (nextVideo && nextVideo.readyState >= 3)
         if (isReadyNow || forceNext) {
             performSwitch()
         } else {
