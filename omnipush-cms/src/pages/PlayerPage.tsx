@@ -1488,8 +1488,14 @@ export default function PlayerPage() {
             }
 
             // ── Regular Load ──
-            const lastIds = manifest?.playlist_items?.map((i: any) => i.playlist_item_id).join(',') || ''
-            const nextIds = data.playlist_items?.map((i: any) => i.playlist_item_id).join(',') || ''
+            const getIds = (m: any) => {
+                if (!m?.region_playlists) return ""
+                return Object.values(m.region_playlists)
+                    .flatMap((list: any) => list.map((i: any) => i.playlist_item_id))
+                    .join(',')
+            }
+            const lastIds = getIds(manifest)
+            const nextIds = getIds(data)
             const hasChange = lastIds !== nextIds || versionRef.current !== newVersion
 
             if (wasPlaying && !hasChange && !data.force_update) {
