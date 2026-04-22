@@ -331,8 +331,15 @@ function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDe
         setShowNext(false)
 
         const { type: currentType } = getItemData(s[idxRef.current])
+        const currentVideo = videoRefs[activeSlotRef.current]?.current
+
         if (currentType === 'video' && currentVideo) {
-            try { currentVideo.pause(); currentVideo.removeAttribute('src'); currentVideo.load() } catch (_) {}
+            try { 
+                console.log('[UDB] Releasing hardware decoder...')
+                currentVideo.pause()
+                currentVideo.removeAttribute('src') 
+                currentVideo.load() 
+            } catch (_) {}
         }
 
         const commitAdvance = () => {
@@ -346,12 +353,14 @@ function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDe
             })
             onAdvance(nextIdx)
             setDebug(`${nextIdx + 1}/${s.length} [${nextType}]`)
+            
             setTimeout(() => setShowNext(true), 80)
             setTimeout(() => {
                 setIsTransitioning(false)
                 setShowNext(false)
                 transitioningRef.current = false
             }, 700)
+
             if (nextType === 'image') {
                 const dur = getItemDuration(nextItem)
                 imageDurTimerRef.current = setTimeout(() => advanceBufferRef.current(), dur)
@@ -361,15 +370,18 @@ function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDe
             }
         }
 
+        // CORTEX: Staggered load for Amlogic hardware
+        const decoderSafetyDelay = (isNative || isAndroidNative) ? 1000 : 80
+
         setTimeout(() => {
             if (nextType === 'video') {
                 if (!nextVideo) { transitioningRef.current = false; setIsTransitioning(false); return }
+                
+                console.log('[UDB] Loading next video into hardware slot...')
                 nextVideo.src = nextUrl
                 nextVideo.muted = true
-                
-                // CORTEX: On older Amlogic Chromium 87, if src is same as before, 
-                // load() must be forced or canplay might not fire again correctly.
                 nextVideo.load()
+                
                 const doPlay = () => {
                     nextVideo.play().then(commitAdvance).catch(e => {
                         console.warn('[UDB] play() failed:', e.name, e.message)
@@ -379,15 +391,21 @@ function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDe
                         setTimeout(() => advanceBufferRef.current(true), 1500)
                     })
                 }
+
                 if (nextVideo.readyState >= 3) {
                     doPlay()
                 } else {
                     const onReady = () => { nextVideo.removeEventListener('canplay', onReady); doPlay() }
                     nextVideo.addEventListener('canplay', onReady)
-                    setTimeout(() => { nextVideo.removeEventListener('canplay', onReady); if (transitioningRef.current) doPlay() }, 5000)
+                    setTimeout(() => { 
+                        if (transitioningRef.current) {
+                            nextVideo.removeEventListener('canplay', onReady)
+                            doPlay() 
+                        }
+                    }, 5000)
                 }
             } else {
-                // Image: no play() needed — commit immediately
+                // Image
                 setSlotData(prev => {
                     const up = [...prev] as [{ url: string; type: string }, { url: string; type: string }]
                     up[nextSlot] = { url: nextUrl, type: nextType }
@@ -395,8 +413,8 @@ function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDe
                 })
                 commitAdvance()
             }
-        }, 100)
-    }, [getItemData, getItemDuration, onAdvance, triggerWatchdog, videoRefs])
+        }, decoderSafetyDelay)
+    }, [getItemData, getItemDuration, onAdvance, triggerWatchdog, videoRefs, isNative, isAndroidNative])
 
     useEffect(() => { advanceBufferRef.current = advanceBuffer })
 
@@ -1531,8 +1549,16 @@ export default function PlayerPage() {
             }, 45000, false) // 45s timeout, no auth
 
             if (data?.error) {
+                // Network errors are handled by callEdgeFn returning {error, is_network_failure}
+                if (data.is_network_failure) {
+                    if (versionRef.current) {
+                        console.warn(`[Player] Manifest network failure during poll. Swallowing to stay in playback.`)
+                        return true 
+                    }
+                    console.warn(`[Player] Manifest network failure during boot. Propagating to hydration...`)
+                    throw new Error('Internet connection lost during initial boot')
+                }
                 console.error(`[Player] Manifest error from EdgeFn: ${data.error}`)
-                // Throw so the catch block can run the offline hydration logic.
                 throw new Error(String(data.error))
             }
             
