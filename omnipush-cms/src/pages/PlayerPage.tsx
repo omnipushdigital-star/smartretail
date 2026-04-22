@@ -485,6 +485,7 @@ function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDe
                                 src={url || undefined}
                                 style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block', background: '#000' }}
                                 muted playsInline preload="auto"
+                                loop={items.length === 1}
                                 onCanPlay={() => {
                                     if (i === 0 && idxRef.current === 0 && activeSlotRef.current === 0) {
                                         const v = videoRefs[0].current
@@ -500,6 +501,12 @@ function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDe
                                 }}
                                 onTimeUpdate={() => {
                                     if (i === activeSlotRef.current) triggerWatchdog(15000)
+                                }}
+                                onWaiting={() => {
+                                    if (i === activeSlotRef.current) triggerWatchdog(20000)
+                                }}
+                                onStalled={() => {
+                                    if (i === activeSlotRef.current) triggerWatchdog(5000)
                                 }}
                                 onError={() => {
                                     if (consecutiveErrorsRef) consecutiveErrorsRef.current += 1
