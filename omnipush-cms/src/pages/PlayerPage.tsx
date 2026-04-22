@@ -483,28 +483,32 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
         return () => clearInterval(t)
     }, [])
 
-    const activeItems = useMemo(() => {
-        const filtered = items.filter(item => {
-            if (!item.is_scheduled) return true
+    const [activeItems, setActiveItems] = useState<ManifestItem[]>([])
+    const lastActiveIdsRef = useRef('')
 
+    useEffect(() => {
+        const filtered = (items || []).filter(item => {
+            const now = currentTime
+            if (!item.is_scheduled) return true
+            
             // 1. Date Range Check
             if (item.start_date) {
                 const start = new Date(item.start_date + 'T00:00:00')
-                if (currentTime < start) return false
+                if (now < start) return false
             }
             if (item.end_date) {
                 const end = new Date(item.end_date + 'T23:59:59')
-                if (currentTime > end) return false
+                if (now > end) return false
             }
 
             // 2. Day of Week Check
             if (item.days_of_week && item.days_of_week.length > 0) {
-                if (!item.days_of_week.includes(currentTime.getDay())) return false
+                if (!item.days_of_week.includes(now.getDay())) return false
             }
 
             // 3. Time Check (Dayparting)
             if (item.start_time || item.end_time) {
-                const nowSecs = currentTime.getHours() * 3600 + currentTime.getMinutes() * 60 + currentTime.getSeconds()
+                const nowSecs = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()
                 if (item.start_time) {
                     const [h, m, s] = item.start_time.split(':').map(Number)
                     if (nowSecs < (h * 3600 + (m || 0) * 60 + (s || 0))) return false
@@ -516,9 +520,14 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
             }
 
             return true
-        })
+        }).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
 
-        return filtered.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+        const nextIds = filtered.map(i => `${i.playlist_item_id}-${i.media_id}`).join(',')
+        if (nextIds !== lastActiveIdsRef.current) {
+            console.log(`[PlaybackEngine] 📋 Active items updated: ${filtered.length} items`)
+            lastActiveIdsRef.current = nextIds
+            setActiveItems(filtered)
+        }
     }, [items, currentTime])
 
     // Specialized All-Video Check
@@ -1453,20 +1462,36 @@ export default function PlayerPage() {
 
             const newVersion = data.resolved?.version || null
             const wasPlaying = phase === 'playing' || phase === 'standby'
+            const isSameVersion = newVersion === versionRef.current
 
-            // ── Auto version-change detection (mid-playback) ──
-            if (wasPlaying && newVersion && versionRef.current && newVersion !== versionRef.current) {
-                console.log(`[Player] 🔄 New version detected: ${versionRef.current} → ${newVersion}`)
-                if (data.assets) syncAssets(data.assets)
-                setManifest(data)
-                setVersion(newVersion)
-                versionRef.current = newVersion
-                localStorage.setItem(manifestKey(dc), JSON.stringify(data))
+            // ── Optimize: If version matches and we're already playing, SKIP re-render ──
+            if (wasPlaying && isSameVersion && !data.force_update) {
+                console.log(`[Player] Version ${newVersion} is current. Skipping manifest state update.`)
                 setOffline(false)
+                setLastSyncTime(new Date().toLocaleTimeString())
+                if (phaseRef.current === 'error') setPhase('playing')
                 return true
             }
 
+            // ── Auto version-change detection or first load ──
+            if (newVersion && newVersion !== versionRef.current) {
+                console.log(`[Player] 🔄 New version/content detected: ${versionRef.current || 'init'} → ${newVersion}`)
+                if (data.assets) syncAssets(data.assets)
+            }
+
             // ── Regular Load ──
+            const lastIds = manifest?.playlist_items?.map((i: any) => i.playlist_item_id).join(',') || ''
+            const nextIds = data.playlist_items?.map((i: any) => i.playlist_item_id).join(',') || ''
+            const hasChange = lastIds !== nextIds || versionRef.current !== newVersion
+
+            if (wasPlaying && !hasChange && !data.force_update) {
+                console.log(`[Player] Content IDs and version match. Skipping state update.`)
+                setOffline(false)
+                setLastSyncTime(new Date().toLocaleTimeString())
+                return true
+            }
+
+            console.log(`[Player] Applying manifest update (diff detected or first load)`)
             setManifest(data)
             setVersion(newVersion)
             versionRef.current = newVersion
