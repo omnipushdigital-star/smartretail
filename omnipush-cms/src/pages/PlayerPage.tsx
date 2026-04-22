@@ -31,6 +31,7 @@ interface ManifestItem {
     start_time?: string | null
     end_time?: string | null
     days_of_week?: number[]
+    settings?: { transition?: 'slide' | 'zoom' | 'fade' | 'none' | 'slide-up' | 'slide-down' }
 }
 
 interface Manifest {
@@ -200,13 +201,14 @@ interface PlaybackProps {
 }
 
 // ─── Double-Buffer Video Player ──────────────────────────────────────────────
-function DoubleBufferVideo({ items, assets, onAdvance, currentIndex, effect = 'slide-up', showDebug = false }: {
+function DoubleBufferVideo({ items, assets, onAdvance, currentIndex, effect = 'slide-up', showDebug = false, isNative = false }: {
     items: ManifestItem[]
     assets: ManifestAsset[]
     onAdvance: (newIdx: number) => void
     currentIndex: number
     effect?: string
     showDebug?: boolean
+    isNative?: boolean
 }): React.ReactElement {
     const [activeSlot, setActiveSlot] = useState<0 | 1>(0)
     const [slotUrls, setSlotUrls] = useState<[string, string]>(['', ''])
