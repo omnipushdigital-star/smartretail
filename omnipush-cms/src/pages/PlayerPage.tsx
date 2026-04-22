@@ -373,12 +373,17 @@ function DoubleBufferVideo({ items, assets, onAdvance, currentIndex, effect = 's
 
     useEffect(() => {
         if (sorted.length > 0 && !initialSyncDone.current) {
-            const url0 = getUrl(sorted[0])
-            const url1 = sorted.length > 1 ? getUrl(sorted[1]) : url0
-            setSlotUrls([url0, url1])
+            const startIdx = currentIndex % sorted.length
+            const urlActive = getUrl(sorted[startIdx])
+            const nextIdx = (startIdx + 1) % sorted.length
+            const urlNext = getUrl(sorted[nextIdx])
+            
+            setSlotUrls([urlActive, urlNext])
+            idxRef.current = startIdx
+            setActiveSlot(0) 
             initialSyncDone.current = true
         }
-    }, [sorted, getUrl])
+    }, [sorted, getUrl, currentIndex])
 
     useEffect(() => {
         if (!isAndroidNative && sorted.length > 1) {
@@ -572,17 +577,21 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
 
         // Safety Watchdog fallback
         // in case the video tag fails to fire onEnded due to a crash or interruption.
+        // CORTEX: If allVideos is true, DoubleBufferVideo handles its own logic and watchdog.
+        // We MUST NOT have a competing timer here or it will cause double-play/desync.
         if (allVideos) {
+            // No timer here; DoubleBufferVideo is autonomous.
+            // We set a very long 10-minute fallback just in case DBV itself dies.
             timerRef.current = setTimeout(() => {
-                console.warn('[Watchdog] Video transition took too long or stalled. Forcing advance.')
+                console.warn('[Watchdog] DBV seems stuck for 10min. Performing emergency advance.')
                 advance()
-            }, effectiveDur + 10000) // Give it 10 seconds grace period
+            }, 600000)
         } else {
             timerRef.current = setTimeout(advance, effectiveDur)
         }
 
         return () => { if (timerRef.current) clearTimeout(timerRef.current) }
-    }, [idx, activeItems, assets, advance])
+    }, [idx, activeItems, assets, advance, allVideos])
 
     // Android Status Sync
     useEffect(() => {
