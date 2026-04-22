@@ -94,10 +94,13 @@ function LiveClock() {
 
 // CSS to hide the default video "play/icon" flash in Android WebView
 const globalStyle = `
-  /* 1. Force root level elements to cover exact viewport - Essential for signage */
   html, body, #root {
     margin: 0; padding: 0;
     width: 100vw !important; height: 100vh !important;
+  }
+`;
+
+const isAndroidNative = navigator.userAgent.toLowerCase().includes('android')
     min-height: 100vh !important; max-height: 100vh !important;
     overflow: hidden !important;
     background: #000;
@@ -331,7 +334,7 @@ function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDe
         setShowNext(false)
 
         const { type: currentType } = getItemData(s[idxRef.current])
-        const currentVideo = videoRefs[activeSlotRef.current]?.current
+        // Removed redeclaration of currentVideo (already declared above line 296)
 
         if (currentType === 'video' && currentVideo) {
             try { 
