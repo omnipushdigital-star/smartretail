@@ -278,10 +278,8 @@ function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDe
     const triggerWatchdog = useCallback((delay = 15000) => {
         if (watchdogRef.current) clearTimeout(watchdogRef.current)
         watchdogRef.current = setTimeout(() => {
-            if (sortedRef.current.length > 1) {
-                setDebug('WD-Skip')
-                advanceBufferRef.current(true)
-            }
+            setDebug('WD-Skip')
+            advanceBufferRef.current(true)
         }, delay)
     }, [])
 
@@ -322,10 +320,12 @@ function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDe
         // (e.g. video decoder hang), force clear the flag after 10s so polling can resume.
         setTimeout(() => {
             if (transitioningRef.current) {
-                console.warn('[UDB] Transition watchdog timeout - force clearing lock')
+                console.warn('[UDB] Transition watchdog timeout - force skipping item')
                 transitioningRef.current = false
                 setIsTransitioning(false)
                 if ((window as any).setGlobalTransition) (window as any).setGlobalTransition(false)
+                // Force move to next index if stuck in transition loop
+                advanceBufferRef.current(true)
             }
         }, 10000)
         setShowNext(false)
