@@ -97,10 +97,6 @@ const globalStyle = `
   html, body, #root {
     margin: 0; padding: 0;
     width: 100vw !important; height: 100vh !important;
-  }
-`;
-
-const isAndroidNative = navigator.userAgent.toLowerCase().includes('android')
     min-height: 100vh !important; max-height: 100vh !important;
     overflow: hidden !important;
     background: #000;
@@ -155,6 +151,8 @@ const isAndroidNative = navigator.userAgent.toLowerCase().includes('android')
     -webkit-tap-highlight-color: transparent !important; 
   }
 `;
+
+const isAndroidNative = navigator.userAgent.toLowerCase().includes('android');
 
 interface VideoElementProps {
     url: string
