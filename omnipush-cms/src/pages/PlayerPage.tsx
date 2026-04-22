@@ -298,11 +298,12 @@ function DoubleBufferVideo({ items, assets, onAdvance, currentIndex, effect = 's
         const nextSlot: 0 | 1 = activeSlot === 0 ? 1 : 0
         const currentVideo = videoRefs[currentSlot].current
         const nextVideo = videoRefs[nextSlot].current
-        const nextIdx = (idxRef.current + 1) % sorted.length
+        const currentIdx = idxRef.current
+        const nextIdx = (currentIdx + 1) % sorted.length
 
         const performSwitch = () => {
-            setDebug(`${idxRef.current}→${nextIdx}|SW`)
-            console.log(`[DBV] Transitioning slot ${currentSlot}->${nextSlot} (idx ${idxRef.current}->${nextIdx})`)
+            setDebug(`${currentIdx}→${nextIdx}|SW`)
+            console.log(`[DBV] Transitioning slot ${currentSlot}->${nextSlot} (idx ${currentIdx}->${nextIdx})`)
 
             const releaseOld = () => {
                 if (!currentVideo) return
@@ -330,6 +331,8 @@ function DoubleBufferVideo({ items, assets, onAdvance, currentIndex, effect = 's
                     console.error('[DoubleBufferVideo] play error:', e)
                     setDebug(`Play Err V${nextIdx}`)
                     setIsTransitioning(false)
+                    // If play fails, try to skip to the one AFTER this one
+                    setTimeout(() => advanceBuffer(true), 2000)
                 })
             }
         }
@@ -551,14 +554,19 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
         }
     }, [activeItems.length, idx])
 
+    const activeItemsRef = useRef<ManifestItem[]>([])
+    useEffect(() => { activeItemsRef.current = activeItems }, [activeItems])
+
     const advance = useCallback((forcedIdx?: number) => {
-        const len = activeItems.length
-        if (len === 0) return
-        const nextIdx = forcedIdx !== undefined ? forcedIdx : (len === 1 ? 0 : (idx % len + 1) % len)
-        console.log(`[Playback] Advancing to ${nextIdx}`)
-        setIdx(nextIdx)
-        setReadyIdx(null) 
-    }, [activeItems.length, idx])
+        setIdx(prev => {
+            const len = activeItemsRef.current.length
+            if (len === 0) return 0
+            const next = forcedIdx !== undefined ? forcedIdx : (prev + 1) % len
+            console.log(`[Playback] Advance: ${prev} -> ${next}`)
+            return next
+        })
+        setReadyIdx(null)
+    }, [])
 
     // Track state for transitions
     useEffect(() => {
@@ -567,7 +575,7 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
             const t = setTimeout(() => {
                 setIsSwapping(false)
                 setPrevIdx(idx)
-            }, 2500) // Increased to ensure transition finishes on slow hardware
+            }, 2500)
             return () => clearTimeout(t)
         }
     }, [idx, prevIdx])
