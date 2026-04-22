@@ -67,7 +67,11 @@ export async function callEdgeFn(fnName: string, payload: any, timeoutMs = 30000
             console.warn(`[EdgeFn] ${fnName} timed out after ${timeoutMs}ms`)
             return { error: 'Request timed out' }
         }
-        console.error(`[EdgeFn] ${fnName} network error:`, err.message)
-        return { error: `Cannot reach server — check if Supabase project is active` }
+        console.error(`[EdgeFn] ${fnName} network error:`, err.name, '|', err.message)
+        const isOffline = !navigator.onLine
+        return { 
+            error: `Network Error: ${err.message} ${isOffline ? '(Device reported offline)' : '(Check internet/Supabase status)'}`,
+            is_network_failure: true 
+        }
     }
 }

@@ -314,8 +314,20 @@ function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDe
         const nextItem = s[nextIdx]
         const { url: nextUrl, type: nextType } = getItemData(nextItem)
 
-        transitioningRef.current = true
         setIsTransitioning(true)
+        transitioningRef.current = true
+        if ((window as any).setGlobalTransition) (window as any).setGlobalTransition(true)
+
+        // CORTEX: Emergency transition watchdog. If commitAdvance is never called 
+        // (e.g. video decoder hang), force clear the flag after 10s so polling can resume.
+        setTimeout(() => {
+            if (transitioningRef.current) {
+                console.warn('[UDB] Transition watchdog timeout - force clearing lock')
+                transitioningRef.current = false
+                setIsTransitioning(false)
+                if ((window as any).setGlobalTransition) (window as any).setGlobalTransition(false)
+            }
+        }, 10000)
         setShowNext(false)
 
         const { type: currentType } = getItemData(s[idxRef.current])
@@ -354,6 +366,9 @@ function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDe
                 if (!nextVideo) { transitioningRef.current = false; setIsTransitioning(false); return }
                 nextVideo.src = nextUrl
                 nextVideo.muted = true
+                
+                // CORTEX: On older Amlogic Chromium 87, if src is same as before, 
+                // load() must be forced or canplay might not fire again correctly.
                 nextVideo.load()
                 const doPlay = () => {
                     nextVideo.play().then(commitAdvance).catch(e => {
@@ -1770,9 +1785,20 @@ export default function PlayerPage() {
         } catch (err: any) {
             console.error('[Player] Heartbeat Network Error Detail:', err.name, '|', err.message)
             const msg = (err.message || '').toLowerCase()
+            
+            // Increment failure count specifically for heartbeat
+            failCountRef.current += 1
+            
             if (msg.includes('invalid credentials') || msg.includes('inactive device')) {
                 localStorage.removeItem(secretKey(dc))
                 localStorage.removeItem(manifestKey(dc))
+                window.location.reload()
+            }
+
+            // If heartbeat fails 10 times in a row, the network stack might be dead.
+            // Force a reload to let the bootFetch recovery logic take over (offline cache).
+            if (failCountRef.current >= 10) {
+                console.warn('[Player] 10 sequential heartbeat failures. Emergency reload.')
                 window.location.reload()
             }
         }
