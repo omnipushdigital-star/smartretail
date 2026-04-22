@@ -224,6 +224,13 @@ function DoubleBufferVideo({ items, assets, onAdvance, currentIndex, effect = 's
     const watchdogRef = useRef<any>(null)
     const initialSyncDone = useRef(false)
 
+    // Sync internal index if parent forces a change (e.g. from watchdog or remote command)
+    useEffect(() => {
+        if (currentIndex !== idxRef.current) {
+            idxRef.current = currentIndex
+        }
+    }, [currentIndex])
+
     // Sequential Transition Logic (see BUG-001 in BUG_RESOLUTIONS.md)
     useEffect(() => {
         if (isTransitioning) {
@@ -349,8 +356,10 @@ function DoubleBufferVideo({ items, assets, onAdvance, currentIndex, effect = 's
         const transitionType = item?.settings?.transition || effect || 'fade';
 
         const base: React.CSSProperties = {
-            position: 'absolute', inset: 0, 
-            objectFit: 'fill', background: '#000',
+            position: 'absolute', top: 0, left: 0, 
+            width: '100%', height: '100%',
+            objectFit: 'fill', 
+            background: isNative ? 'transparent' : '#000',
             transition: isTransitioning ? 'all 600ms ease-in-out' : 'none',
             zIndex: isActive ? 10 : 5,
             pointerEvents: 'none'
