@@ -344,17 +344,17 @@ function UnifiedDoubleBuffer({ items, assets, idx, onAdvance, effect = 'fade', s
         if ((window as any).setGlobalTransition) (window as any).setGlobalTransition(true)
 
         // CORTEX: Emergency transition watchdog. If commitAdvance is never called 
-        // (e.g. video decoder hang), force clear the flag after 10s so polling can resume.
+        // (e.g. video decoder hang), force clear the flag after 25s so polling can resume.
+        // 25s is generous for slow networks but still catches true hangs.
         setTimeout(() => {
             if (transitioningRef.current) {
                 console.warn('[UDB] Transition watchdog timeout - force skipping item')
                 transitioningRef.current = false
                 setIsTransitioning(false)
                 if ((window as any).setGlobalTransition) (window as any).setGlobalTransition(false)
-                // Force move to next index if stuck in transition loop
                 advanceBufferRef.current(true)
             }
-        }, 10000)
+        }, 25000)
         setShowNext(false)
 
         const currentItem = s[idxRef.current]
@@ -604,14 +604,17 @@ function UnifiedDoubleBuffer({ items, assets, idx, onAdvance, effect = 'fade', s
                                     if (i === activeSlotRef.current) advanceBufferRef.current()
                                 }}
                                 onTimeUpdate={() => {
+                                    // Keep watchdog alive during normal playback (fires ~4x/sec).
+                                    // Matches stable backup: onTimeUpdate is the primary heartbeat.
                                     if (i === activeSlotRef.current) triggerWatchdog(15000)
                                 }}
                                 onWaiting={() => {
-                                    if (i === activeSlotRef.current) triggerWatchdog(20000)
+                                    // Video waiting for data - give it 60s before forcing skip
+                                    if (i === activeSlotRef.current) triggerWatchdog(60000)
                                 }}
-                                onStalled={() => {
-                                    if (i === activeSlotRef.current) triggerWatchdog(5000)
-                                }}
+                                // NOTE: No onStalled handler - stalls are covered by onTimeUpdate
+                                // stopping → existing watchdog naturally fires. Adding onStalled
+                                // with a short timeout causes false positives on normal Chrome buffering.
                                 onError={() => {
                                     if (consecutiveErrorsRef) consecutiveErrorsRef.current += 1
                                     if (lastMediaErrorRef) lastMediaErrorRef.current = `Slot ${i} err @ ${new Date().toLocaleTimeString()}`
