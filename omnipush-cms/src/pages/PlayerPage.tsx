@@ -210,9 +210,10 @@ interface PlaybackProps {
 // Videos: advance on onEnded + watchdog
 // Images: advance via per-item duration timer
 // Web/iFrame: handled by PlaybackEngine fallback when needed
-function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDebug = false, isNative = false, consecutiveErrorsRef, lastMediaErrorRef }: {
+function UnifiedDoubleBuffer({ items, assets, idx, onAdvance, effect = 'fade', showDebug = false, isNative = false, consecutiveErrorsRef, lastMediaErrorRef }: {
     items: ManifestItem[]
     assets: ManifestAsset[]
+    idx: number
     onAdvance: (newIdx: number) => void
     effect?: string
     showDebug?: boolean
@@ -242,12 +243,13 @@ function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDe
 
     // Stable mutable refs — never stale in callbacks
     const activeSlotRef = useRef<0 | 1>(0)
-    const idxRef = useRef(0)
+    const idxRef = useRef(idx) // Init with parent idx
     const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const advanceBufferRef = useRef<(force?: boolean) => void>(() => {})
     const bootedRef = useRef(false)
     const transitioningRef = useRef(false)
     const sortedRef = useRef<ManifestItem[]>([])
+    const isTransitioningRef = useRef(false)
 
     const sorted = useMemo(() =>
         [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
@@ -299,6 +301,22 @@ function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDe
         const currentVideo = videoRefs[currentSlot].current
         const nextVideo = videoRefs[nextSlot].current
 
+        // CORTEX: Absolute Decoder Purge
+        // Just calling pause() is often not enough for Amlogic. 
+        // We must strip the source and force a re-load of nothing.
+        const killDecoder = (v: HTMLVideoElement | null) => {
+            if (!v) return
+            try {
+                v.pause()
+                v.src = ""
+                v.removeAttribute('src')
+                v.load()
+                console.log('[UDB] 💀 Hardware decoder purged.')
+            } catch (e) {
+                console.warn('[UDB] Purge fail:', e)
+            }
+        }
+
         if (s.length === 1) {
             const { type } = getItemData(s[0])
             if (type === 'video' && currentVideo) {
@@ -339,16 +357,19 @@ function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDe
         }, 10000)
         setShowNext(false)
 
-        const { type: currentType } = getItemData(s[idxRef.current])
+        const currentItem = s[idxRef.current]
+        if (!currentItem) {
+            console.warn('[UDB] idxRef out of bounds, resetting to 0')
+            idxRef.current = 0
+            transitioningRef.current = false
+            setIsTransitioning(false)
+            return
+        }
+        const { type: currentType } = getItemData(currentItem)
         // Removed redeclaration of currentVideo (already declared above line 296)
 
         if (currentType === 'video' && currentVideo) {
-            try { 
-                console.log('[UDB] Releasing hardware decoder...')
-                currentVideo.pause()
-                currentVideo.removeAttribute('src') 
-                currentVideo.load() 
-            } catch (_) {}
+            killDecoder(currentVideo)
         }
 
         const commitAdvance = () => {
@@ -375,7 +396,9 @@ function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDe
                 imageDurTimerRef.current = setTimeout(() => advanceBufferRef.current(), dur)
                 triggerWatchdog(dur + 10000)
             } else {
-                triggerWatchdog(15000)
+                // FALLBACK: If video duration is unknown (0), DEFAULT_VIDEO_DURATION (300s) + safety margin is used.
+                const dur = getItemDuration(nextItem)
+                triggerWatchdog(dur + 20000)
             }
         }
 
@@ -427,25 +450,46 @@ function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDe
 
     useEffect(() => { advanceBufferRef.current = advanceBuffer })
 
+    // Sync local ref with parent idx prop to maintain single source of truth
+    useEffect(() => {
+        if (idx !== idxRef.current) {
+            console.log(`[UDB] Syncing local index ${idxRef.current} -> parent index ${idx}`)
+            idxRef.current = idx
+        }
+    }, [idx])
+
     // ── Boot ─────────────────────────────────────────────────────────────────────
     useEffect(() => {
         if (sorted.length === 0 || bootedRef.current) return
         bootedRef.current = true
-        const item0 = sorted[0]
-        const item1 = sorted.length > 1 ? sorted[1] : null
+        
+        // CORTEX: Respect parent IDX on boot/refresh
+        const startIdx = (idx >= 0 && idx < sorted.length) ? idx : 0
+        idxRef.current = startIdx
+        
+        const item0 = sorted[startIdx]
+        const item1 = sorted.length > 1 ? sorted[(startIdx + 1) % sorted.length] : null
+        
         const data0 = getItemData(item0)
         const data1 = item1 ? getItemData(item1) : { url: '', type: 'video' }
+        
+        console.log(`[UDB] Booting at index ${startIdx}...`)
         setSlotData([data0, data1])
-        idxRef.current = 0
         activeSlotRef.current = 0
+        
         if (data0.type === 'video') {
             const v = videoRefs[0].current
-            if (v) { v.src = data0.url; v.muted = true; v.load() }
-            triggerWatchdog(20000)
+            if (v) { 
+                v.src = data0.url
+                v.muted = true
+                v.load() 
+            }
+            const dur = getItemDuration(item0)
+            triggerWatchdog(dur + 30000) // 30s buffer for first video boot
         } else {
             const dur = getItemDuration(item0)
             imageDurTimerRef.current = setTimeout(() => advanceBufferRef.current(), dur)
-            triggerWatchdog(dur + 10000)
+            triggerWatchdog(dur + 15000)
         }
     }, [sorted, getItemData, getItemDuration, triggerWatchdog, videoRefs])
 
@@ -462,14 +506,38 @@ function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDe
 
     // ── Stall Monitor ─────────────────────────────────────────────────────────────
     useEffect(() => {
+        let lastIdx = idxRef.current
+        let lastIdxChangeAt = Date.now()
+
         const interval = setInterval(() => {
             const slot = activeSlotRef.current
-            if (slotData[slot].type !== 'video') return
-            const v = videoRefs[slot].current
-            if (v && v.paused && sorted.length > 0 && !transitioningRef.current) v.play().catch(() => {})
-        }, 1500)
+            const currentItem = sortedRef.current[idxRef.current]
+            if (!currentItem) return
+
+            // 1. Hardware Wake-up: Ensure active video is playing
+            if (slotData[slot].type === 'video') {
+                const v = videoRefs[slot].current
+                if (v && v.paused && sorted.length > 0 && !transitioningRef.current) {
+                    v.play().catch(() => {})
+                }
+            }
+
+            // 2. Emergency Wrap-around: If stuck on same item for > 2x duration (or default), force advance
+            if (idxRef.current === lastIdx) {
+                const dur = getItemDuration(currentItem)
+                const timeoutLimit = Math.max(dur * 2.5, 60000) // At least 60s
+                if (Date.now() - lastIdxChangeAt > timeoutLimit) {
+                    console.warn(`[UDB] 🚨 STUCK DETECTED at idx ${lastIdx}. Emergency advance triggered.`)
+                    lastIdxChangeAt = Date.now() // Reset timer
+                    advanceBufferRef.current(true)
+                }
+            } else {
+                lastIdx = idxRef.current
+                lastIdxChangeAt = Date.now()
+            }
+        }, 3000)
         return () => clearInterval(interval)
-    }, [sorted.length, videoRefs, slotData])
+    }, [sorted.length, videoRefs, slotData, getItemDuration])
 
     // ── Slot Styles ──────────────────────────────────────────────────────────────
     const getSlotStyle = (i: number): React.CSSProperties => {
@@ -563,12 +631,30 @@ function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDe
                                 }}
                             />
                         )}
+                        {/* CORTEX: Hidden inactive video must NOT have a src on old webviews to avoid decoder theft */}
+                        {!isSlotActive && type === 'video' && !isTransitioning && (
+                            <div className="decoder-killer" style={{ display: 'none' }}>
+                                {/* This dummy element ensures we don't accidentally leak decoders */}
+                            </div>
+                        )}
                     </div>
                 )
             })}
             {showDebug && (
-                <div style={{ position: 'absolute', bottom: 8, right: 8, background: 'rgba(0,0,0,0.75)', color: '#0f0', fontSize: 11, padding: '3px 6px', zIndex: 1000, fontFamily: 'monospace', borderRadius: 4 }}>
-                    UDB {debug} | slot:{activeSlot} idx:{idxRef.current}
+                <div style={{ position: 'absolute', bottom: 8, right: 8, background: 'rgba(0,0,0,0.75)', color: '#0f0', fontSize: 11, padding: '3px 6px', zIndex: 1000, fontFamily: 'monospace', borderRadius: 4, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>UDB {debug} | slot:{activeSlot} idx:{idxRef.current}</span>
+                    <button 
+                        onClick={() => advanceBufferRef.current(true)}
+                        style={{ background: '#22c55e', border: 'none', color: 'white', fontSize: 10, padding: '2px 6px', borderRadius: 2, cursor: 'pointer' }}
+                    >
+                        NEXT
+                    </button>
+                    <button 
+                        onClick={() => window.location.reload()}
+                        style={{ background: '#ef4444', border: 'none', color: 'white', fontSize: 10, padding: '2px 6px', borderRadius: 2, cursor: 'pointer' }}
+                    >
+                        RELOAD
+                    </button>
                 </div>
             )}
         </div>
@@ -597,6 +683,7 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
 
     const [activeItems, setActiveItems] = useState<ManifestItem[]>([])
     const lastActiveIdsRef = useRef('')
+    const prevActiveItemsRef = useRef<ManifestItem[]>([])
 
     useEffect(() => {
         const filtered = (items || []).filter(item => {
@@ -635,10 +722,26 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
         }).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
 
         const nextIds = filtered.map(i => `${i.playlist_item_id}-${i.media_id}`).join(',')
-        if (nextIds !== lastActiveIdsRef.current) {
-            console.log(`[PlaybackEngine] 📋 Active items updated: ${filtered.length} items`)
-            lastActiveIdsRef.current = nextIds
-            setActiveItems(filtered)
+        
+        // CORTEX: Stability Logic
+        // If manifest fetch fails, 'items' might be empty. We fallback to previous stable list.
+        if (filtered.length > 0) {
+            if (nextIds !== lastActiveIdsRef.current) {
+                console.log(`[PlaybackEngine] 📋 Active items updated: ${filtered.length} items`)
+                lastActiveIdsRef.current = nextIds
+                setActiveItems(filtered)
+                prevActiveItemsRef.current = filtered
+            }
+        } else if (prevActiveItemsRef.current.length > 0 && lastActiveIdsRef.current !== "") {
+            // Keep current playlist alive if new one is suddenly empty (indicates network/function error)
+            console.warn(`[PlaybackEngine] ⚠️ Current manifest empty, but using cached stable playlist (${prevActiveItemsRef.current.length} items) to avoid black screen.`)
+            if (activeItems.length === 0) setActiveItems(prevActiveItemsRef.current)
+        } else {
+            // Truly empty schedule (first time)
+            if (lastActiveIdsRef.current !== "") {
+                lastActiveIdsRef.current = ""
+                setActiveItems([])
+            }
         }
     }, [items, currentTime])
 
@@ -878,6 +981,7 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
                     key={activeItems.map(i => i.playlist_item_id).join(',')}
                     items={activeItems}
                     assets={assets}
+                    idx={idx}
                     onAdvance={(newIdx) => advance(newIdx)}
                     effect={(activeItems[idx] as any)?.settings?.transition || 'fade'}
                     isNative={isNative}
