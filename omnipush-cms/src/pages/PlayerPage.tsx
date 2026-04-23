@@ -68,6 +68,7 @@ const DEFAULT_WEB_DURATION = 30
 const DEFAULT_VIDEO_DURATION = 300
 const TRANSITION_DURATION = 800 // 0.8s smooth transition
 const READY_TIMING = 500 // 500ms safety buffer for Android hardware
+const IS_ANDROID_NATIVE = !!(window as any).AndroidHealth
 
 function secretKey(code: string) { return `omnipush_device_secret:${code}` }
 function manifestKey(code: string) { return `omnipush_manifest:${code}` }
@@ -252,7 +253,8 @@ function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDe
         [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
     [items])
 
-    useEffect(() => { sortedRef.current = sorted }, [sorted])
+    // CORTEX: Sync ref immediately in render phase to avoid race conditions with onEnded/Watchdog
+    sortedRef.current = sorted
 
     // ── Helpers ─────────────────────────────────────────────────────────────────
     const getItemData = useCallback((item: ManifestItem): { url: string; type: string } => {
@@ -300,12 +302,18 @@ function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDe
         if (s.length === 1) {
             const { type } = getItemData(s[0])
             if (type === 'video' && currentVideo) {
-                currentVideo.currentTime = 0
-                currentVideo.play().catch(() => setDebug('LoopErr'))
-            } else {
+                // For a single video, let the 'loop' attribute handle it smoothly.
+                // We only need to catch the rare case where it stalls.
+                if (currentVideo.paused) {
+                    currentVideo.currentTime = 0
+                    currentVideo.play().catch(() => setDebug('LoopErr'))
+                }
+            } else if (type === 'image') {
+                if (imageDurTimerRef.current) clearTimeout(imageDurTimerRef.current)
                 imageDurTimerRef.current = setTimeout(() => advanceBufferRef.current(), getItemDuration(s[0]))
             }
-            triggerWatchdog(30000)
+            // Increase watchdog to 5 mins for single-item safety - don't kill long videos
+            triggerWatchdog(300000)
             return
         }
 
@@ -372,7 +380,7 @@ function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDe
         }
 
         // CORTEX: Staggered load for Amlogic hardware
-        const decoderSafetyDelay = (isNative || isAndroidNative) ? 1000 : 80
+        const decoderSafetyDelay = (isNative || IS_ANDROID_NATIVE) ? 1000 : 80
 
         setTimeout(() => {
             if (nextType === 'video') {
@@ -415,7 +423,7 @@ function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDe
                 commitAdvance()
             }
         }, decoderSafetyDelay)
-    }, [getItemData, getItemDuration, onAdvance, triggerWatchdog, videoRefs, isNative, isAndroidNative])
+    }, [getItemData, getItemDuration, onAdvance, triggerWatchdog, videoRefs, isNative])
 
     useEffect(() => { advanceBufferRef.current = advanceBuffer })
 
@@ -441,7 +449,16 @@ function UnifiedDoubleBuffer({ items, assets, onAdvance, effect = 'fade', showDe
         }
     }, [sorted, getItemData, getItemDuration, triggerWatchdog, videoRefs])
 
-    useEffect(() => { bootedRef.current = false }, [items])
+    // CORTEX: Only reset booted state if the playlist IDs actually change.
+    // This prevents resets during manifest refreshes or network jitters.
+    const itemIdsKey = useMemo(() => items.map(i => i.playlist_item_id).join(','), [items])
+    useEffect(() => { 
+        if (bootedRef.current && items.length > 0) {
+            console.log('[UDB] Content stable, skipping boot reset.')
+            return 
+        }
+        bootedRef.current = false 
+    }, [itemIdsKey])
 
     // ── Stall Monitor ─────────────────────────────────────────────────────────────
     useEffect(() => {
@@ -693,11 +710,11 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
         // We MUST NOT have a competing timer here or it will cause double-play/desync.
         if (isUDB) {
             // No timer here; UnifiedDoubleBuffer is autonomous.
-            // We set a very long 10-minute fallback just in case the engine itself hangs.
+            // We set a 1-hour fallback as a catch-all if components somehow crash silently.
             timerRef.current = setTimeout(() => {
-                console.warn('[Watchdog] UDB seems stuck for 10min. Performing emergency advance.')
+                console.warn('[Watchdog] UDB seems stuck for 1hr. Performing emergency advance.')
                 advance()
-            }, 600000)
+            }, 3600000)
         } else {
             timerRef.current = setTimeout(advance, effectiveDur)
         }
@@ -2342,7 +2359,7 @@ export default function PlayerPage() {
                 top: 0, left: 0, right: 0, bottom: 0,
                 width: '100%',
                 height: '100%',
-                background: (isAndroidNative && phase === 'playing') ? 'transparent' : '#000',
+                background: (IS_ANDROID_NATIVE && phase === 'playing') ? 'transparent' : '#000',
                 overflow: 'hidden',
                 margin: 0, padding: 0,
                 zIndex: 1,
@@ -2356,7 +2373,7 @@ export default function PlayerPage() {
                             region={reg}
                             items={regionItems}
                             assets={manifest!.assets}
-                            isNative={isAndroidNative}
+                            isNative={IS_ANDROID_NATIVE}
                             showDebug={showDebugOverlay}
                             deviceCode={dc}
                             consecutiveErrorsRef={consecutiveErrorsRef}
