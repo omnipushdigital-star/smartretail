@@ -1017,7 +1017,7 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
 
 // ─── UI States ────────────────────────────────────────────────────────────────
 
-function LoadingState() {
+function LoadingState({ progress }: { progress?: { current: number, total: number } | null }) {
     return (
         <div style={{
             position: 'fixed', inset: 0,
@@ -1027,14 +1027,33 @@ function LoadingState() {
             zIndex: 99999
         }}>
             <Logo />
-            <div style={{
-                marginTop: '32px',
-                width: 32, height: 32,
-                border: '3px solid rgba(255,255,255,0.05)',
-                borderTopColor: '#444444',
-                borderRadius: '50%',
-                animation: 'spin 1s linear infinite'
-            }} />
+            {progress ? (
+                <div style={{ marginTop: '2rem', textAlign: 'center' }}>
+                    <div style={{ color: '#f1f5f9', fontWeight: 600, marginBottom: '0.5rem', fontSize: '1.2rem' }}>
+                        Downloading Content...
+                    </div>
+                    <div style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '1rem' }}>
+                        {progress.current} of {progress.total} assets cached
+                    </div>
+                    <div style={{ width: '250px', height: '4px', background: '#1e293b', borderRadius: '4px', overflow: 'hidden', margin: '0 auto' }}>
+                        <div style={{ 
+                            width: `${(progress.current / progress.total) * 100}%`, 
+                            height: '100%', 
+                            background: '#38bdf8',
+                            transition: 'width 0.3s ease-out'
+                        }} />
+                    </div>
+                </div>
+            ) : (
+                <div style={{
+                    marginTop: '32px',
+                    width: 32, height: 32,
+                    border: '3px solid rgba(255,255,255,0.05)',
+                    borderTopColor: '#444444',
+                    borderRadius: '50%',
+                    animation: 'spin 1s linear infinite'
+                }} />
+            )}
         </div>
     )
 }
@@ -1380,6 +1399,7 @@ export default function PlayerPage() {
     const lastMediaErrorRef = useRef<string | null>(null)
     const ackCommandIdRef = useRef<string | null>(null)
     const isRenderingRef = useRef(true)
+    const isSyncingRef = useRef(false) // Guard: prevents concurrent asset syncs during overlapping polls
 
     // Bridge state to global ref for console hijacking
     useEffect(() => {
@@ -1602,8 +1622,11 @@ export default function PlayerPage() {
     }, [dc, captureBrowserScreenshot])
 
     // ── Asset Sync (Offline Cache) ──
-    const syncAssets = useCallback(async (assetsToSync: ManifestAsset[]) => {
-        if (!assetsToSync || assetsToSync.length === 0) return
+    // Returns the hydrated asset list (blob: URLs replacing remote CDN URLs).
+    // Caller is responsible for applying the result to manifest state.
+    // This ensures UDB always initializes with local blob: URLs, never remote CDN.
+    const syncAssets = useCallback(async (assetsToSync: ManifestAsset[]): Promise<ManifestAsset[]> => {
+        if (!assetsToSync || assetsToSync.length === 0) return assetsToSync
 
         const assetsToActuallySync = assetsToSync.filter(a => {
             // HTML assets are always served from origin URL — blob: URLs break relative paths inside the file
@@ -1612,8 +1635,8 @@ export default function PlayerPage() {
         })
 
         if (assetsToActuallySync.length === 0) {
-            console.log('[Cache] No cacheable assets (images) found — videos play direct.')
-            return
+            console.log('[Cache] All assets already cached or skipped.')
+            return assetsToSync
         }
 
         console.log(`[Cache] Syncing ${assetsToActuallySync.length} assets...`)
@@ -1639,15 +1662,15 @@ export default function PlayerPage() {
             } catch (err: any) {
                 const reason = err?.message || (typeof err === 'string' ? err : 'Network/CORS blocked')
                 console.error(`[Cache] Sync FAILED for ${asset.media_id} (${asset.type}): ${reason} | URL: ${asset.url}`)
-                // No alert - just log it and move on to allow playback of other items
+                // On failure: keep the remote URL so playback can still stream as fallback
             } finally {
                 completed++
                 setSyncProgress({ current: completed, total: assetsToActuallySync.length })
             }
         }
 
-        setManifest(prev => prev ? { ...prev, assets: updatedAssets } : null)
         setTimeout(() => setSyncProgress(null), 2000)
+        return updatedAssets // Caller applies this to manifest — do NOT call setManifest here
     }, [])
 
     const initPairing = useCallback(async () => {
@@ -1714,7 +1737,6 @@ export default function PlayerPage() {
             // ── Auto version-change detection or first load ──
             if (newVersion && newVersion !== versionRef.current) {
                 console.log(`[Player] 🔄 New version/content detected: ${versionRef.current || 'init'} → ${newVersion}`)
-                if (data.assets) syncAssets(data.assets)
             }
 
             // ── Regular Load ──
@@ -1735,16 +1757,33 @@ export default function PlayerPage() {
                 return true
             }
 
+            // ── Download all assets to IndexedDB before applying manifest ──
+            // Guarantees UDB always initializes with blob: URLs (never remote CDN).
+            // isSyncingRef prevents concurrent syncs when polls overlap during a long download.
+            // localStorage always stores remote URLs so offline re-hydration works after reboot.
+            let manifestToApply = data
+            if (data.assets && !isSyncingRef.current) {
+                isSyncingRef.current = true
+                try {
+                    const blobAssets = await syncAssets(data.assets)
+                    manifestToApply = { ...data, assets: blobAssets }
+                } finally {
+                    isSyncingRef.current = false
+                }
+            } else if (data.assets && isSyncingRef.current) {
+                console.log('[Player] Asset sync already in progress — applying manifest with current URLs.')
+            }
+
             console.log(`[Player] Applying manifest update (diff detected or first load)`)
-            setManifest(data)
+            setManifest(manifestToApply)
             setVersion(newVersion)
             versionRef.current = newVersion
-            localStorage.setItem(manifestKey(dc), JSON.stringify(data))
+            localStorage.setItem(manifestKey(dc), JSON.stringify(data)) // store remote URLs for offline re-hydration
             setOffline(false)
             setLastSyncTime(new Date().toLocaleTimeString())
             if (phaseRef.current === 'error') setPhase('playing')
 
-            if (data.assets) syncAssets(data.assets)
+            // Assets already synced above — do NOT call syncAssets again here
 
             const win = window as any
             if (win.AndroidHealth?.setStoreInfo) {
@@ -2350,7 +2389,7 @@ export default function PlayerPage() {
 
     const renderMain = () => {
         if (phase === 'loading' || (!manifest && phase !== 'pairing' && phase !== 'secret' && phase !== 'error')) {
-            return <LoadingState />
+            return <LoadingState progress={syncProgress} />
         }
         if (phase === 'pairing') return (
             <div style={bgStyle}>
