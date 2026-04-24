@@ -96,12 +96,22 @@ function LiveClock() {
 
 // CSS to hide the default video "play/icon" flash in Android WebView
 const globalStyle = `
+  :root {
+    --color-brand: #00daf3;
+    --color-brand-glow: rgba(0, 218, 243, 0.4);
+    --glass-bg: rgba(15, 23, 42, 0.7);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+  }
+
   html, body, #root {
     margin: 0; padding: 0;
     width: 100vw !important; height: 100vh !important;
     min-height: 100vh !important; max-height: 100vh !important;
     overflow: hidden !important;
     background: #000;
+    font-family: 'Inter', sans-serif;
+    color: #f1f5f9;
   }
 
   /* 2. Force all media to fill their region boxes without scaling artifacts */
@@ -151,6 +161,35 @@ const globalStyle = `
     scrollbar-width: none !important; 
     box-sizing: border-box !important; 
     -webkit-tap-highlight-color: transparent !important; 
+  }
+
+  /* 5. Glassmorphism Utility */
+  .glass-card {
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    border-radius: 24px;
+  }
+
+  /* 6. Animations */
+  @keyframes float {
+    0% { transform: translateY(0px) rotate(0deg); }
+    50% { transform: translateY(-20px) rotate(2deg); }
+    100% { transform: translateY(0px) rotate(0deg); }
+  }
+
+  @keyframes pulse-glow {
+    0% { box-shadow: 0 0 0 0 var(--color-brand-glow); }
+    70% { box-shadow: 0 0 0 15px rgba(0, 218, 243, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(0, 218, 243, 0); }
+  }
+
+  @keyframes shimmer {
+    0% { opacity: 0.5; }
+    50% { opacity: 1; }
+    100% { opacity: 0.5; }
   }
 `;
 
@@ -986,10 +1025,14 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
             top: `${region.y}%`, left: `${region.x}%`,
             width: `${region.width}%`, height: `${region.height}%`,
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            background: '#0a0a0f', border: '1px solid #1e293b'
+            background: '#020617', overflow: 'hidden'
         }}>
-            <div style={{ color: '#475569', fontSize: '0.65rem', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Region: {region.id}</div>
-            <div style={{ color: 'rgba(255,255,255,0.1)', fontSize: '0.8rem' }}>No Active Content (Scheduled)</div>
+            <AmbientOrbs />
+            <div style={{ zIndex: 1, textAlign: 'center', opacity: 0.6 }}>
+                <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>🌙</div>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Awaiting Stream</div>
+                <div style={{ fontSize: '0.65rem', color: '#475569', marginTop: '0.5rem' }}>Region: {region.id}</div>
+            </div>
         </div>
     )
 
@@ -1044,43 +1087,104 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
 
 // ─── UI States ────────────────────────────────────────────────────────────────
 
-function LoadingState({ progress }: { progress?: { current: number, total: number } | null }) {
+// ─── UI Components ──────────────────────────────────────────────────────────
+
+function GlassCard({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+    return (
+        <div className="glass-card" style={{ padding: '2.5rem', ...style }}>
+            {children}
+        </div>
+    )
+}
+
+function Logo({ size = 'large' }: { size?: 'small' | 'large' }) {
+    const isSmall = size === 'small'
     return (
         <div style={{
-            position: 'fixed', inset: 0,
-            background: '#0A0A0A',
-            display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center',
-            zIndex: 99999
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            gap: isSmall ? '0.25rem' : '0.5rem',
+            animation: 'slideIn 0.8s cubic-bezier(0.16, 1, 0.3, 1)'
         }}>
-            <Logo />
-            {progress ? (
-                <div style={{ marginTop: '2rem', textAlign: 'center' }}>
-                    <div style={{ color: '#f1f5f9', fontWeight: 600, marginBottom: '0.5rem', fontSize: '1.2rem' }}>
-                        Downloading Content...
-                    </div>
-                    <div style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '1rem' }}>
-                        {progress.current} of {progress.total} assets cached
-                    </div>
-                    <div style={{ width: '250px', height: '4px', background: '#1e293b', borderRadius: '4px', overflow: 'hidden', margin: '0 auto' }}>
-                        <div style={{ 
-                            width: `${(progress.current / progress.total) * 100}%`, 
-                            height: '100%', 
-                            background: '#38bdf8',
-                            transition: 'width 0.3s ease-out'
-                        }} />
-                    </div>
-                </div>
-            ) : (
+            <div style={{
+                width: isSmall ? 32 : 64, height: isSmall ? 32 : 64,
+                background: 'linear-gradient(135deg, #00daf3, #007e8c)',
+                borderRadius: isSmall ? 8 : 16,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 0 20px rgba(0, 218, 243, 0.3)',
+                position: 'relative', overflow: 'hidden'
+            }}>
+                <Tv2 size={isSmall ? 20 : 36} color="white" />
                 <div style={{
-                    marginTop: '32px',
-                    width: 32, height: 32,
-                    border: '3px solid rgba(255,255,255,0.05)',
-                    borderTopColor: '#444444',
-                    borderRadius: '50%',
-                    animation: 'spin 1s linear infinite'
+                    position: 'absolute', top: '-50%', left: '-50%', width: '200%', height: '200%',
+                    background: 'linear-gradient(45deg, transparent, rgba(255,255,255,0.2), transparent)',
+                    transform: 'rotate(45deg)', animation: 'shimmer 3s infinite'
                 }} />
+            </div>
+            <div style={{
+                fontSize: isSmall ? '0.9rem' : '1.5rem',
+                fontWeight: 900, letterSpacing: '-0.02em',
+                background: 'linear-gradient(to bottom, #fff, #94a3b8)',
+                WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
+            }}>
+                OMNIPUSH<span style={{ color: '#00daf3', WebkitTextFillColor: '#00daf3' }}>.</span>
+            </div>
+            {!isSmall && (
+                <div style={{ fontSize: '0.6rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.4em', fontWeight: 700 }}>
+                    Intelligent Signage
+                </div>
             )}
+        </div>
+    )
+}
+
+function AmbientOrbs() {
+    return (
+        <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 0 }}>
+            {/* Top Right Cyan */}
+            <div style={{
+                position: 'absolute', top: '-10%', right: '-10%',
+                width: '60vw', height: '60vw', background: 'radial-gradient(circle, rgba(0, 218, 243, 0.08) 0%, transparent 70%)',
+                animation: 'float 12s infinite ease-in-out'
+            }} />
+            {/* Bottom Left Blue */}
+            <div style={{
+                position: 'absolute', bottom: '-15%', left: '-10%',
+                width: '70vw', height: '70vw', background: 'radial-gradient(circle, rgba(0, 126, 140, 0.06) 0%, transparent 70%)',
+                animation: 'float 15s infinite ease-in-out reverse'
+            }} />
+        </div>
+    )
+}
+
+function LoadingState({ progress }: { progress?: { current: number, total: number } | null }) {
+    const percent = progress ? Math.round((progress.current / progress.total) * 100) : 0;
+    return (
+        <div style={{ position: 'fixed', inset: 0, background: '#020617', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 99999 }}>
+            <AmbientOrbs />
+            <div style={{ zIndex: 1 }}>
+                <Logo />
+                <div style={{ marginTop: '3rem', width: '280px', textAlign: 'center' }}>
+                    {progress ? (
+                        <>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem', fontSize: '0.75rem', fontWeight: 600 }}>
+                                <span style={{ color: '#94a3b8' }}>Syncing Assets</span>
+                                <span style={{ color: '#00daf3' }}>{percent}%</span>
+                            </div>
+                            <div style={{ height: 6, background: 'rgba(255,255,255,0.05)', borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                <div style={{ width: `${percent}%`, height: '100%', background: 'linear-gradient(90deg, #00daf3, #007e8c)', transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)', boxShadow: '0 0 10px #00daf3' }} />
+                            </div>
+                            <div style={{ marginTop: '0.75rem', color: '#475569', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                                File {progress.current} of {progress.total}
+                            </div>
+                        </>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+                            <div style={{ width: 40, height: 40, border: '3px solid rgba(0, 218, 243, 0.1)', borderTopColor: '#00daf3', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                            <div style={{ fontSize: '0.75rem', color: '#64748b', letterSpacing: '0.05em' }}>Establishing Network Link...</div>
+                        </div>
+                    )}
+                </div>
+            </div>
         </div>
     )
 }
@@ -1088,52 +1192,153 @@ function LoadingState({ progress }: { progress?: { current: number, total: numbe
 function SecretPrompt({ device_code, onSubmit }: { device_code: string; onSubmit: (s: string) => void }) {
     const [val, setVal] = useState('')
     return (
-        <div style={bgStyle}>
+        <div style={{ position: 'fixed', inset: 0, background: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <AmbientOrbs />
-            <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem', maxWidth: 420 }}>
+            <div style={{ zIndex: 1, textAlign: 'center', width: '100%', maxWidth: 450, padding: '2rem' }}>
                 <Logo />
-                <div style={{ marginTop: '2.5rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 16, padding: '2rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '1rem', color: '#f87171' }}>
-                        <Lock size={18} />
-                        <span style={{ fontWeight: 600, color: '#f1f5f9', fontSize: '1rem' }}>Device Authentication</span>
-                    </div>
-                    <div style={{ color: '#64748b', fontSize: '0.8125rem', marginBottom: '1.25rem', lineHeight: 1.6 }}>
-                        Enter the <strong style={{ color: '#94a3b8' }}>Device Secret</strong> for <br />
-                        <code style={{ fontFamily: 'monospace', color: '#f87171', fontSize: '0.875rem' }}>{device_code}</code>
-                    </div>
-                    <input
-                        type="password"
-                        value={val}
-                        onChange={e => e.target.value.length <= 50 && setVal(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && val && onSubmit(val)}
-                        placeholder="Paste device secret…"
-                        style={{
-                            width: '100%', padding: '0.75rem 1rem', borderRadius: 8,
-                            background: '#0f172a', border: '1px solid #334155',
-                            color: '#f1f5f9', fontSize: '0.875rem', fontFamily: 'monospace',
-                            outline: 'none', boxSizing: 'border-box', marginBottom: '0.75rem',
-                        }}
-                        autoFocus
-                    />
-                    <button
-                        onClick={() => val && onSubmit(val)}
-                        disabled={!val}
-                        style={{
-                            width: '100%', padding: '0.75rem', borderRadius: 8,
-                            background: val ? 'linear-gradient(135deg, var(--color-brand-500), var(--color-brand-600))' : '#1e293b',
-                            border: 'none', color: val ? 'white' : '#475569',
-                            fontWeight: 600, fontSize: '0.9rem', cursor: val ? 'pointer' : 'not-allowed',
-                            transition: 'all 0.15s',
-                        }}
-                    >
-                        Connect
-                    </button>
-                    <p style={{ fontSize: '0.6875rem', color: '#334155', marginTop: '0.75rem' }}>
-                        Secret is saved locally for this device and never sent to the CMS.
-                    </p>
+                <div style={{ marginTop: '2.5rem' }}>
+                    <GlassCard>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                            <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(248, 113, 113, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f87171' }}>
+                                <Lock size={20} />
+                            </div>
+                            <div style={{ textAlign: 'left' }}>
+                                <div style={{ fontSize: '1.125rem', fontWeight: 700, color: '#f1f5f9' }}>Access Restricted</div>
+                                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Provisioning {device_code}</div>
+                            </div>
+                        </div>
+                        
+                        <div style={{ position: 'relative', marginBottom: '1rem' }}>
+                            <input
+                                type="password"
+                                value={val}
+                                onChange={e => setVal(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && val && onSubmit(val)}
+                                placeholder="Device Access Token"
+                                style={{
+                                    width: '100%', padding: '1rem 1.25rem', borderRadius: 12,
+                                    background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)',
+                                    color: '#fff', fontSize: '1rem', fontFamily: 'monospace',
+                                    outline: 'none', transition: 'border-color 0.2s',
+                                    boxSizing: 'border-box'
+                                }}
+                                autoFocus
+                            />
+                        </div>
+
+                        <button
+                            onClick={() => val && onSubmit(val)}
+                            disabled={!val}
+                            style={{
+                                width: '100%', padding: '1rem', borderRadius: 12,
+                                background: val ? 'linear-gradient(135deg, #00daf3, #007e8c)' : 'rgba(255,255,255,0.05)',
+                                color: val ? '#000' : '#475569', fontWeight: 800, border: 'none',
+                                cursor: val ? 'pointer' : 'not-allowed', transition: 'all 0.2s',
+                                fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em'
+                            }}
+                        >
+                            Authorize Device
+                        </button>
+                    </GlassCard>
                 </div>
             </div>
             <BottomBar device_code={device_code} />
+        </div>
+    )
+}
+
+function ErrorState({ device_code, msg, onRetry }: { device_code: string; msg: string; onRetry: () => void }) {
+    return (
+        <div style={{ position: 'fixed', inset: 0, background: '#09090b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ position: 'absolute', inset: 0, opacity: 0.1, background: 'radial-gradient(circle at center, #ef4444 0%, transparent 70%)' }} />
+            <div style={{ zIndex: 1, textAlign: 'center', maxWidth: 480, padding: '2rem' }}>
+                <Logo />
+                <div style={{ marginTop: '2.5rem' }}>
+                    <div className="glass-card" style={{ padding: '2.5rem', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                        <div style={{ color: '#ef4444', marginBottom: '1.5rem' }}>
+                            <WifiOff size={48} strokeWidth={1.5} style={{ opacity: 0.8 }} />
+                        </div>
+                        <h2 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.75rem', background: 'linear-gradient(to right, #fff, #ef4444)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                            Network Interrupted
+                        </h2>
+                        <div style={{ padding: '1rem', background: 'rgba(239, 68, 68, 0.05)', borderRadius: 12, marginBottom: '2rem', border: '1px solid rgba(239, 68, 68, 0.1)' }}>
+                            <div style={{ fontSize: '0.85rem', color: '#94a3b8', lineHeight: 1.6 }}>{msg}</div>
+                        </div>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                            <button
+                                onClick={onRetry}
+                                style={{
+                                    padding: '1rem', borderRadius: 12, background: '#ef4444', color: 'white',
+                                    fontWeight: 700, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem'
+                                }}
+                            >
+                                <RefreshCw size={18} />
+                                Reconnect Pipeline
+                            </button>
+                            <div style={{ fontSize: '0.7rem', color: '#52525b', marginTop: '1rem' }}>
+                                Device Hardware ID: <span style={{ fontFamily: 'monospace' }}>{device_code}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <BottomBar device_code={device_code} />
+        </div>
+    )
+}
+
+function StatusToast({ error, syncProgress }: { error: string | null; syncProgress: any }) {
+    if (!error && !syncProgress) return null
+    return (
+        <div style={{
+            position: 'fixed', top: '2rem', right: '2rem', zIndex: 100000,
+            display: 'flex', flexDirection: 'column', gap: '0.75rem',
+            pointerEvents: 'none'
+        }}>
+            {error && (
+                <div style={{
+                    padding: '0.75rem 1.25rem', borderRadius: 12, background: 'rgba(239, 68, 68, 0.9)',
+                    backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.1)',
+                    color: 'white', display: 'flex', alignItems: 'center', gap: '0.75rem',
+                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)',
+                    animation: 'slideIn 0.3s ease-out'
+                }}>
+                    < WifiOff size={16} />
+                    <div style={{ fontSize: '0.75rem', fontWeight: 600 }}>Sync Interrupted</div>
+                </div>
+            )}
+            {syncProgress && (
+                <div style={{
+                    padding: '0.75rem 1.25rem', borderRadius: 12, background: 'rgba(15, 23, 42, 0.8)',
+                    backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.1)',
+                    color: 'white', display: 'flex', alignItems: 'center', gap: '0.75rem',
+                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)',
+                    animation: 'slideIn 0.3s ease-out'
+                }}>
+                    <RefreshCw size={16} className="spin" style={{ color: '#00daf3' }} />
+                    <div style={{ fontSize: '0.75rem', fontWeight: 600 }}>Syncing {syncProgress.current}/{syncProgress.total}</div>
+                </div>
+            )}
+        </div>
+    )
+}
+
+function BottomBar({ device_code, variant = 'dark' }: { device_code: string, variant?: 'dark' | 'light' }) {
+    return (
+        <div style={{
+            position: 'fixed', bottom: 0, left: 0, right: 0, padding: '2rem 3rem',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            zIndex: 100, pointerEvents: 'none'
+        }}>
+            <LiveClock />
+            <div style={{ 
+                padding: '0.5rem 1rem', borderRadius: 999, background: 'rgba(255,255,255,0.03)', 
+                border: '1px solid rgba(255,255,255,0.05)', color: '#475569', fontSize: '0.7rem', 
+                fontFamily: 'monospace', letterSpacing: '0.05em' 
+            }}>
+                ID: {device_code}
+            </div>
         </div>
     )
 }
@@ -2045,6 +2250,16 @@ export default function PlayerPage() {
         }
 
         // 2. Check for ?secret= in URL for auto-login
+        // Check for heartbeat stall
+        if (lastHeartbeatFail) {
+            const now = Date.now()
+            // If heartbeat fails for > 2 mins, show recovery warning
+            if (now - lastHeartbeatFail > 120000) {
+                console.error('[Heartbeat] Connection lost for 2+ minutes')
+                // Instead of full error immediately, let's keep playing but show a tiny subtle indicator 
+                // unless everything is broken
+            }
+        }
         const urlSecret = params.get('secret')
         if (urlSecret) {
             setSecret(urlSecret)
@@ -2420,49 +2635,50 @@ export default function PlayerPage() {
             return <LoadingState progress={syncProgress} />
         }
         if (phase === 'pairing') return (
-            <div style={bgStyle}>
+            <div style={{ position: 'fixed', inset: 0, background: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <AmbientOrbs />
-                <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem', maxWidth: 450 }}>
+                <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem', maxWidth: 480, width: '100%' }}>
                     <Logo />
-                    <div style={{ marginTop: '2.5rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: '2.5rem 2rem' }}>
-                        <div style={{ marginBottom: '1.5rem' }}>
-                            <div style={{ fontSize: '0.8rem', color: '#f87171', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700, marginBottom: '0.5rem' }}>Device Pairing Mode</div>
-                            <div style={{ color: '#f1f5f9', fontSize: '1.125rem', fontWeight: 600 }}>Get started in 30 seconds</div>
-                        </div>
+                    <div style={{ marginTop: '2.5rem' }}>
+                        <GlassCard>
+                            <div style={{ marginBottom: '2rem' }}>
+                                <div style={{ fontSize: '0.7rem', color: '#00daf3', textTransform: 'uppercase', letterSpacing: '0.2em', fontWeight: 800, marginBottom: '0.5rem' }}>New Device Setup</div>
+                                <div style={{ color: '#fff', fontSize: '1.25rem', fontWeight: 700 }}>Initialization Code</div>
+                            </div>
 
-                        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', marginBottom: '2rem' }}>
-                            {(pairingPin || '------').split('').map((char, i) => (
-                                <div key={i} style={{
-                                    width: 48, height: 64, background: '#0f172a', border: '1px solid #1e293b',
-                                    borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    fontSize: '2rem', fontWeight: 800, color: '#f1f5f9', fontFamily: 'monospace',
-                                    boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.5)'
-                                }}>
-                                    {char}
+                            <div style={{ display: 'flex', justifyContent: 'center', gap: '0.6rem', marginBottom: '2.5rem' }}>
+                                {(pairingPin || '------').split('').map((char, i) => (
+                                    <div key={i} style={{
+                                        width: 48, height: 68, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)',
+                                        borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        fontSize: '2.25rem', fontWeight: 900, color: '#00daf3', fontFamily: 'monospace',
+                                        textShadow: '0 0 15px rgba(0, 218, 243, 0.4)',
+                                        transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+                                        transform: char === '-' ? 'scale(0.95)' : 'scale(1.05)'
+                                    }}>
+                                        {char === '-' ? '' : char}
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div style={{ background: 'rgba(15, 23, 42, 0.5)', padding: '1.25rem', borderRadius: 16, marginBottom: '2rem', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: '1.25rem', textAlign: 'left' }}>
+                                <div style={{ background: 'white', padding: '0.5rem', borderRadius: 8, flexShrink: 0 }}>
+                                    <QRCodeSVG value={`${window.location.origin}/player/${dc}?pairing=${pairingPin}`} size={84} level="M" />
                                 </div>
-                            ))}
-                        </div>
-
-                        <div style={{ color: '#94a3b8', fontSize: '0.875rem', lineHeight: 1.6, marginBottom: '2rem' }}>
-                            Go to <strong style={{ color: '#f1f5f9' }}>Admin → Devices</strong> on your CMS <br />
-                            and enter this 6-digit code to link this screen.
-                        </div>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
-                            <div style={{ background: 'white', padding: '0.75rem', borderRadius: 10 }}>
-                                <QRCodeSVG value={`${window.location.origin}/player/${dc}?pairing=${pairingPin}`} size={120} level="M" />
+                                <div style={{ color: '#94a3b8', fontSize: '0.8rem', lineHeight: 1.5 }}>
+                                    Go to <strong style={{color: '#fff'}}>Admin → Devices</strong><br />
+                                    Scan QR or enter pin to link<br />
+                                    this screen to your network.
+                                </div>
                             </div>
-                            <div style={{ fontSize: '0.7rem', color: '#475569' }}>
-                                Or scan to pair with your mobile phone
-                            </div>
-                        </div>
 
-                        <button
-                            onClick={() => setPhase('secret')}
-                            style={{ marginTop: '2rem', background: 'none', border: 'none', color: '#475569', fontSize: '0.75rem', cursor: 'pointer', textDecoration: 'underline' }}
-                        >
-                            I have a secret key - manual entry
-                        </button>
+                            <button
+                                onClick={() => setPhase('secret')}
+                                style={{ background: 'none', border: 'none', color: '#475569', fontSize: '0.7rem', cursor: 'pointer', textDecoration: 'underline', transition: 'color 0.2s' }}
+                            >
+                                Use manual Secret Key
+                            </button>
+                        </GlassCard>
                     </div>
                 </div>
                 <BottomBar device_code={dc} />
@@ -2475,53 +2691,32 @@ export default function PlayerPage() {
         // ── Standby / No Content published yet ──
         if (phase === 'standby' || (manifest && !hasAnyContent)) {
             return (
-                <div style={bgStyle}>
+                <div style={{ position: 'fixed', inset: 0, background: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <AmbientOrbs />
-                    <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem' }}>
+                    <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem', maxWidth: 600 }}>
                         <Logo />
-                        <div style={{ marginTop: '2.5rem', color: 'rgba(255,255,255,0.35)', fontSize: '0.9rem', lineHeight: 1.8 }}>
-                            <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📺</div>
-                            <div style={{ fontWeight: 600, color: '#f1f5f9', marginBottom: '0.25rem' }}>Display is Online</div>
-                            <div style={{ color: '#94a3b8' }}>Connected as <strong style={{ color: '#f87171' }}>{manifest?.resolved?.role || 'Unassigned'}</strong> role</div>
+                        <div style={{ marginTop: '3rem' }}>
+                            <div style={{ fontSize: '3rem', marginBottom: '1.5rem', filter: 'drop-shadow(0 0 20px rgba(0, 218, 243, 0.2))' }}>⚡</div>
+                            <div style={{ fontWeight: 800, color: '#fff', fontSize: '1.5rem', marginBottom: '0.5rem' }}>System Stream Active</div>
+                            <div style={{ color: '#94a3b8', fontSize: '1rem', marginBottom: '2rem' }}>
+                                Linked as <span style={{ color: '#00daf3', fontWeight: 600 }}>{manifest?.resolved?.role || 'Display Node'}</span>
+                            </div>
 
-                            {!hasAnyContent ? (
-                                <div style={{ marginTop: '1rem', color: 'rgba(255,255,255,0.3)', fontSize: '0.8125rem' }}>
-                                    No active content published yet.
-                                </div>
-                            ) : (
-                                <div style={{ marginTop: '1rem', color: 'rgba(255,255,255,0.3)', fontSize: '0.8125rem' }}>
-                                    Awaiting content stream...
-                                </div>
-                            )}
+                            <div style={{ 
+                                display: 'inline-flex', alignItems: 'center', gap: '0.75rem', 
+                                padding: '1rem 2rem', borderRadius: 999, background: 'rgba(0, 218, 243, 0.05)', 
+                                border: '1px solid rgba(0, 218, 243, 0.15)', color: '#00daf3', fontWeight: 700, fontSize: '0.9rem' 
+                            }}>
+                                <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#00daf3', display: 'inline-block', boxShadow: '0 0 12px #00daf3', animation: 'pulse 2s infinite' }} />
+                                DISP_ONLINE // READY_TO_BROADCAST
+                            </div>
 
-                            {manifest?.resolved?.debug && (
-                                <div style={{ marginTop: '1.5rem', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: 8, textAlign: 'left', display: 'inline-block', maxWidth: '90%' }}>
-                                    <div style={{ fontSize: '0.65rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '0.5rem' }}>🔌 Database Link Diagnostics</div>
-                                    <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontFamily: 'monospace', lineHeight: 1.5 }}>
-                                        Device Tenant: {manifest.resolved.debug.device_tenant}<br />
-                                        Device Role:   {manifest.resolved.debug.device_role_id}<br />
-                                        <hr style={{ border: 'none', borderTop: '1px solid #1e293b', margin: '0.75rem 0' }} />
-                                        Pubs in Tenant: {manifest.resolved.debug.total_tenant_pubs}<br />
-                                        Role Pub Status: {manifest.resolved.debug.found_role_pub?.active ? '✅ Active' : '❌ Inactive'}<br />
-                                        Pub Scope: {manifest.resolved.debug.found_role_pub?.scope || 'N/A'}<br />
-                                        Pub Tenant: {manifest.resolved.debug.found_role_pub?.tenant || 'N/A'}
-                                        {manifest.resolved.debug.resolution_error && (
-                                            <div style={{ marginTop: '0.5rem', color: '#f87171', fontWeight: 600 }}>
-                                                ⚠️ Resolution Error: {manifest.resolved.debug.resolution_error}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-                            <div style={{ marginTop: '0.75rem', fontFamily: 'monospace', fontSize: '0.75rem', color: '#444' }}>
-                                {dc} · Polling for updates every 30s
+                            <div style={{ marginTop: '3rem', color: '#334155', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                                Heartbeat Active · Last Sync: {lastSyncTime || 'now'}
                             </div>
                         </div>
-                        <div style={{ marginTop: '2rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1.25rem', borderRadius: 999, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e', fontSize: '0.8rem' }}>
-                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', display: 'inline-block', boxShadow: '0 0 8px #22c55e', animation: 'pulse 2s infinite' }} />
-                            Device Online · Awaiting Content
-                        </div>
                     </div>
+                    <BottomBar device_code={dc} />
                 </div>
             )
         }
