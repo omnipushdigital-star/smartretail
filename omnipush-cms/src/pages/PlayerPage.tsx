@@ -320,7 +320,7 @@ export default function PlayerPage() {
             if (data.assets?.length) {
                 setSyncProgress({ current: 0, total: data.assets.length })
                 for (let i = 0; i < data.assets.length; i++) {
-                    await downloadAndCache(dc, data.assets[i])
+                    await downloadAndCache(data.assets[i])
                     setSyncProgress({ current: i + 1, total: data.assets.length })
                 }
                 setSyncProgress(null)
