@@ -24,7 +24,6 @@ interface ManifestItem {
     web_url: string | null
     duration_seconds: number | null
     playback_speed?: number
-    // Scheduling fields
     is_scheduled?: boolean
     start_date?: string | null
     end_date?: string | null
@@ -67,14 +66,12 @@ const HEARTBEAT_INTERVAL_MS = 30_000
 const DEFAULT_IMAGE_DURATION = 10
 const DEFAULT_WEB_DURATION = 30
 const DEFAULT_VIDEO_DURATION = 300
-const TRANSITION_DURATION = 800 // 0.8s smooth transition
-const READY_TIMING = 500 // 500ms safety buffer for Android hardware
+const TRANSITION_DURATION = 800
+const READY_TIMING = 500
 const IS_ANDROID_NATIVE = !!(window as any).AndroidHealth && (navigator.userAgent.includes('OmniPush') || navigator.userAgent.includes('Electron'))
 
 function secretKey(code: string) { return `omnipush_device_secret:${code}` }
 function manifestKey(code: string) { return `omnipush_manifest:${code}` }
-
-// Local callEdgeFn removed, imported from lib/supabase
 
 // ─── Live Clock ───────────────────────────────────────────────────────────────
 
@@ -94,2775 +91,313 @@ function LiveClock() {
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
-// CSS to hide the default video "play/icon" flash in Android WebView
 const globalStyle = `
   :root {
     --color-brand: #00daf3;
-    --color-brand-glow: rgba(0, 218, 243, 0.4);
+    --color-error: #ef4444;
     --glass-bg: rgba(15, 23, 42, 0.7);
     --glass-border: rgba(255, 255, 255, 0.08);
-    --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
   }
-
-  html, body, #root {
-    margin: 0; padding: 0;
-    width: 100vw !important; height: 100vh !important;
-    min-height: 100vh !important; max-height: 100vh !important;
-    overflow: hidden !important;
-    background: #000;
-    font-family: 'Inter', sans-serif;
-    color: #f1f5f9;
-  }
-
-  /* 2. Force all media to fill their region boxes without scaling artifacts */
-  video, img, iframe {
-    object-fit: fill !important;
-    border: none !important;
-    outline: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    display: block !important;
-    pointer-events: none;
-    background: transparent !important;
-    -webkit-transform: translate3d(0,0,0);
-    transform: translate3d(0,0,0);
-  }
-
-  /* 3. Kill all default browser controls/icons - CRITICAL for Chromium 87 / Android TV */
-  video::-webkit-media-controls { display:none !important; -webkit-appearance: none !important; }
-  video::-webkit-media-controls-enclosure { display:none !important; -webkit-appearance: none !important; }
-  video::-webkit-media-controls-panel { display:none !important; -webkit-appearance: none !important; }
-  video::-webkit-media-controls-play-button { display:none !important; -webkit-appearance: none !important; }
-  video::-webkit-media-controls-overlay-play-button { display:none !important; -webkit-appearance: none !important; }
-  video::-webkit-media-controls-start-playback-button { display:none !important; -webkit-appearance: none !important; }
-  video::-webkit-media-controls-shim { display:none !important; }
-  video::-internal-media-controls-overlay-play-button { display:none !important; }
-  video::-internal-media-controls-download-button { display:none !important; }
-  video::-internal-media-controls-loading-indicator { display:none !important; }
-  video::-webkit-media-controls-current-time-display { display:none !important; }
-  video::-webkit-media-controls-time-remaining-display { display:none !important; }
-  video::-webkit-media-controls-timeline { display:none !important; }
-  video::-webkit-media-controls-volume-control-container { display:none !important; }
-  video::-webkit-media-controls-toggle-closed-captions-button { display:none !important; }
-  
-  /* Additional hardware layer hide for Android 11 Droidlogic / System indicators */
-  video { 
-    pointer-events: none !important; 
-    outline: none !important; 
-    background: #000 !important;
-    mask-image: none !important;
-    -webkit-mask-image: none !important;
-    -webkit-tap-highlight-color: transparent !important;
-  }
-  
-  /* 4. Kill scrollbars */
-  ::-webkit-scrollbar { display: none !important; }
-  * { 
-    scrollbar-width: none !important; 
-    box-sizing: border-box !important; 
-    -webkit-tap-highlight-color: transparent !important; 
-  }
-
-  /* 5. Glassmorphism Utility */
   .glass-card {
     background: var(--glass-bg);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(20px) saturate(180%);
     border: 1px solid var(--glass-border);
-    box-shadow: var(--glass-shadow);
     border-radius: 24px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
   }
-
-  /* 6. Animations */
-  @keyframes float {
-    0% { transform: translateY(0px) rotate(0deg); }
-    50% { transform: translateY(-20px) rotate(2deg); }
-    100% { transform: translateY(0px) rotate(0deg); }
-  }
-
-  @keyframes pulse-glow {
-    0% { box-shadow: 0 0 0 0 var(--color-brand-glow); }
-    70% { box-shadow: 0 0 0 15px rgba(0, 218, 243, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(0, 218, 243, 0); }
-  }
-
-  @keyframes shimmer {
-    0% { opacity: 0.5; }
-    50% { opacity: 1; }
-    100% { opacity: 0.5; }
-  }
+  .spin { animation: spin 2s linear infinite; }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 `;
 
-const isAndroidNative = navigator.userAgent.toLowerCase().includes('android');
+// ─── Shared Components ───────────────────────────────────────────────────────
 
-interface VideoElementProps {
-    url: string
-    isReady: boolean
-    onReady: () => void
-    onEnded: () => void
-    onError: (msg: string) => void
+const Logo = () => (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' }}>
+        <div style={{ padding: '0.6rem', background: 'linear-gradient(135deg, #00daf3 0%, #0070f3 100%)', borderRadius: 14, boxShadow: '0 0 20px rgba(0, 218, 243, 0.3)' }}>
+            <Tv2 size={24} color="white" strokeWidth={2.5} />
+        </div>
+        <div style={{ textAlign: 'left' }}>
+            <div style={{ fontSize: '1.25rem', fontWeight: 900, color: 'white', letterSpacing: '-0.02em', lineHeight: 1 }}>OMNIPUSH</div>
+            <div style={{ fontSize: '0.6rem', color: '#00daf3', fontWeight: 800, letterSpacing: '0.3em', marginTop: '0.2rem' }}>CORTEX CORE</div>
+        </div>
+    </div>
+)
+
+const AmbientOrbs = () => (
+    <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 0 }}>
+        <div style={{ position: 'absolute', top: '-10%', left: '-10%', width: '40%', height: '40%', background: 'radial-gradient(circle, rgba(0, 218, 243, 0.1) 0%, transparent 70%)', filter: 'blur(60px)' }} />
+        <div style={{ position: 'absolute', bottom: '-10%', right: '-10%', width: '50%', height: '50%', background: 'radial-gradient(circle, rgba(124, 58, 237, 0.08) 0%, transparent 70%)', filter: 'blur(60px)' }} />
+    </div>
+)
+
+const GlassCard = ({ children, style = {} }: { children: React.ReactNode, style?: React.CSSProperties }) => (
+    <div className="glass-card" style={{ padding: '2.5rem', ...style }}>
+        {children}
+    </div>
+)
+
+// ─── Playback Engine ────────────────────────────────────────────────────────
+
+interface EngineProps {
+    region: any;
+    items: ManifestItem[];
+    assets: ManifestAsset[];
+    isNative: boolean;
+    showDebug: boolean;
+    deviceCode: string;
+    consecutiveErrorsRef: React.MutableRefObject<number>;
+    lastMediaErrorRef: React.MutableRefObject<string | null>;
 }
 
-function VideoElement({ url, isReady, onReady, onEnded, onError }: VideoElementProps) {
-    const videoRef = useRef<HTMLVideoElement>(null)
+const PlaybackEngine = React.memo(({ 
+    region, items, assets, isNative, showDebug, deviceCode,
+    consecutiveErrorsRef, lastMediaErrorRef
+}: EngineProps) => {
+    const [layers, setLayers] = useState<{ idx: number; key: number }[]>([{ idx: 0, key: Date.now() }])
+    const [activeLayer, setActiveLayer] = useState(0)
+    const activeIdxRef = useRef(0)
+    const itemsRef = useRef(items)
 
-    useEffect(() => {
-        if (isReady && videoRef.current) {
-            videoRef.current.play().catch(err => {
-                console.warn('[VideoElement] Play error:', err)
-                onError(err.message)
-            })
-        }
-    }, [isReady, url, onError])
+    useEffect(() => { itemsRef.current = items }, [items])
 
-    return (
-        <video
-            ref={videoRef}
-            src={url}
-            style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }}
-            muted
-            playsInline
-            preload="auto"
-            controls={false}
-            onCanPlay={onReady}
-            onEnded={onEnded}
-            onError={(e) => onError('Video Error')}
-            poster={TRANSPARENT_BASE64}
-        />
-    )
-}
-
-interface PlaybackProps {
-    items: ManifestItem[]
-    assets: ManifestAsset[]
-    region: { id: string; x: number; y: number; width: number; height: number }
-    isNative?: boolean
-    showDebug?: boolean
-    deviceCode?: string
-    consecutiveErrorsRef?: React.MutableRefObject<number>
-    lastMediaErrorRef?: React.MutableRefObject<string | null>
-}
-
-// ─── Double-Buffer Video Player ──────────────────────────────────────────────
-
-
-// ─── Unified Double-Buffer Engine ─────────────────────────────────────────────
-// Handles both Videos AND Images with the same gapless slot-swap architecture.
-// Videos: advance on onEnded + watchdog
-// Images: advance via per-item duration timer
-// Web/iFrame: handled by PlaybackEngine fallback when needed
-function UnifiedDoubleBuffer({ items, assets, idx, onAdvance, effect = 'fade', showDebug = false, isNative = false, consecutiveErrorsRef, lastMediaErrorRef }: {
-    items: ManifestItem[]
-    assets: ManifestAsset[]
-    idx: number
-    onAdvance: (newIdx: number) => void
-    effect?: string
-    showDebug?: boolean
-    isNative?: boolean
-    consecutiveErrorsRef?: React.MutableRefObject<number>
-    lastMediaErrorRef?: React.MutableRefObject<string | null>
-}): React.ReactElement {
-    // ── Slot State ──────────────────────────────────────────────────────────────
-    const [activeSlot, setActiveSlot] = useState<0 | 1>(0)
-    const [isTransitioning, setIsTransitioning] = useState(false)
-    const [showNext, setShowNext] = useState(false)
-    const [debug, setDebug] = useState('')
-
-    // Each slot holds: url + type to render
-    const [slotData, setSlotData] = useState<[
-        { url: string; type: string },
-        { url: string; type: string }
-    ]>([{ url: '', type: 'video' }, { url: '', type: 'video' }])
-
-    // DOM refs for the two video elements
-    const v1 = useRef<HTMLVideoElement>(null)
-    const v2 = useRef<HTMLVideoElement>(null)
-    const videoRefs: [React.RefObject<HTMLVideoElement | null>, React.RefObject<HTMLVideoElement | null>] = [v1, v2]
-
-    // Image duration timer ref
-    const imageDurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-    // Stable mutable refs — never stale in callbacks
-    const activeSlotRef = useRef<0 | 1>(0)
-    const idxRef = useRef(idx) // Init with parent idx
-    const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-    const advanceBufferRef = useRef<(force?: boolean) => void>(() => {})
-    const bootedRef = useRef(false)
-    const transitioningRef = useRef(false)
-    const sortedRef = useRef<ManifestItem[]>([])
-    const isTransitioningRef = useRef(false)
-
-    const sorted = useMemo(() =>
-        [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
-    [items])
-
-    // CORTEX: Sync ref immediately in render phase to avoid race conditions with onEnded/Watchdog
-    sortedRef.current = sorted
-
-    // ── Helpers ─────────────────────────────────────────────────────────────────
-    const getItemData = useCallback((item: ManifestItem): { url: string; type: string } => {
-        if (!item) return { url: '', type: 'video' }
+    const getUrl = useCallback((item: ManifestItem) => {
+        if (item.type === 'web_url' || item.type === 'html') return item.web_url
         const asset = assets.find(a => a.media_id === item.media_id)
-        const url = asset?.url || item.web_url || ''
-        let type = asset?.type || item.type || (item.media_id ? 'video' : 'image')
-        
-        // Normalize MIME types (e.g. video/mp4 -> video)
-        if (type.startsWith('video/')) type = 'video'
-        else if (type.startsWith('image/')) type = 'image'
+        if (!asset) return null
+        const cacheName = `omnipush_cache_${deviceCode}_${asset.media_id}`
+        const cached = localStorage.getItem(cacheName)
+        return cached || asset.url
+    }, [assets, deviceCode])
 
-        if (url) {
-            const ext = url.split('?')[0].split('.').pop()?.toLowerCase()
-            if (['mp4', 'webm', 'mov', 'ogg'].includes(ext || '')) type = 'video'
-            if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext || '')) type = 'image'
-        }
-        if (!url && !item.media_id && item.type !== 'web_url') {
-            console.warn(`[UDB] ⚠️ Item ${item.playlist_item_id} has no URL or media_id. Fallback to placeholder.`);
-        }
-
-        return { url, type }
-    }, [assets])
-
-    const getItemDuration = useCallback((item: ManifestItem): number => {
-        const dur = item?.duration_seconds ?? 0
-        if (dur > 0) return dur * 1000
-        const { type } = getItemData(item)
-        return type === 'image' ? DEFAULT_IMAGE_DURATION * 1000 : DEFAULT_VIDEO_DURATION * 1000
-    }, [getItemData])
-
-    // ── Watchdog ─────────────────────────────────────────────────────────────────
-    const triggerWatchdog = useCallback((delay = 15000) => {
-        if (watchdogRef.current) clearTimeout(watchdogRef.current)
-        watchdogRef.current = setTimeout(() => {
-            setDebug('WD-Skip')
-            advanceBufferRef.current(true)
-        }, delay)
-    }, [])
-
-    // ── Core Advance ─────────────────────────────────────────────────────────────
-    const advanceBuffer = useCallback((forceNext = false) => {
-        const s = sortedRef.current
-        if (s.length === 0) return
-        if (transitioningRef.current && !forceNext) return
-
-        if (imageDurTimerRef.current) clearTimeout(imageDurTimerRef.current)
-
-        const currentSlot = activeSlotRef.current
-        const nextSlot: 0 | 1 = currentSlot === 0 ? 1 : 0
-        const currentVideo = videoRefs[currentSlot].current
-        const nextVideo = videoRefs[nextSlot].current
-
-        // CORTEX: Absolute Decoder Purge
-        // Just calling pause() is often not enough for Amlogic. 
-        // We must strip the source and force a re-load of nothing.
-        const killDecoder = (v: HTMLVideoElement | null) => {
-            if (!v) return
-            try {
-                v.pause()
-                v.src = ""
-                v.removeAttribute('src')
-                v.load()
-                console.log('[UDB] 💀 Hardware decoder purged.')
-            } catch (e) {
-                console.warn('[UDB] Purge fail:', e)
-            }
-        }
-
-        if (s.length === 1) {
-            const { type } = getItemData(s[0])
-            if (type === 'video' && currentVideo) {
-                // For a single video, let the 'loop' attribute handle it smoothly.
-                // We only need to catch the rare case where it stalls.
-                if (currentVideo.paused) {
-                    currentVideo.currentTime = 0
-                    currentVideo.play().catch(() => setDebug('LoopErr'))
-                }
-            } else if (type === 'image') {
-                if (imageDurTimerRef.current) clearTimeout(imageDurTimerRef.current)
-                imageDurTimerRef.current = setTimeout(() => advanceBufferRef.current(), getItemDuration(s[0]))
-            }
-            // Increase watchdog to 5 mins for single-item safety - don't kill long videos
-            triggerWatchdog(300000)
-            return
-        }
-
-        const nextIdx = (idxRef.current + 1) % s.length
-        const nextItem = s[nextIdx]
-        const { url: nextUrl, type: nextType } = getItemData(nextItem)
-
-        setIsTransitioning(true)
-        transitioningRef.current = true
-        if ((window as any).setGlobalTransition) (window as any).setGlobalTransition(true)
-
-        // CORTEX: Emergency transition watchdog. If commitAdvance is never called 
-        // (e.g. video decoder hang), force clear the flag after 25s so polling can resume.
-        // 25s is generous for slow networks but still catches true hangs.
+    const advance = useCallback(() => {
+        if (!itemsRef.current.length) return
+        const nextIdx = (activeIdxRef.current + 1) % itemsRef.current.length
+        activeIdxRef.current = nextIdx
+        const newLayer = { idx: nextIdx, key: Date.now() }
+        setLayers(prev => [prev[activeLayer], newLayer])
+        setActiveLayer(1)
         setTimeout(() => {
-            if (transitioningRef.current) {
-                console.warn('[UDB] Transition watchdog timeout - force skipping item')
-                transitioningRef.current = false
-                setIsTransitioning(false)
-                if ((window as any).setGlobalTransition) (window as any).setGlobalTransition(false)
-                advanceBufferRef.current(true)
-            }
-        }, 25000)
-        setShowNext(false)
+            setLayers(prev => [prev[1]])
+            setActiveLayer(0)
+        }, TRANSITION_DURATION + 100)
+    }, [activeLayer])
 
-        const currentItem = s[idxRef.current]
-        if (!currentItem) {
-            console.warn('[UDB] idxRef out of bounds, resetting to 0')
-            idxRef.current = 0
-            transitioningRef.current = false
-            setIsTransitioning(false)
-            return
-        }
-        const { type: currentType } = getItemData(currentItem)
-        // Removed redeclaration of currentVideo (already declared above line 296)
+    if (!items.length) return null
 
-        if (currentType === 'video' && currentVideo) {
-            killDecoder(currentVideo)
-        }
-
-        const commitAdvance = () => {
-            activeSlotRef.current = nextSlot
-            idxRef.current = nextIdx
-            setActiveSlot(nextSlot)
-            setSlotData(prev => {
-                const up = [...prev] as [{ url: string; type: string }, { url: string; type: string }]
-                up[nextSlot] = { url: nextUrl, type: nextType }
-                return up
-            })
-            onAdvance(nextIdx)
-            setDebug(`${nextIdx + 1}/${s.length} [${nextType}]`)
-            
-            setTimeout(() => setShowNext(true), 80)
-            setTimeout(() => {
-                setIsTransitioning(false)
-                setShowNext(false)
-                transitioningRef.current = false
-            }, 700)
-
-            if (nextType === 'image') {
-                const dur = getItemDuration(nextItem)
-                imageDurTimerRef.current = setTimeout(() => advanceBufferRef.current(), dur)
-                triggerWatchdog(dur + 10000)
-            } else {
-                // FALLBACK: If video duration is unknown (0), DEFAULT_VIDEO_DURATION (300s) + safety margin is used.
-                const dur = getItemDuration(nextItem)
-                triggerWatchdog(dur + 20000)
-            }
-        }
-
-        // CORTEX: Staggered load for Amlogic hardware
-        const decoderSafetyDelay = (isNative || IS_ANDROID_NATIVE) ? 1000 : 80
-
-        setTimeout(() => {
-            if (nextType === 'video') {
-                if (!nextVideo || !nextUrl) { 
-                    console.error('[UDB] ❌ Cannot load next video: missing element or URL');
-                    transitioningRef.current = false; 
-                    setIsTransitioning(false); 
-                    advanceBufferRef.current(true); // skip it
-                    return 
-                }
-                
-                console.log('[UDB] Loading next video into hardware slot...')
-                nextVideo.src = nextUrl
-                nextVideo.muted = true
-                nextVideo.load()
-                
-                const doPlay = () => {
-                    nextVideo.play().then(commitAdvance).catch(e => {
-                        console.warn('[UDB] play() failed:', e.name, e.message)
-                        setDebug('PlayErr')
-                        transitioningRef.current = false
-                        setIsTransitioning(false)
-                        setTimeout(() => advanceBufferRef.current(true), 1500)
-                    })
-                }
-
-                if (nextVideo.readyState >= 3) {
-                    doPlay()
-                } else {
-                    const onReady = () => { nextVideo.removeEventListener('canplay', onReady); doPlay() }
-                    nextVideo.addEventListener('canplay', onReady)
-                    setTimeout(() => { 
-                        if (transitioningRef.current) {
-                            nextVideo.removeEventListener('canplay', onReady)
-                            doPlay() 
-                        }
-                    }, 5000)
-                }
-            } else {
-                // Image
-                setSlotData(prev => {
-                    const up = [...prev] as [{ url: string; type: string }, { url: string; type: string }]
-                    up[nextSlot] = { url: nextUrl, type: nextType }
-                    return up
-                })
-                commitAdvance()
-            }
-        }, decoderSafetyDelay)
-    }, [getItemData, getItemDuration, onAdvance, triggerWatchdog, videoRefs, isNative])
-
-    useEffect(() => { advanceBufferRef.current = advanceBuffer })
-
-    // Sync local ref with parent idx prop to maintain single source of truth
-    useEffect(() => {
-        if (idx !== idxRef.current) {
-            console.log(`[UDB] Syncing local index ${idxRef.current} -> parent index ${idx}`)
-            idxRef.current = idx
-        }
-    }, [idx])
-
-    // ── Boot ─────────────────────────────────────────────────────────────────────
-    useEffect(() => {
-        if (sorted.length === 0 || bootedRef.current) return
-        bootedRef.current = true
-        
-        // CORTEX: Respect parent IDX on boot/refresh
-        const startIdx = (idx >= 0 && idx < sorted.length) ? idx : 0
-        idxRef.current = startIdx
-        
-        const item0 = sorted[startIdx]
-        const item1 = sorted.length > 1 ? sorted[(startIdx + 1) % sorted.length] : null
-        
-        const data0 = getItemData(item0)
-        const data1 = item1 ? getItemData(item1) : { url: '', type: 'video' }
-        
-        console.log(`[UDB] Booting at index ${startIdx}...`)
-        setSlotData([data0, data1])
-        activeSlotRef.current = 0
-        
-        if (data0.type === 'video') {
-            const v = videoRefs[0].current
-            if (v) { 
-                v.src = data0.url
-                v.muted = true
-                v.load() 
-            }
-            const dur = getItemDuration(item0)
-            triggerWatchdog(dur + 30000) // 30s buffer for first video boot
-        } else {
-            const dur = getItemDuration(item0)
-            imageDurTimerRef.current = setTimeout(() => advanceBufferRef.current(), dur)
-            triggerWatchdog(dur + 15000)
-        }
-    }, [sorted, getItemData, getItemDuration, triggerWatchdog, videoRefs])
-
-    // CORTEX: Only reset booted state if the playlist IDs actually change.
-    // This prevents resets during manifest refreshes or network jitters.
-    const itemIdsKey = useMemo(() => items.map(i => i.playlist_item_id).join(','), [items])
-    useEffect(() => { 
-        if (bootedRef.current && items.length > 0) {
-            console.log('[UDB] Content stable, skipping boot reset.')
-            return 
-        }
-        bootedRef.current = false 
-    }, [itemIdsKey])
-
-    // ── Stall Monitor ─────────────────────────────────────────────────────────────
-    useEffect(() => {
-        let lastIdx = idxRef.current
-        let lastIdxChangeAt = Date.now()
-
-        const interval = setInterval(() => {
-            const slot = activeSlotRef.current
-            const currentItem = sortedRef.current[idxRef.current]
-            if (!currentItem) return
-
-            // 1. Hardware Wake-up: Ensure active video is playing
-            if (slotData[slot].type === 'video') {
-                const v = videoRefs[slot].current
-                if (v && v.paused && sorted.length > 0 && !transitioningRef.current) {
-                    v.play().catch(() => {})
-                }
-            }
-
-            // 2. Emergency Wrap-around: If stuck on same item for > 2x duration (or default), force advance
-            if (idxRef.current === lastIdx) {
-                const dur = getItemDuration(currentItem)
-                const timeoutLimit = Math.max(dur * 2.5, 60000) // At least 60s
-                if (Date.now() - lastIdxChangeAt > timeoutLimit) {
-                    console.warn(`[UDB] 🚨 STUCK DETECTED at idx ${lastIdx}. Emergency advance triggered.`)
-                    lastIdxChangeAt = Date.now() // Reset timer
-                    advanceBufferRef.current(true)
-                }
-            } else {
-                lastIdx = idxRef.current
-                lastIdxChangeAt = Date.now()
-            }
-        }, 3000)
-        return () => clearInterval(interval)
-    }, [sorted.length, videoRefs, slotData, getItemDuration])
-
-    // ── Slot Styles ──────────────────────────────────────────────────────────────
-    const getSlotStyle = (i: number): React.CSSProperties => {
-        const isActive = i === activeSlot
-        const transitionType = effect || 'fade'
-        const base: React.CSSProperties = {
-            position: 'absolute',
-            top: 0, left: 0, right: 0, bottom: 0,
-            width: '100%', height: '100%',
-            background: isNative ? 'transparent' : '#000',
-            transition: isTransitioning ? 'opacity 600ms ease-in-out, transform 600ms ease-in-out' : 'none',
-            zIndex: isActive ? 10 : 5,
-            pointerEvents: 'none',
-            overflow: 'hidden',
-        }
-        if (isTransitioning) {
-            const isPrev = !isActive
-            if (isPrev) {
-                base.opacity = showNext ? 0 : 1
-                base.transform = (transitionType === 'slide' || transitionType === 'slide-up')
-                    ? (showNext ? 'translate3d(0,-100%,0)' : 'translate3d(0,0,0)')
-                    : 'translate3d(0,0,0)'
-            } else {
-                base.opacity = showNext ? 1 : 0
-                base.transform = (transitionType === 'slide' || transitionType === 'slide-up')
-                    ? (showNext ? 'translate3d(0,0,0)' : 'translate3d(0,100%,0)')
-                    : 'translate3d(0,0,0)'
-            }
-        } else {
-            base.opacity = isActive ? 1 : 0
-            base.visibility = isActive ? 'visible' : 'hidden'
-            base.transform = 'translate3d(0,0,0)'
-        }
-        return base
-    }
-
-    // ── Render ───────────────────────────────────────────────────────────────────
     return (
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', background: '#000', overflow: 'hidden' }}>
-            {([0, 1] as const).map(i => {
-                const { url, type } = slotData[i]
-                const slotStyle = getSlotStyle(i)
-                const isSlotActive = i === activeSlot
+        <div style={{
+            position: 'absolute', left: `${region.x}%`, top: `${region.y}%`,
+            width: `${region.width}%`, height: `${region.height}%`,
+            background: '#000', overflow: 'hidden'
+        }}>
+            {layers.map((layer, lIdx) => {
+                const item = itemsRef.current[layer.idx]
+                if (!item) return null
+                const isActive = lIdx === activeLayer
                 return (
-                    <div key={i} style={slotStyle}>
-                        {type === 'video' ? (
-                            <video
-                                ref={videoRefs[i]}
-                                src={url || undefined}
-                                style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block', background: '#000' }}
-                                muted playsInline preload="auto"
-                                loop={items.length === 1}
-                                onCanPlay={() => {
-                                    if (i === 0 && idxRef.current === 0 && activeSlotRef.current === 0) {
-                                        const v = videoRefs[0].current
-                                        if (v && v.paused) v.play().catch(() => {})
-                                    }
-                                }}
-                                onPlaying={() => {
-                                    if (i === activeSlotRef.current) triggerWatchdog(15000)
-                                }}
-                                onEnded={() => {
-                                    if (consecutiveErrorsRef) consecutiveErrorsRef.current = 0
-                                    if (i === activeSlotRef.current) advanceBufferRef.current()
-                                }}
-                                onTimeUpdate={() => {
-                                    // Keep watchdog alive during normal playback (fires ~4x/sec).
-                                    // Matches stable backup: onTimeUpdate is the primary heartbeat.
-                                    if (i === activeSlotRef.current) triggerWatchdog(15000)
-                                }}
-                                onWaiting={() => {
-                                    // Video waiting for data - give it 60s before forcing skip
-                                    if (i === activeSlotRef.current) triggerWatchdog(60000)
-                                }}
-                                // NOTE: No onStalled handler - stalls are covered by onTimeUpdate
-                                // stopping → existing watchdog naturally fires. Adding onStalled
-                                // with a short timeout causes false positives on normal Chrome buffering.
-                                onError={() => {
-                                    if (consecutiveErrorsRef) consecutiveErrorsRef.current += 1
-                                    if (lastMediaErrorRef) lastMediaErrorRef.current = `Slot ${i} err @ ${new Date().toLocaleTimeString()}`
-                                    if (i === activeSlotRef.current) advanceBufferRef.current(true)
-                                }}
-                                poster={TRANSPARENT_BASE64}
-                            />
-                        ) : (
-                            <img
-                                src={url || undefined}
-                                alt=""
-                                style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }}
-                                onError={() => {
-                                    if (consecutiveErrorsRef) consecutiveErrorsRef.current += 1
-                                    if (lastMediaErrorRef) lastMediaErrorRef.current = `Img slot ${i} err @ ${new Date().toLocaleTimeString()}`
-                                    if (isSlotActive) advanceBufferRef.current(true)
-                                }}
-                            />
-                        )}
-                        {/* CORTEX: Hidden inactive video must NOT have a src on old webviews to avoid decoder theft */}
-                        {!isSlotActive && type === 'video' && !isTransitioning && (
-                            <div className="decoder-killer" style={{ display: 'none' }}>
-                                {/* This dummy element ensures we don't accidentally leak decoders */}
-                            </div>
-                        )}
+                    <div key={layer.key} style={{
+                        position: 'absolute', inset: 0,
+                        opacity: isActive ? 1 : 0,
+                        transition: `opacity ${TRANSITION_DURATION}ms ease-in-out`,
+                        zIndex: isActive ? 2 : 1
+                    }}>
+                        <RegionPlayer
+                            item={item}
+                            url={getUrl(item) || ''}
+                            isActive={isActive}
+                            onEnded={advance}
+                            onError={(err) => {
+                                consecutiveErrorsRef.current++
+                                lastMediaErrorRef.current = err
+                                advance()
+                            }}
+                            onReady={() => { consecutiveErrorsRef.current = 0 }}
+                        />
                     </div>
                 )
             })}
-            {showDebug && (
-                <div style={{ position: 'absolute', bottom: 8, right: 8, background: 'rgba(0,0,0,0.75)', color: '#0f0', fontSize: 11, padding: '3px 6px', zIndex: 1000, fontFamily: 'monospace', borderRadius: 4, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span>UDB {debug} | slot:{activeSlot} idx:{idxRef.current}</span>
-                    <button 
-                        onClick={() => advanceBufferRef.current(true)}
-                        style={{ background: '#22c55e', border: 'none', color: 'white', fontSize: 10, padding: '2px 6px', borderRadius: 2, cursor: 'pointer' }}
-                    >
-                        NEXT
-                    </button>
-                    <button 
-                        onClick={() => window.location.reload()}
-                        style={{ background: '#ef4444', border: 'none', color: 'white', fontSize: 10, padding: '2px 6px', borderRadius: 2, cursor: 'pointer' }}
-                    >
-                        RELOAD
-                    </button>
-                </div>
-            )}
         </div>
     )
-}
+})
 
-
-// ─── Playback Engine ──────────────────────────────────────────────────────────
-
-function PlaybackEngine({ items, assets, region, isNative = false, showDebug = false, consecutiveErrorsRef, lastMediaErrorRef }: PlaybackProps) {
-    const [idx, setIdx] = useState(0)
-    const [prevIdx, setPrevIdx] = useState<number | null>(null)
-    const [isSwapping, setIsSwapping] = useState(false)
-    const [readyIdx, setReadyIdx] = useState<number | null>(null)
-    const [currentTime, setCurrentTime] = useState(new Date())
-
-    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-    const idxRef = useRef(0)
-    idxRef.current = idx
-
-    // Periodic re-evaluation for schedules
-    useEffect(() => {
-        const t = setInterval(() => setCurrentTime(new Date()), 15000)
-        return () => clearInterval(t)
-    }, [])
-
-    const [activeItems, setActiveItems] = useState<ManifestItem[]>([])
-    const lastActiveIdsRef = useRef('')
-    const prevActiveItemsRef = useRef<ManifestItem[]>([])
+const RegionPlayer = ({ item, url, isActive, onEnded, onError, onReady }: { 
+    item: ManifestItem; url: string; isActive: boolean; onEnded: () => void; onError: (msg: string) => void; onReady: () => void 
+}) => {
+    const videoRef = useRef<HTMLVideoElement>(null)
+    const timerRef = useRef<any>(null)
 
     useEffect(() => {
-        const filtered = (items || []).filter(item => {
-            const now = currentTime
-            if (!item.is_scheduled) return true
-            
-            // 1. Date Range Check
-            if (item.start_date) {
-                const start = new Date(item.start_date + 'T00:00:00')
-                if (now < start) return false
+        if (!isActive) {
+            if (videoRef.current) { videoRef.current.pause(); videoRef.current.currentTime = 0 }
+            if (timerRef.current) clearTimeout(timerRef.current)
+            return
+        }
+        if (item.type === 'video') {
+            if (videoRef.current) {
+                videoRef.current.play().then(() => onReady()).catch(e => { if (e.name !== 'AbortError') onError(e.message) })
             }
-            if (item.end_date) {
-                const end = new Date(item.end_date + 'T23:59:59')
-                if (now > end) return false
-            }
-
-            // 2. Day of Week Check
-            if (item.days_of_week && item.days_of_week.length > 0) {
-                if (!item.days_of_week.includes(now.getDay())) return false
-            }
-
-            // 3. Time Check (Dayparting)
-            if (item.start_time || item.end_time) {
-                const nowSecs = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()
-                if (item.start_time) {
-                    const [h, m, s] = item.start_time.split(':').map(Number)
-                    if (nowSecs < (h * 3600 + (m || 0) * 60 + (s || 0))) return false
-                }
-                if (item.end_time) {
-                    const [h, m, s] = item.end_time.split(':').map(Number)
-                    if (nowSecs > (h * 3600 + (m || 0) * 60 + (s || 0))) return false
-                }
-            }
-
-            return true
-        }).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-
-        const nextIds = filtered.map(i => `${i.playlist_item_id}-${i.media_id}`).join(',')
-        
-        // CORTEX: Stability Logic
-        // If manifest fetch fails, 'items' might be empty. We fallback to previous stable list.
-        if (filtered.length > 0) {
-            if (nextIds !== lastActiveIdsRef.current) {
-                console.log(`[PlaybackEngine] 📋 Active items updated: ${filtered.length} items`)
-                lastActiveIdsRef.current = nextIds
-                setActiveItems(filtered)
-                prevActiveItemsRef.current = filtered
-            }
-        } else if (prevActiveItemsRef.current.length > 0 && lastActiveIdsRef.current !== "") {
-            // Keep current playlist alive if new one is suddenly empty (indicates network/function error)
-            console.warn(`[PlaybackEngine] ⚠️ Current manifest empty, but using cached stable playlist (${prevActiveItemsRef.current.length} items) to avoid black screen.`)
-            if (activeItems.length === 0) setActiveItems(prevActiveItemsRef.current)
         } else {
-            // Truly empty schedule (first time)
-            if (lastActiveIdsRef.current !== "") {
-                lastActiveIdsRef.current = ""
-                setActiveItems([])
-            }
+            onReady()
+            const duration = item.duration_seconds || (item.type === 'image' ? DEFAULT_IMAGE_DURATION : DEFAULT_WEB_DURATION)
+            timerRef.current = setTimeout(onEnded, duration * 1000)
         }
-    }, [items, currentTime])
+    }, [isActive, item, onEnded, onError, onReady])
 
-    // Logic to determine if we can use the high-performance UnifiedDoubleBuffer engine
-    const isUDB = useMemo(() => {
-        if (activeItems.length === 0) return false
-        return activeItems.every(it => {
-            const asset = assets.find(a => a.media_id === it.media_id)
-            let type = asset?.type || it.type || (it.media_id ? 'video' : 'image')
-            
-            // CORTEX: Normalize MIME types
-            if (type.startsWith('video/')) type = 'video'
-            else if (type.startsWith('image/')) type = 'image'
-
-            const url = asset?.url || it.web_url
-            if (url) {
-                const ext = url.split('?')[0].split('.').pop()?.toLowerCase()
-                if (['mp4', 'webm', 'mov', 'ogg'].includes(ext || '')) type = 'video'
-                if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext || '')) type = 'image'
-            }
-            return type === 'video' || type === 'image'
-        })
-    }, [activeItems, assets])
-
-    // Safety: Reset index if active list changes significanly
-    useEffect(() => {
-        if (idx >= activeItems.length && activeItems.length > 0) {
-            setIdx(0)
-        }
-    }, [activeItems.length, idx])
-
-    const activeItemsRef = useRef<ManifestItem[]>([])
-    useEffect(() => { activeItemsRef.current = activeItems }, [activeItems])
-
-    const advance = useCallback((forcedIdx?: number) => {
-        setIdx(prev => {
-            const len = activeItemsRef.current.length
-            if (len === 0) return 0
-            const next = forcedIdx !== undefined ? forcedIdx : (prev + 1) % len
-            console.log(`[Playback] Advance: ${prev} -> ${next}`)
-            return next
-        })
-        setReadyIdx(null)
-    }, [])
-
-    // Track state for transitions
-    useEffect(() => {
-        if (idx !== prevIdx) {
-            setIsSwapping(true)
-            const t = setTimeout(() => {
-                setIsSwapping(false)
-                setPrevIdx(idx)
-            }, 2500)
-            return () => clearTimeout(t)
-        }
-    }, [idx, prevIdx])
-
-    // Timing effect
-    useEffect(() => {
-        if (activeItems.length === 0) return
-        if (timerRef.current) clearTimeout(timerRef.current)
-
-        const safeIdx = idx >= activeItems.length ? 0 : idx
-        const item = activeItems[safeIdx]
-        const asset = assets.find(a => a.media_id === item?.media_id)
-        const type = asset?.type || item?.type || (item?.media_id ? 'video' : 'image')
-        const itemDur = (item?.duration_seconds ?? 0) > 0 ? item!.duration_seconds! : 0
-        const defaultDur = type === 'video' ? DEFAULT_VIDEO_DURATION : (type === 'web_url' ? DEFAULT_WEB_DURATION : DEFAULT_IMAGE_DURATION)
-        const effectiveDur = (itemDur || defaultDur) * 1000
-
-        // Safety Watchdog fallback
-        // in case the video tag or image timer fails.
-        // If isUDB is true, UnifiedDoubleBuffer handles its own logic and watchdog.
-        // We MUST NOT have a competing timer here or it will cause double-play/desync.
-        if (isUDB) {
-            // No timer here; UnifiedDoubleBuffer is autonomous.
-            // We set a 1-hour fallback as a catch-all if components somehow crash silently.
-            timerRef.current = setTimeout(() => {
-                console.warn('[Watchdog] UDB seems stuck for 1hr. Performing emergency advance.')
-                advance()
-            }, 3600000)
-        } else {
-            timerRef.current = setTimeout(advance, effectiveDur)
-        }
-
-        return () => { if (timerRef.current) clearTimeout(timerRef.current) }
-    }, [idx, activeItems, assets, advance, isUDB])
-
-    // Android Status Sync
-    useEffect(() => {
-        if (activeItems.length > 0) {
-            const safeIdx = idx >= activeItems.length ? 0 : idx
-            const currentItem = activeItems[safeIdx]
-            if (!currentItem) return
-            const label = currentItem.web_url || currentItem.media_id || 'unnamed'
-            const win = window as any
-            if (win.AndroidHealth?.setPlayerState) {
-                win.AndroidHealth.setPlayerState('playing', label)
-            }
-        }
-    }, [idx, activeItems])
-
-    function getYouTubeId(url: string) {
-        const m = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/|youtube\.com\/v\/)+([\w-]{11})/)
-        return m ? m[1] : null
-    }
-
-    function getEmbedUrl(url: string) {
-        const id = getYouTubeId(url)
-        if (id) {
-            const origin = encodeURIComponent(window.location.origin)
-            return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&loop=1&playlist=${id}&controls=0&rel=0&modestbranding=1&enablejsapi=1&origin=${origin}`
-        }
-        return url
-    }
-
-    function getTransitionStyles(isActive: boolean, transitionType?: string): React.CSSProperties {
-        // We are ready to move if the new item is ready OR we're not in a swapping state (startup)
-        const isTargetReady = readyIdx === idx || !isSwapping
-
-        const styles: React.CSSProperties = {
-            opacity: isActive ? (isTargetReady ? 1 : 0) : (isTargetReady ? 0 : 1),
-            transform: 'translate3d(0, 0, 0)',
-            transition: transitionType === 'none' ? 'none' : `all ${TRANSITION_DURATION}ms cubic-bezier(0.4, 0, 0.2, 1)`,
-            background: isNative ? 'transparent' : '#000',
-            willChange: 'transform, opacity',
-            backfaceVisibility: 'hidden',
-            pointerEvents: isActive ? 'auto' : 'none'
-        }
-
-        if (transitionType === 'slide') {
-            styles.transform = isActive
-                ? (isTargetReady ? 'translate3d(0, 0, 0)' : 'translate3d(100%, 0, 0)')
-                : (isTargetReady ? 'translate3d(-100%, 0, 0)' : 'translate3d(0, 0, 0)')
-        } else if (transitionType === 'zoom') {
-            styles.transform = isActive
-                ? (isTargetReady ? 'scale(1)' : 'scale(1.05)')
-                : (isTargetReady ? 'scale(0.95)' : 'scale(1)')
-        }
-
-        return styles
-    }
-
-    function renderItem(targetIdx: number, isActive: boolean) {
-        const item = activeItems[targetIdx]
-        if (!item) return null
-        const asset = assets.find(a => a.media_id === item.media_id)
-        const url = asset?.url || item.web_url
-        let type = asset?.type || item.type || (item.media_id ? 'video' : 'image')
-
-        // CORTEX: Normalize MIME types
-        if (type.startsWith('video/')) type = 'video'
-        else if (type.startsWith('image/')) type = 'image'
-
-        if (url) {
-            const ext = url.split('?')[0].split('.').pop()?.toLowerCase()
-            if (['mp4', 'webm', 'mov', 'ogg'].includes(ext || '')) type = 'video'
-            if (['ppt', 'pptx'].includes(ext || '')) type = 'image' // normalize ppt as image for simple render if needed
-            if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext || '')) type = 'image'
-        }
-
-        const visible = isActive || (isSwapping && targetIdx === prevIdx)
-
-        // Fetch transition from item settings or default to slide
-        const transitionType = (item as any)?.settings?.transition || 'slide'
-
-        return (
-            <div key={`${item.playlist_item_id}-${targetIdx}`} style={{
-                position: 'absolute',
-                top: 0, left: 0, width: '100%', height: '100%',
-                zIndex: isActive ? 10 : 5,
-                background: isNative ? 'transparent' : '#000',
-                margin: 0, padding: 0, overflow: 'hidden',
-                visibility: visible ? 'visible' : 'hidden',
-                ...getTransitionStyles(isActive, transitionType),
-                willChange: 'transform, opacity'
-            }}>
-                {type === 'image' && url && (
-                    <img
-                        src={url}
-                        style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }}
-                        onLoad={() => setTimeout(() => setReadyIdx(targetIdx), READY_TIMING)}
-                    />
-                )}
-                {type === 'video' && url && (
-                    <VideoElement
-                        url={url}
-                        isReady={isActive}
-                        onReady={() => {
-                            setTimeout(() => setReadyIdx(targetIdx), READY_TIMING)
-                            if (consecutiveErrorsRef) consecutiveErrorsRef.current = 0
-                        }}
-                        onEnded={advance}
-                        onError={(msg) => {
-                            if (consecutiveErrorsRef) consecutiveErrorsRef.current += 1
-                            if (lastMediaErrorRef) lastMediaErrorRef.current = msg
-                        }}
-                    />
-                )}
-                {(type === 'web_url' || type === 'html') && url && (
-                    <iframe 
-                        src={getEmbedUrl(url)} 
-                        style={{ width: '100%', height: '100%', border: 'none', display: 'block' }} 
-                        allow="autoplay" 
-                        onLoad={() => setTimeout(() => setReadyIdx(targetIdx), READY_TIMING)}
-                    />
-                )}
-                {type === 'presentation' && url && (
-                    <iframe
-                        src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`}
-                        style={{ width: '100%', height: '100%', border: 'none', background: '#fff', display: 'block' }}
-                        onLoad={() => setTimeout(() => setReadyIdx(targetIdx), READY_TIMING)}
-                    />
-                )}
-            </div>
-        )
-    }
-
-    if (activeItems.length === 0) return (
-        <div style={{
-            position: 'absolute',
-            top: `${region.y}%`, left: `${region.x}%`,
-            width: `${region.width}%`, height: `${region.height}%`,
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            background: '#020617', overflow: 'hidden'
-        }}>
-            <AmbientOrbs />
-            <div style={{ zIndex: 1, textAlign: 'center', opacity: 0.6 }}>
-                <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>🌙</div>
-                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Awaiting Stream</div>
-                <div style={{ fontSize: '0.65rem', color: '#475569', marginTop: '0.5rem' }}>Region: {region.id}</div>
-            </div>
-        </div>
-    )
-
-    return (
-        <div style={{
-            position: 'absolute',
-            top: `${region.y}%`, left: `${region.x}%`,
-            width: `${region.width}%`, height: `${region.height}%`,
-            background: isNative ? 'transparent' : '#000',
-            overflow: 'hidden',
-            margin: 0, padding: 0,
-            transform: 'translate3d(0, 0, 0)', // Create containment layer
-            backfaceVisibility: 'hidden',
-            transformStyle: 'preserve-3d'
-        }}>
-            {/* UnifiedDoubleBuffer handles video+image playlists natively; web_url/mixed uses legacy path */}
-            {isUDB ? (
-                <UnifiedDoubleBuffer
-                    key={activeItems.map(i => i.playlist_item_id).join(',')}
-                    items={activeItems}
-                    assets={assets}
-                    idx={idx}
-                    onAdvance={(newIdx) => advance(newIdx)}
-                    effect={(activeItems[idx] as any)?.settings?.transition || 'fade'}
-                    isNative={isNative}
-                    showDebug={showDebug}
-                    consecutiveErrorsRef={consecutiveErrorsRef}
-                    lastMediaErrorRef={lastMediaErrorRef}
-                />
-            ) : (
-                <>
-                    {/* Legacy path: web_url / iFrame / mixed playlists */}
-                    {prevIdx !== null && prevIdx !== idx && renderItem(prevIdx, false)}
-                    {renderItem(idx, true)}
-                </>
-            )}
-
-            {/* Preload next item if it's an image */}
-            {(() => {
-                const nextItem = activeItems[(idx + 1) % activeItems.length]
-                const nextAsset = assets.find(a => a.media_id === nextItem?.media_id)
-                const nextUrl = nextAsset?.url || nextItem?.web_url
-                const nextType = nextAsset?.type || nextItem?.type || (nextItem?.media_id ? 'video' : 'image')
-                if (nextType === 'image' && nextUrl && !isUDB) {
-                    return <img src={nextUrl} alt="" style={{ display: 'none' }} />
-                }
-                return null
-            })()}
-        </div>
-    )
+    if (item.type === 'image') return <img src={url} style={{ width: '100%', height: '100%', objectFit: 'contain' }} alt="" />
+    if (item.type === 'video') return <video ref={videoRef} src={url} muted playsInline onEnded={onEnded} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+    if (item.type === 'web_url' || item.type === 'html') return <iframe src={url} style={{ width: '100%', height: '100%', border: 'none' }} title="web" />
+    return null
 }
 
-// ─── UI States ────────────────────────────────────────────────────────────────
-
-// ─── UI Components ──────────────────────────────────────────────────────────
-
-function GlassCard({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
-    return (
-        <div className="glass-card" style={{ padding: '2.5rem', ...style }}>
-            {children}
-        </div>
-    )
-}
-
-function Logo({ size = 'large' }: { size?: 'small' | 'large' }) {
-    const isSmall = size === 'small'
-    return (
-        <div style={{
-            display: 'flex', flexDirection: 'column', alignItems: 'center',
-            gap: isSmall ? '0.25rem' : '0.5rem',
-            animation: 'slideIn 0.8s cubic-bezier(0.16, 1, 0.3, 1)'
-        }}>
-            <div style={{
-                width: isSmall ? 32 : 64, height: isSmall ? 32 : 64,
-                background: 'linear-gradient(135deg, #00daf3, #007e8c)',
-                borderRadius: isSmall ? 8 : 16,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 0 20px rgba(0, 218, 243, 0.3)',
-                position: 'relative', overflow: 'hidden'
-            }}>
-                <Tv2 size={isSmall ? 20 : 36} color="white" />
+const LoadingState = ({ progress }: { progress: any }) => (
+    <div style={{ position: 'fixed', inset: 0, background: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <AmbientOrbs />
+        <div style={{ zIndex: 1, textAlign: 'center' }}>
+            <Logo />
+            <div style={{ marginTop: '3rem', width: 240, height: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 10 }}>
                 <div style={{
-                    position: 'absolute', top: '-50%', left: '-50%', width: '200%', height: '200%',
-                    background: 'linear-gradient(45deg, transparent, rgba(255,255,255,0.2), transparent)',
-                    transform: 'rotate(45deg)', animation: 'shimmer 3s infinite'
+                    width: progress ? `${(progress.current / progress.total) * 100}%` : '30%',
+                    height: '100%', background: 'linear-gradient(to right, #00daf3, #0070f3)', transition: 'width 0.4s'
                 }} />
             </div>
-            <div style={{
-                fontSize: isSmall ? '0.9rem' : '1.5rem',
-                fontWeight: 900, letterSpacing: '-0.02em',
-                background: 'linear-gradient(to bottom, #fff, #94a3b8)',
-                WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
-            }}>
-                OMNIPUSH<span style={{ color: '#00daf3', WebkitTextFillColor: '#00daf3' }}>.</span>
-            </div>
-            {!isSmall && (
-                <div style={{ fontSize: '0.6rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.4em', fontWeight: 700 }}>
-                    Intelligent Signage
-                </div>
-            )}
         </div>
-    )
-}
+    </div>
+)
 
-function AmbientOrbs() {
-    return (
-        <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 0 }}>
-            {/* Top Right Cyan */}
-            <div style={{
-                position: 'absolute', top: '-10%', right: '-10%',
-                width: '60vw', height: '60vw', background: 'radial-gradient(circle, rgba(0, 218, 243, 0.08) 0%, transparent 70%)',
-                animation: 'float 12s infinite ease-in-out'
-            }} />
-            {/* Bottom Left Blue */}
-            <div style={{
-                position: 'absolute', bottom: '-15%', left: '-10%',
-                width: '70vw', height: '70vw', background: 'radial-gradient(circle, rgba(0, 126, 140, 0.06) 0%, transparent 70%)',
-                animation: 'float 15s infinite ease-in-out reverse'
-            }} />
-        </div>
-    )
-}
-
-function LoadingState({ progress }: { progress?: { current: number, total: number } | null }) {
-    const percent = progress ? Math.round((progress.current / progress.total) * 100) : 0;
-    return (
-        <div style={{ position: 'fixed', inset: 0, background: '#020617', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 99999 }}>
-            <AmbientOrbs />
-            <div style={{ zIndex: 1 }}>
-                <Logo />
-                <div style={{ marginTop: '3rem', width: '280px', textAlign: 'center' }}>
-                    {progress ? (
-                        <>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem', fontSize: '0.75rem', fontWeight: 600 }}>
-                                <span style={{ color: '#94a3b8' }}>Syncing Assets</span>
-                                <span style={{ color: '#00daf3' }}>{percent}%</span>
-                            </div>
-                            <div style={{ height: 6, background: 'rgba(255,255,255,0.05)', borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                <div style={{ width: `${percent}%`, height: '100%', background: 'linear-gradient(90deg, #00daf3, #007e8c)', transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)', boxShadow: '0 0 10px #00daf3' }} />
-                            </div>
-                            <div style={{ marginTop: '0.75rem', color: '#475569', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                                File {progress.current} of {progress.total}
-                            </div>
-                        </>
-                    ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
-                            <div style={{ width: 40, height: 40, border: '3px solid rgba(0, 218, 243, 0.1)', borderTopColor: '#00daf3', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                            <div style={{ fontSize: '0.75rem', color: '#64748b', letterSpacing: '0.05em' }}>Establishing Network Link...</div>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
-    )
-}
-
-function SecretPrompt({ device_code, onSubmit }: { device_code: string; onSubmit: (s: string) => void }) {
+const SecretPrompt = ({ device_code, onSubmit }: { device_code: string; onSubmit: (s: string) => void }) => {
     const [val, setVal] = useState('')
     return (
         <div style={{ position: 'fixed', inset: 0, background: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <AmbientOrbs />
-            <div style={{ zIndex: 1, textAlign: 'center', width: '100%', maxWidth: 450, padding: '2rem' }}>
+            <div style={{ zIndex: 1, textAlign: 'center', padding: '2rem' }}>
                 <Logo />
-                <div style={{ marginTop: '2.5rem' }}>
-                    <GlassCard>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
-                            <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(248, 113, 113, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f87171' }}>
-                                <Lock size={20} />
-                            </div>
-                            <div style={{ textAlign: 'left' }}>
-                                <div style={{ fontSize: '1.125rem', fontWeight: 700, color: '#f1f5f9' }}>Access Restricted</div>
-                                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Provisioning {device_code}</div>
-                            </div>
-                        </div>
-                        
-                        <div style={{ position: 'relative', marginBottom: '1rem' }}>
-                            <input
-                                type="password"
-                                value={val}
-                                onChange={e => setVal(e.target.value)}
-                                onKeyDown={e => e.key === 'Enter' && val && onSubmit(val)}
-                                placeholder="Device Access Token"
-                                style={{
-                                    width: '100%', padding: '1rem 1.25rem', borderRadius: 12,
-                                    background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)',
-                                    color: '#fff', fontSize: '1rem', fontFamily: 'monospace',
-                                    outline: 'none', transition: 'border-color 0.2s',
-                                    boxSizing: 'border-box'
-                                }}
-                                autoFocus
-                            />
-                        </div>
-
-                        <button
-                            onClick={() => val && onSubmit(val)}
-                            disabled={!val}
-                            style={{
-                                width: '100%', padding: '1rem', borderRadius: 12,
-                                background: val ? 'linear-gradient(135deg, #00daf3, #007e8c)' : 'rgba(255,255,255,0.05)',
-                                color: val ? '#000' : '#475569', fontWeight: 800, border: 'none',
-                                cursor: val ? 'pointer' : 'not-allowed', transition: 'all 0.2s',
-                                fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em'
-                            }}
-                        >
-                            Authorize Device
-                        </button>
-                    </GlassCard>
-                </div>
-            </div>
-            <BottomBar device_code={device_code} />
-        </div>
-    )
-}
-
-function ErrorState({ device_code, msg, onRetry }: { device_code: string; msg: string; onRetry: () => void }) {
-    return (
-        <div style={{ position: 'fixed', inset: 0, background: '#09090b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ position: 'absolute', inset: 0, opacity: 0.1, background: 'radial-gradient(circle at center, #ef4444 0%, transparent 70%)' }} />
-            <div style={{ zIndex: 1, textAlign: 'center', maxWidth: 480, padding: '2rem' }}>
-                <Logo />
-                <div style={{ marginTop: '2.5rem' }}>
-                    <div className="glass-card" style={{ padding: '2.5rem', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-                        <div style={{ color: '#ef4444', marginBottom: '1.5rem' }}>
-                            <WifiOff size={48} strokeWidth={1.5} style={{ opacity: 0.8 }} />
-                        </div>
-                        <h2 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.75rem', background: 'linear-gradient(to right, #fff, #ef4444)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                            Network Interrupted
-                        </h2>
-                        <div style={{ padding: '1rem', background: 'rgba(239, 68, 68, 0.05)', borderRadius: 12, marginBottom: '2rem', border: '1px solid rgba(239, 68, 68, 0.1)' }}>
-                            <div style={{ fontSize: '0.85rem', color: '#94a3b8', lineHeight: 1.6 }}>{msg}</div>
-                        </div>
-                        
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                            <button
-                                onClick={onRetry}
-                                style={{
-                                    padding: '1rem', borderRadius: 12, background: '#ef4444', color: 'white',
-                                    fontWeight: 700, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem'
-                                }}
-                            >
-                                <RefreshCw size={18} />
-                                Reconnect Pipeline
-                            </button>
-                            <div style={{ fontSize: '0.7rem', color: '#52525b', marginTop: '1rem' }}>
-                                Device Hardware ID: <span style={{ fontFamily: 'monospace' }}>{device_code}</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <BottomBar device_code={device_code} />
-        </div>
-    )
-}
-
-function StatusToast({ error, syncProgress }: { error: string | null; syncProgress: any }) {
-    if (!error && !syncProgress) return null
-    return (
-        <div style={{
-            position: 'fixed', top: '2rem', right: '2rem', zIndex: 100000,
-            display: 'flex', flexDirection: 'column', gap: '0.75rem',
-            pointerEvents: 'none'
-        }}>
-            {error && (
-                <div style={{
-                    padding: '0.75rem 1.25rem', borderRadius: 12, background: 'rgba(239, 68, 68, 0.9)',
-                    backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.1)',
-                    color: 'white', display: 'flex', alignItems: 'center', gap: '0.75rem',
-                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)',
-                    animation: 'slideIn 0.3s ease-out'
-                }}>
-                    < WifiOff size={16} />
-                    <div style={{ fontSize: '0.75rem', fontWeight: 600 }}>Sync Interrupted</div>
-                </div>
-            )}
-            {syncProgress && (
-                <div style={{
-                    padding: '0.75rem 1.25rem', borderRadius: 12, background: 'rgba(15, 23, 42, 0.8)',
-                    backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.1)',
-                    color: 'white', display: 'flex', alignItems: 'center', gap: '0.75rem',
-                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)',
-                    animation: 'slideIn 0.3s ease-out'
-                }}>
-                    <RefreshCw size={16} className="spin" style={{ color: '#00daf3' }} />
-                    <div style={{ fontSize: '0.75rem', fontWeight: 600 }}>Syncing {syncProgress.current}/{syncProgress.total}</div>
-                </div>
-            )}
-        </div>
-    )
-}
-
-function BottomBar({ device_code, variant = 'dark' }: { device_code: string, variant?: 'dark' | 'light' }) {
-    return (
-        <div style={{
-            position: 'fixed', bottom: 0, left: 0, right: 0, padding: '2rem 3rem',
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            zIndex: 100, pointerEvents: 'none'
-        }}>
-            <LiveClock />
-            <div style={{ 
-                padding: '0.5rem 1rem', borderRadius: 999, background: 'rgba(255,255,255,0.03)', 
-                border: '1px solid rgba(255,255,255,0.05)', color: '#475569', fontSize: '0.7rem', 
-                fontFamily: 'monospace', letterSpacing: '0.05em' 
-            }}>
-                ID: {device_code}
+                <GlassCard style={{ marginTop: '2.5rem' }}>
+                    <input type="password" value={val} onChange={e => setVal(e.target.value)} placeholder="Secret Key" style={{ width: '100%', padding: '1rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, color: 'white', marginBottom: '1rem' }} />
+                    <button onClick={() => onSubmit(val)} style={{ width: '100%', padding: '1rem', background: 'white', color: 'black', borderRadius: 12, fontWeight: 700 }}>Authorize</button>
+                </GlassCard>
             </div>
         </div>
     )
 }
 
-function ErrorState({ device_code, msg, onRetry }: { device_code: string; msg: string; onRetry: () => void }) {
-    // Auto-retry every 15 seconds so signage players don't stay dead forever after a short WiFi drop
-    useEffect(() => {
-        const t = setTimeout(() => {
-            onRetry()
-        }, 15000)
-        return () => clearTimeout(t)
-    }, [onRetry])
-
-    return (
-        <div style={bgStyle}>
-            <AmbientOrbs />
-            <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem' }}>
-                <Logo />
-                <div style={{ marginTop: '2.5rem', background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 16, padding: '1.5rem 2rem', maxWidth: 450 }}>
-                    <WifiOff size={20} color="#ef4444" style={{ margin: '0 auto 0.75rem' }} />
-                    <div style={{ fontWeight: 600, color: '#ef4444', marginBottom: '0.5rem' }}>Connection Failed</div>
-                    <div style={{ fontSize: '0.7rem', color: '#64748b', fontFamily: 'monospace', marginBottom: '1rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem', borderRadius: 8 }}>
-                        DEVICE_CODE: {device_code}
-                    </div>
-                    <div style={{ color: '#94a3b8', fontSize: '0.8125rem', marginBottom: '1.25rem', lineHeight: 1.6 }}>
-                        {msg}
-                    </div>
-                    <button
-                        onClick={onRetry}
-                        style={{
-                            display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center',
-                            width: '100%', padding: '0.75rem', borderRadius: 8,
-                            background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)',
-                            color: '#f87171', fontWeight: 600, cursor: 'pointer', fontSize: '0.875rem',
-                        }}
-                    >
-                        <RefreshCw size={14} /> Retry
-                    </button>
-                </div>
-            </div>
-            <BottomBar device_code={device_code} />
-        </div >
-    )
-}
-
-// ─── Shared UI helpers ───────────────────────────────────────────────────────
-
-const bgStyle: React.CSSProperties = {
-    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-    background: 'linear-gradient(135deg, #020617 0%, #0f172a 60%, #450a0a 100%)',
-    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-    color: 'white', overflow: 'hidden',
-}
-
-function AmbientOrbs() {
-    return (
-        <>
-            <div style={{ position: 'absolute', top: '15%', left: '10%', width: 500, height: 500, borderRadius: '50%', background: 'rgba(239, 68, 68, 0.03)', filter: 'blur(60px)', pointerEvents: 'none' }} />
-            <div style={{ position: 'absolute', bottom: '10%', right: '10%', width: 400, height: 400, borderRadius: '50%', background: 'rgba(220, 38, 38, 0.02)', filter: 'blur(40px)', pointerEvents: 'none' }} />
-        </>
-    )
-}
-
-function Logo() {
-    const [logoUrl, setLogoUrl] = useState<string | null>(null)
-
-    useEffect(() => {
-        supabase
-            .from('tenants')
-            .select('settings')
-            .eq('id', DEFAULT_TENANT_ID)
-            .single()
-            .then(({ data }) => {
-                if (data?.settings?.logo_url) {
-                    setLogoUrl(data.settings.logo_url)
-                }
-            })
-    }, [])
-
-    if (logoUrl) {
-        return (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' }}>
-                <div style={{
-                    height: 52,
-                    padding: '8px',
-                    background: 'white',
-                    borderRadius: 12,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
-                }}>
-                    <img src={logoUrl} alt="Logo" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
-                </div>
-            </div>
-        )
-    }
-
-    return (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' }}>
-            <div style={{ width: 48, height: 48, borderRadius: 14, background: 'linear-gradient(135deg, var(--color-brand-500), var(--color-brand-600))', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 32px rgba(239, 68, 68, 0.5)' }}>
-                <Tv2 size={24} color="white" />
-            </div>
-            <div style={{ textAlign: 'left' }}>
-                <div style={{ fontWeight: 800, fontSize: '1.25rem', color: '#f1f5f9' }}>OmniPush</div>
-                <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>Retail Display System</div>
-            </div>
+const ErrorState = ({ dc, msg, onRetry }: { dc: string; msg: string; onRetry: () => void }) => (
+    <div style={{ position: 'fixed', inset: 0, background: '#09090b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ zIndex: 1, textAlign: 'center' }}>
+            <Logo />
+            <GlassCard style={{ marginTop: '2.5rem', border: '1px solid #ef4444' }}>
+                <WifiOff size={48} color="#ef4444" />
+                <h2 style={{ color: 'white', marginTop: '1rem' }}>Network Interrupted</h2>
+                <div style={{ color: '#94a3b8', fontSize: '0.8rem', margin: '1rem 0' }}>{msg}</div>
+                <button onClick={onRetry} style={{ padding: '1rem 2rem', background: '#ef4444', color: 'white', borderRadius: 12, border: 'none' }}>Reconnect</button>
+            </GlassCard>
         </div>
-    )
-}
-
-function BottomBar({ device_code, version, offline }: { device_code: string; version?: string | null; offline?: boolean }) {
-    return (
-        <div style={{
-            position: 'absolute', bottom: 0, left: 0, right: 0,
-            padding: '0.625rem 1.25rem',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)',
-            borderTop: '1px solid rgba(255,255,255,0.08)',
-            zIndex: 10000,
-        }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.25)' }}>OmniPush Digital Services</span>
-                <span style={{ fontFamily: 'monospace', fontSize: '0.7rem', color: '#475569' }}>{device_code}</span>
-                {version && <span style={{ fontSize: '0.7rem', color: '#ef4444' }}>{version}</span>}
-            </div>
-            <LiveClock />
-        </div>
-    )
-}
+    </div>
+)
 
 // ─── Main PlayerPage ──────────────────────────────────────────────────────────
 
-type Phase = 'loading' | 'pairing' | 'secret' | 'playing' | 'standby' | 'error'
-
-const MAX_LOGS = 50
-const consoleLogs: string[] = []
-const originalLog = console.log
-const originalError = console.error
-const originalWarn = console.warn
-
-console.log = (...args) => {
-    const msg = args.map(a => {
-        try {
-            if (a instanceof HTMLElement) return `[${a.tagName} Element]`;
-            return typeof a === 'object' ? JSON.stringify(a) : String(a);
-        } catch (e) {
-            return String(a);
-        }
-    }).join(' ')
-    const log = `[${new Date().toLocaleTimeString()}] ${msg}`
-    consoleLogs.push(log)
-    if (consoleLogs.length > MAX_LOGS) consoleLogs.shift()
-    
-    // NEW: Update remote logs state for debug overlay
-    if (setRemoteLogsRef.current) {
-        setRemoteLogsRef.current((prev: any[]) => [{ time: new Date().toLocaleTimeString(), msg, type: 'info' }, ...prev].slice(0, 5))
-    }
-
-    originalLog.apply(console, args)
-
-    const win = window as any
-    if (win.AndroidHealth?.logLine) {
-        win.AndroidHealth.logLine(msg)
-    }
-}
-console.error = (...args) => {
-    const msg = args.map(a => {
-        try {
-            if (a instanceof HTMLElement) return `[${a.tagName} Element]`;
-            if (a instanceof Error) return `[${a.name}] ${a.message}${a.stack ? '\n' + a.stack : ''}`;
-            return typeof a === 'object' ? JSON.stringify(a) : String(a);
-        } catch (e) {
-            return String(a);
-        }
-    }).join(' ')
-
-    // STRICT RULE: Silence non-critical playback interruption errors from dashboard
-    if (msg.includes('interrupted by a call to pause') || msg.includes('goo.gl/LdLk22')) {
-        originalError.apply(console, args) // Log to local devtools only
-        return
-    }
-
-    const log = `[${new Date().toLocaleTimeString()}] ERROR: ${msg}`
-    consoleLogs.push(log)
-    if (consoleLogs.length > MAX_LOGS) consoleLogs.shift()
-
-    // NEW: Update remote logs state for debug overlay
-    if (setRemoteLogsRef.current) {
-        setRemoteLogsRef.current((prev: any[]) => [{ time: new Date().toLocaleTimeString(), msg, type: 'error' }, ...prev].slice(0, 5))
-    }
-
-    originalError.apply(console, args)
-
-    const win = window as any
-    if (win.AndroidHealth?.reportError) {
-        win.AndroidHealth.reportError(msg)
-    }
-}
-console.warn = (...args) => {
-    const msg = args.map(a => {
-        try {
-            if (a instanceof HTMLElement) return `[${a.tagName} Element]`;
-            return typeof a === 'object' ? JSON.stringify(a) : String(a);
-        } catch (e) {
-            return String(a);
-        }
-    }).join(' ')
-    const log = `[${new Date().toLocaleTimeString()}] WARN: ${msg}`
-    consoleLogs.push(log)
-    if (consoleLogs.length > MAX_LOGS) consoleLogs.shift()
-    originalWarn.apply(console, args)
-
-    const win = window as any
-    if (win.AndroidHealth?.logLine) {
-        win.AndroidHealth.logLine(`⚠️ WARN: ${msg}`)
-    }
-}
-
-// CORTEX: Bridge for global console hijacking to React state
-const setRemoteLogsRef = { current: null as any };
+type Phase = 'loading' | 'pairing' | 'secret' | 'playing' | 'error'
 
 export default function PlayerPage() {
     const { device_code } = useParams<{ device_code: string }>()
-    const dc = (device_code || '').trim()
-
-    // Dynamic Viewport Sync for Browser and WebViews
-    useEffect(() => {
-        const syncViewport = () => {
-            let meta = document.querySelector('meta[name="viewport"]')
-            if (!meta) {
-                meta = document.createElement('meta')
-                meta.setAttribute('name', 'viewport')
-                document.head.appendChild(meta)
-            }
-            meta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no, viewport-fit=cover')
-
-            // Force browser to visible area only
-            document.documentElement.style.height = '100vh';
-            document.body.style.height = '100vh';
-        }
-
-        syncViewport()
-        window.addEventListener('resize', syncViewport)
-        return () => window.removeEventListener('resize', syncViewport)
-    }, [])
-
-    const mountTimeRef = useRef(Date.now())
-
-    // ─── BOOT-CRITICAL: DO NOT CHANGE 90000 ───────────────────────────────────
-    // This watchdog MUST be 90s minimum. The bootFetch loop below runs 3 attempts,
-    // each with a 25s callEdgeFn timeout + internal backoff (1s, 2s).
-    // Worst case boot time: 0.5 + 25 + 1 + 25 + 2 + 25 = ~78.5s before cache loads.
-    // If this timeout is < 90s, it fires mid-loop and reloads before offline cache
-    // activates — causing an infinite reload cycle on boxes without network at boot.
-    // DO NOT reduce this value. DO NOT remove this effect.
-    // ─────────────────────────────────────────────────────────────────────────────
-    useEffect(() => {
-        const t = setTimeout(() => {
-            if (phaseRef.current === 'loading') {
-                console.warn('[Player] 90s boot timeout. Force reloading...')
-                window.location.reload()
-            }
-        }, 90000)
-        return () => clearTimeout(t)
-    }, [])
+    const dc = device_code || ''
 
     const [phase, setPhase] = useState<Phase>('loading')
-    const phaseRef = useRef<Phase>('loading')
-    useEffect(() => { phaseRef.current = phase }, [phase])
-    const [secret, setSecret] = useState<string>('')
     const [manifest, setManifest] = useState<Manifest | null>(null)
-    const [offline, setOffline] = useState(false)
-    const [errorMsg, setErrorMsg] = useState('')
-    const [version, setVersion] = useState<string | null>(null)
-    const [inferredHdmi, setInferredHdmi] = useState<'connected' | 'disconnected' | 'unknown'>('unknown')
     const [syncProgress, setSyncProgress] = useState<{ current: number; total: number } | null>(null)
-    const versionRef = useRef(version)
-    const [showDebugOverlay, setShowDebugOverlay] = useState(false)
-    const [telemetry, setTelemetry] = useState<any>(null)
-    const [lastSyncTime, setLastSyncTime] = useState(new Date().toLocaleTimeString())
-    const [remoteLogs, setRemoteLogs] = useState<{ time: string, msg: string, type: 'info' | 'error' }[]>([])
-    const manifestTimerRef = useRef<any>(null)
-    const hbTimerRef = useRef<any>(null)
-    const failCountRef = useRef(0)
-    const lastErrorRef = useRef<string | null>(null)
-    const isTransitioningRef = useRef(false)
-    const bootStartedRef = useRef(false)
+    const [offline, setOffline] = useState(false)
+    const [showDebug, setShowDebug] = useState(false)
+    
+    const secretRef = useRef('')
+    const versionRef = useRef<string | null>(null)
     const consecutiveErrorsRef = useRef(0)
     const lastMediaErrorRef = useRef<string | null>(null)
-    const ackCommandIdRef = useRef<string | null>(null)
-    const isRenderingRef = useRef(true)
-    const isSyncingRef = useRef(false) // Guard: prevents concurrent asset syncs during overlapping polls
 
-    // Bridge state to global ref for console hijacking
-    useEffect(() => {
-        setRemoteLogsRef.current = setRemoteLogs;
-        return () => { setRemoteLogsRef.current = null; }
-    }, [])
-
-    // Detect Android native video bridge (APK exposing AndroidHealth JS interface)
-    // CORTEX: Robust check must include userAgent to prevent Chrome spoofing/mockers
-    const isAndroidNative = !!(window as any).AndroidHealth && navigator.userAgent.includes('OmniPush')
-
-    useEffect(() => {
-        // Global hook for child components to report transition states
-        (window as any).setGlobalTransition = (v: boolean) => {
-            isTransitioningRef.current = v
-        }
-
-        // Standard HDMI Detection Fallback (Amlogic/Rockchip boxes remove audio output on pull)
-        const checkHardware = async () => {
-            try {
-                const devices = await navigator.mediaDevices.enumerateDevices();
-                const hasOutput = devices.some(d => d.kind === 'audiooutput');
-                setInferredHdmi(hasOutput ? 'connected' : 'disconnected');
-            } catch {
-                setInferredHdmi('unknown');
-            }
-        };
-
-        checkHardware();
-        if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
-            navigator.mediaDevices.addEventListener('devicechange', checkHardware);
-            return () => navigator.mediaDevices.removeEventListener('devicechange', checkHardware);
-        }
-    }, [])
-
-    useEffect(() => {
-        versionRef.current = version
-    }, [version])
-
-    const [pairingPin, setPairingPin] = useState('')
-    const [showDiagnostics, setShowDiagnostics] = useState(false)
-    const secretRef = useRef(secret)
-    useEffect(() => { secretRef.current = secret }, [secret])
-
-    // Android Status Sync
-    const updateAndroidStatus = useCallback((p: string, content?: string | null) => {
-        const win = window as any
-        if (win.AndroidHealth?.setPlayerState) {
-            win.AndroidHealth.setPlayerState(p, content || null)
-        }
-    }, [])
-
-    useEffect(() => {
-        updateAndroidStatus(phase)
-    }, [phase, updateAndroidStatus])
-
-    // ── Native Mode: Make WebView transparent so native SurfaceView video shows through ──
-    // When the APK sets webView.setBackgroundColor(Color.TRANSPARENT), the HTML layer
-    // must also have transparent backgrounds or the native video remains occluded.
-    useEffect(() => {
-        if (!isAndroidNative || phase !== 'playing') return
-        document.documentElement.style.background = 'transparent'
-        document.body.style.background = 'transparent'
-        const root = document.getElementById('root')
-        if (root) root.style.background = 'transparent'
-        return () => {
-            document.documentElement.style.background = ''
-            document.body.style.background = ''
-            if (root) root.style.background = ''
-        }
-    }, [isAndroidNative, phase])
-
-    // ── Hidden Admin Panel (5-tap top-right corner) ──
-    const ADMIN_PIN = '2580'
-    const tapCountRef = useRef(0)
-    const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-    const [showPinPrompt, setShowPinPrompt] = useState(false)
-    const [showAdminPanel, setShowAdminPanel] = useState(false)
-    const [showOfflineIndicator, setShowOfflineIndicator] = useState(false)
-    const [pinInput, setPinInput] = useState('')
-    const [pinError, setPinError] = useState(false)
-    const [showDebugManifest, setShowDebugManifest] = useState(false)
-    const [showLogs, setShowLogs] = useState(false)
-    const [debugJSON, setDebugJSON] = useState('')
-
-    // Reset indicator on offline status change
-    useEffect(() => {
-        if (offline) {
-            setShowOfflineIndicator(true)
-            const t = setTimeout(() => setShowOfflineIndicator(false), 10000)
-            return () => clearTimeout(t)
-        } else {
-            setShowOfflineIndicator(false)
-        }
-    }, [offline])
-
-    const handleCornerTap = () => {
-        tapCountRef.current += 1
-        console.log(`[Admin] Corner Tap ${tapCountRef.current}/5`)
-        if (tapTimerRef.current) clearTimeout(tapTimerRef.current)
-        // Reset counter after 3s of inactivity
-        tapTimerRef.current = setTimeout(() => { tapCountRef.current = 0 }, 3000)
-        if (tapCountRef.current >= 5) {
-            console.log(`[Admin] Opening PIN Prompt`)
-            tapCountRef.current = 0
-            setShowPinPrompt(true)
-            setPinInput('')
-            setPinError(false)
-        }
-    }
-
-    const debugTapCountRef = useRef(0)
-    const debugTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-    const handleDebugCornerTap = () => {
-        debugTapCountRef.current += 1
-        console.log(`[Debug] Corner Tap ${debugTapCountRef.current}/3`)
-        if (debugTapTimerRef.current) clearTimeout(debugTapTimerRef.current)
-        debugTapTimerRef.current = setTimeout(() => { debugTapCountRef.current = 0 }, 2000)
-        if (debugTapCountRef.current >= 3) {
-            console.log(`[Debug] Toggling Debug Overlay`)
-            debugTapCountRef.current = 0
-            setShowDebugOverlay(prev => !prev)
-        }
-    }
-
-    const handlePinSubmit = (pin: string) => {
-        if (pin === ADMIN_PIN) {
-            setShowPinPrompt(false)
-            setShowAdminPanel(true)
-            setPinError(false)
-        } else {
-            setPinError(true)
-            setPinInput('')
-        }
-    }
-
-    // Keyboard shortcut for diagnostics
-    useEffect(() => {
-        const handleKeys = (e: KeyboardEvent) => {
-            if (e.shiftKey && e.key === 'D') setShowDiagnostics(prev => !prev)
-            if (e.shiftKey && e.key === 'X') setShowDebugOverlay(prev => !prev)
-        }
-        window.addEventListener('keydown', handleKeys)
-        return () => window.removeEventListener('keydown', handleKeys)
-    }, [])
-
-    // ── Command Processing ──
-    const captureBrowserScreenshot = useCallback(async (commandId: string) => {
+    const fetchManifest = useCallback(async (sec: string) => {
         try {
-            console.log(`[Player] Generating browser screenshot for command ${commandId}...`)
-            const canvas = await html2canvas(document.body, {
-                useCORS: true,
-                scale: 0.5,
-                logging: false,
-                backgroundColor: '#000000',
-                ignoreElements: (el) => el.id === 'admin-overlay' || el.id === 'pin-prompt'
-            })
-
-            const blob: Blob | null = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8))
-            if (!blob) throw new Error('Failed to create blob')
-
-            const fileName = `screenshots/${dc}_${commandId}.jpg`
-            const { error } = await supabase.storage
-                .from('device-screenshots')
-                .upload(fileName, blob, { contentType: 'image/jpeg', upsert: true })
-
-            if (error) throw error
-            console.log(`[Player] Browser screenshot uploaded: ${fileName}`)
-        } catch (err: any) {
-            console.error('[Player] Browser screenshot failed:', err.message)
-        }
-    }, [dc])
-
-    const processIncomingCommands = useCallback(async (commands: any[]) => {
-        for (const cmd of commands) {
-            console.log(`[Player] Processing command: ${cmd.command} (${cmd.id})`)
-
-            try {
-                // 1. Mark as EXECUTED immediately in Supabase
-                // We do both: Direct DB update AND heartbeat ACK in next cycle for redundancy on Amlogic
-                await supabase.from('device_commands').update({
-                    status: 'EXECUTED',
-                    executed_at: new Date().toISOString()
-                }).eq('id', cmd.id)
-
-                // Store for heartbeat ACK
-                ackCommandIdRef.current = cmd.id
-
-                // 2. Perform the actual logic
-                const cmdStr = (cmd.command || '').toUpperCase()
-                
-                if (cmdStr === 'REBOOT' || cmdStr === 'RELOAD' || cmdStr === 'REFRESH') {
-                    console.warn('[Player] Remote Reload/Reboot triggered. Delaying for DB update...')
-                    // GIVE THE NETWORK STACK 2 SECONDS TO FINISH THE DB UPDATE ABOVE
-                    await new Promise(r => setTimeout(r, 2000))
-                    window.location.reload()
-                    setTimeout(() => { window.location.href = window.location.href }, 500)
-                } else if (cmdStr === 'CLEAR_CACHE') {
-                    console.warn('[Player] Remote Clear Cache triggered. Purging local storage...')
-                    await new Promise(r => setTimeout(r, 2000))
-                    localStorage.removeItem(manifestKey(dc))
-                    window.location.reload()
-                    setTimeout(() => { window.location.href = window.location.href }, 500)
-                } else if (cmdStr === 'SCREENSHOT') {
-                    console.log('[Player] Remote Screenshot requested...')
-                    const win = window as any
-                    if (win.AndroidHealth && win.AndroidHealth.takeScreenshot) {
-                        win.AndroidHealth.takeScreenshot(cmd.id)
-                    } else {
-                        await captureBrowserScreenshot(cmd.id)
-                    }
-                } else if (cmdStr === 'TOGGLE_DEBUG') {
-                    console.log('[Player] Remote Toggle Debug requested...')
-                    setShowDebugOverlay(prev => !prev)
-                }
-            } catch (err: any) {
-                console.error(`[Player] Command ${cmd.id} execution failed:`, err.message)
-            }
-        }
-    }, [dc, captureBrowserScreenshot])
-
-    // ── Asset Sync (Offline Cache) ──
-    // Returns the hydrated asset list (blob: URLs replacing remote CDN URLs).
-    // Caller is responsible for applying the result to manifest state.
-    // This ensures UDB always initializes with local blob: URLs, never remote CDN.
-    const syncAssets = useCallback(async (assetsToSync: ManifestAsset[]): Promise<ManifestAsset[]> => {
-        if (!assetsToSync || assetsToSync.length === 0) return assetsToSync
-
-        const assetsToActuallySync = assetsToSync.filter(a => {
-            // HTML assets are always served from origin URL — blob: URLs break relative paths inside the file
-            if (a.type === 'html') return false
-            return a.url && !a.url.startsWith('blob:')
-        })
-
-        if (assetsToActuallySync.length === 0) {
-            console.log('[Cache] All assets already cached or skipped.')
-            return assetsToSync
-        }
-
-        console.log(`[Cache] Syncing ${assetsToActuallySync.length} assets...`)
-        setSyncProgress({ current: 0, total: assetsToActuallySync.length })
-
-        const updatedAssets = [...assetsToSync]
-        let completed = 0
-
-        for (const asset of assetsToActuallySync) {
-            const idx = updatedAssets.findIndex(a => a.media_id === asset.media_id)
-            try {
-                const blobUrl = await downloadAndCache({
-                    media_id: asset.media_id,
-                    url: asset.url!,
-                    type: asset.type,
-                    checksum_sha256: asset.checksum_sha256
-                })
-
-                // Skip blob hydration for PPT/Presentation as documented in stable core.
-                // Also skip blob hydration for videos because native HW Decoders (e.g. Amlogic S905W2)
-                // cannot parse memory-mapped blob URIs. Rely on WebView HTTP disk caching instead.
-                if (asset.type !== 'ppt' && asset.type !== 'presentation' && !asset.type.startsWith('video/')) {
-                    if (idx !== -1) updatedAssets[idx] = { ...asset, url: blobUrl }
-                }
-            } catch (err: any) {
-                const reason = err?.message || (typeof err === 'string' ? err : 'Network/CORS blocked')
-                console.error(`[Cache] Sync FAILED for ${asset.media_id} (${asset.type}): ${reason} | URL: ${asset.url}`)
-                // On failure: keep the remote URL so playback can still stream as fallback
-            } finally {
-                completed++
-                setSyncProgress({ current: completed, total: assetsToActuallySync.length })
-            }
-        }
-
-        setTimeout(() => setSyncProgress(null), 2000)
-        return updatedAssets // Caller applies this to manifest — do NOT call setManifest here
-    }, [])
-
-    const initPairing = useCallback(async () => {
-        try {
-            const data = await callEdgeFn('device-pairing', { action: 'INIT', device_code: dc })
+            const data = await callEdgeFn('device-manifest', { device_code: dc, device_secret: sec }, 10000)
             if (data.error) throw new Error(data.error)
-            setPairingPin(data.pairing_pin)
-        } catch (err: any) {
-            console.error('[Pairing] Init error:', err.message)
-            setErrorMsg(`Pairing Service Error: ${err.message}`)
-            setPhase('secret') // Fallback to manual entry
-        }
-    }, [dc])
-
-    // ── Fetch manifest ──
-    const fetchManifest = useCallback(async (sec: string, timeoutMs: number = 25000): Promise<boolean> => {
-        try {
-            console.log(`[Player] [MANIFEST_FETCH_START] DC=${dc} (t=${timeoutMs}ms)`)
-            const data = await callEdgeFn('device-manifest', {
-                device_code: dc,
-                device_secret: sec,
-                current_version: versionRef.current,
-                origin: window.location.origin
-            }, 45000, false) // 45s timeout, no auth
-
-            if (data?.error) {
-                // Network errors are handled by callEdgeFn returning {error, is_network_failure}
-                if (data.is_network_failure) {
-                    if (versionRef.current) {
-                        console.warn(`[Player] Manifest network failure during poll. Swallowing to stay in playback.`)
-                        return true 
-                    }
-                    console.warn(`[Player] Manifest network failure during boot. Propagating to hydration...`)
-                    throw new Error('Internet connection lost during initial boot')
+            if (data.assets?.length) {
+                setSyncProgress({ current: 0, total: data.assets.length })
+                for (let i = 0; i < data.assets.length; i++) {
+                    await downloadAndCache(dc, data.assets[i])
+                    setSyncProgress({ current: i + 1, total: data.assets.length })
                 }
-                console.error(`[Player] Manifest error from EdgeFn: ${data.error}`)
-                throw new Error(String(data.error))
+                setSyncProgress(null)
             }
-            
-            console.log(`[Player] [MANIFEST_FETCH_SUCCESS] v=${data.resolved?.version || 'N/A'}`)
-
-            // ── Handling "Up to Date" response ──
-            if (data.up_to_date) {
-                console.log(`[Player] Content ${data.version} is up to date. Keep loop playing.`)
-                setOffline(false)
-                setLastSyncTime(new Date().toLocaleTimeString())
-                if (phaseRef.current === 'error') setPhase('playing')
-                return true
-            }
-
-            const newVersion = data.resolved?.version || null
-            const wasPlaying = phase === 'playing' || phase === 'standby'
-            const isSameVersion = newVersion === versionRef.current
-
-            // ── Optimize: If version matches and we're already playing, SKIP re-render ──
-            if (wasPlaying && isSameVersion && !data.force_update) {
-                console.log(`[Player] Version ${newVersion} is current. Skipping manifest state update.`)
-                setOffline(false)
-                setLastSyncTime(new Date().toLocaleTimeString())
-                if (phaseRef.current === 'error') setPhase('playing')
-                return true
-            }
-
-            // ── Auto version-change detection or first load ──
-            if (newVersion && newVersion !== versionRef.current) {
-                console.log(`[Player] 🔄 New version/content detected: ${versionRef.current || 'init'} → ${newVersion}`)
-            }
-
-            // ── Regular Load ──
-            const getIds = (m: any) => {
-                if (!m?.region_playlists) return ""
-                return Object.values(m.region_playlists)
-                    .flatMap((list: any) => list.map((i: any) => i.playlist_item_id))
-                    .join(',')
-            }
-            const lastIds = getIds(manifest)
-            const nextIds = getIds(data)
-            const hasChange = lastIds !== nextIds || versionRef.current !== newVersion
-
-            if (wasPlaying && !hasChange && !data.force_update) {
-                console.log(`[Player] Content IDs and version match. Skipping state update.`)
-                setOffline(false)
-                setLastSyncTime(new Date().toLocaleTimeString())
-                return true
-            }
-
-            // ── Download all assets to IndexedDB before applying manifest ──
-            // Guarantees UDB always initializes with blob: URLs (never remote CDN).
-            // isSyncingRef prevents concurrent syncs when polls overlap during a long download.
-            // localStorage always stores remote URLs so offline re-hydration works after reboot.
-            let manifestToApply = data
-            if (data.assets && !isSyncingRef.current) {
-                isSyncingRef.current = true
-                try {
-                    const blobAssets = await syncAssets(data.assets)
-                    manifestToApply = { ...data, assets: blobAssets }
-                } finally {
-                    isSyncingRef.current = false
-                }
-            } else if (data.assets && isSyncingRef.current) {
-                console.log('[Player] Asset sync already in progress — applying manifest with current URLs.')
-            }
-
-            console.log(`[Player] Applying manifest update (diff detected or first load)`)
-            setManifest(manifestToApply)
-            setVersion(newVersion)
-            versionRef.current = newVersion
-            localStorage.setItem(manifestKey(dc), JSON.stringify(data)) // store remote URLs for offline re-hydration
+            setManifest(data)
+            localStorage.setItem(manifestKey(dc), JSON.stringify(data))
             setOffline(false)
-            setLastSyncTime(new Date().toLocaleTimeString())
-            if (phaseRef.current === 'error') setPhase('playing')
-
-            // Assets already synced above — do NOT call syncAssets again here
-
-            const win = window as any
-            if (win.AndroidHealth?.setStoreInfo) {
-                win.AndroidHealth.setStoreInfo(data.device?.store_id || null, data.device?.store_name || null)
-            }
-
-            failCountRef.current = 0 // Reset failure counter on success
             return true
-        } catch (err: any) {
-            const msg: string = (err.message || '').toLowerCase()
-
-            if (msg.includes('invalid credentials') || msg.includes('inactive device')) {
-                localStorage.removeItem(secretKey(dc))
-                localStorage.removeItem(manifestKey(dc))
-                setSecret('')
-                setPhase('pairing')
-                initPairing()
-                return false
-            }
-
-            if (msg.includes('no active publication') || msg.includes('no publication') || msg.includes('not found')) {
-                setPhase('standby')
-                if (err.data?.device) {
-                    setManifest({ resolved: { role: err.data.device.role_name, scope: 'Standby' } } as any)
-                }
-                return true
-            }
-
-            // CORTEX: Sequential Error Counter to prevent flickering offline messages on network jitter
-            // ─── BOOT-CRITICAL: DO NOT REMOVE backoff OR failCountRef >= 3 check ─────
-            // failCountRef tracks sequential failures across bootFetch loop iterations.
-            // The backoff spaces out retries so the Amlogic network stack has time to recover.
-            // failCountRef >= 3 is the trigger for offline cache load — this is how the device
-            // plays content when rebooted without network. Both pieces MUST stay together.
-            // DO NOT remove the await backoff. DO NOT change the >= 3 threshold.
-            // ─────────────────────────────────────────────────────────────────────────────
-            failCountRef.current += 1
-            const backoffMs = Math.min(1000 * Math.pow(2, failCountRef.current - 1), 15000)
-            console.warn(`[Player] Manifest fetch failed (attempt ${failCountRef.current}), DC=${dc}`)
-            await new Promise(r => setTimeout(r, backoffMs))
-
-            if (failCountRef.current >= 3) {
-                const cached = localStorage.getItem(manifestKey(dc))
-                if (cached) {
-                    try {
-                        const c = JSON.parse(cached)
-                        
-                        // HYDRATION: Vital for reboot-without-internet
-                        // This converts remote URLs back into local blob URLs from IndexedDB
-                        if (c.assets) {
-                            const hydrated = await hydrateAssetsFromCache(c.assets)
-                            c.assets = hydrated
-                        }
-
-                        setManifest(c)
-                        if (c.resolved?.version) {
-                            setVersion(c.resolved.version)
-                            versionRef.current = c.resolved.version
-                        }
-                        setOffline(true)
-                        setShowOfflineIndicator(true)
-                        setTimeout(() => setShowOfflineIndicator(false), 5000)
-                        return true
-                    } catch { /* ignore */ }
-                }
-            }
-
-            // Only show a fatal error screen after 30 sequential failures and ONLY if we don't have a manifest to play from cache
-            if (failCountRef.current >= 30 && !manifest) {
-                setErrorMsg(err.message || 'Connecting to OmniPush Network...')
-                setPhase('error')
-            } else if (failCountRef.current >= 30) {
-                // If we HAVE a manifest (likely playing from cache), don't jump to error phase 
-                // as that blanks the screen. Just log it and keep testing the network.
-                console.warn('[Player] Network down (30+ failures), but continuing playback from cache.')
-            }
+        } catch (err) {
+            const cached = localStorage.getItem(manifestKey(dc))
+            if (cached) { setManifest(JSON.parse(cached)); setOffline(true); return true }
             return false
         }
-    }, [dc, syncAssets, initPairing])
+    }, [dc])
 
-    // ── Send heartbeat ──
-    const sendHeartbeat = useCallback(async (sec: string) => {
-        if (!dc || !sec) return
-
-        // ── Rendering Watchdog ──
-        // If we are in 'playing' phase but haven't seen a content transition 
-        // OR a video tick in a while, we might be frozen.
-        // For now, we'll assume rendering is OK if phase is playing and no errors.
-        if (phaseRef.current === 'playing' && consecutiveErrorsRef.current > 5) {
-            isRenderingRef.current = false
-        } else {
-            isRenderingRef.current = true
-        }
-
-        // Gather basic hardware telemetry
-        const ua = navigator.userAgent
-        const meta: any = {
-            is_rendering: isRenderingRef.current,
-            consecutive_errors: consecutiveErrorsRef.current,
-            last_media_error: lastMediaErrorRef.current,
-            display_visible: document.visibilityState === 'visible',
-            // Capture full OS/device info from user agent
-            device_model: (
-                ua.match(/\(([^)]+)\)/)?.[1] ||
-                ua.split(' ').slice(0, 3).join(' ') ||
-                'Unknown Device'
-            ).slice(0, 100), // truncate to 100 chars
-            local_ip: null,
-            platform: navigator.platform || 'unknown',
-            screen: `${screen.width}x${screen.height}`,
-        }
-
-        try {
-            // 1. RAM (navigator.deviceMemory - Chrome/Android only)
-            if ((navigator as any).deviceMemory) {
-                meta.ram_total_mb = (navigator as any).deviceMemory * 1024
-            }
-
-            // 2. Storage (Browser Storage Quota API)
-            if (navigator.storage && navigator.storage.estimate) {
-                const est = await navigator.storage.estimate()
-                if (est.quota && est.quota > 0) {
-                    // Use 2 decimal places to avoid rounding to 0 on small quotas
-                    meta.storage_total_gb = parseFloat((est.quota / (1024 * 1024 * 1024)).toFixed(2))
-                    if (est.usage !== undefined) {
-                        meta.storage_free_gb = parseFloat(Math.max(0, (est.quota - est.usage) / (1024 * 1024 * 1024)).toFixed(2))
-                    }
-                } else if (est.quota === 0) {
-                    // Some Android WebViews report 0 quota — note it but keep going
-                    meta.storage_quota_unavailable = true
-                }
-            }
-
-            // 3. Android Native Bridge (for custom APK/WebView wrappers)
-            // The Android app can expose a JavascriptInterface named 'AndroidHealth'
-            const win = window as any
-            if (win.AndroidHealth) {
-                if (win.AndroidHealth.getRamTotal) meta.ram_total_mb = Number(win.AndroidHealth.getRamTotal())
-                if (win.AndroidHealth.getRamFree) meta.ram_free_mb = Number(win.AndroidHealth.getRamFree())
-                if (win.AndroidHealth.getStorageTotal) meta.storage_total_gb = parseFloat(Number(win.AndroidHealth.getStorageTotal()).toFixed(2))
-                if (win.AndroidHealth.getStorageFree) meta.storage_free_gb = parseFloat(Number(win.AndroidHealth.getStorageFree()).toFixed(2))
-                if (win.AndroidHealth.getModel) meta.device_model = String(win.AndroidHealth.getModel())
-                if (win.AndroidHealth.getLocalIp) meta.local_ip = String(win.AndroidHealth.getLocalIp())
-                if (win.AndroidHealth.getHdmiStatus) {
-                    meta.hdmi_status = String(win.AndroidHealth.getHdmiStatus()) // Should return 'connected' or 'disconnected'
-                } else {
-                    meta.hdmi_status = inferredHdmi;
-                }
-            }
-        } catch (e) {
-            console.warn('[Telemetry] Error gathering stats:', e)
-        }
-        setTelemetry(meta)
-
-        try {
-            // CORTEX: Jitter/Stagger fix for Amlogic hardware to avoid manifest/heartbeat collisions.
-            // When manifest polling (every 3s) and heartbeat (every 30s) collide, the older Amlogic 
-            // network stack often cancels one, resulting in 'TypeError: Failed to fetch'.
-            const payload = {
-                device_code: dc,
-                device_secret: sec,
-                current_version: 'v1.0.1+health-' + (versionRef.current || 'init'),
-                status: phaseRef.current,
-                ack_command_id: ackCommandIdRef.current,
-                // Sanitize meta to ensure no illegal JSON values (NaN/Infinity)
-                ...JSON.parse(JSON.stringify(meta, (k, v) => (typeof v === 'number' && isNaN(v)) ? null : v))
-            }
-
-            console.log('[Player] Sending heartbeat...')
-            const res = await callEdgeFn('device-heartbeat', payload, 30000, false) // 30s timeout, no auth
-
-            // If heartbeat was successful and contained an ACK for a command, we can clear the ref
-            if (!res.error && ackCommandIdRef.current) {
-                console.log(`[Player] Command ${ackCommandIdRef.current} ACK confirmed by server.`)
-                ackCommandIdRef.current = null
-            }
-
-            if (res.error) {
-                console.error('[Player] Heartbeat Server Error:', res.error)
-            } else {
-                console.log(`[Player] Heartbeat Recorded ✅ (${phase})`)
-                lastErrorRef.current = null 
-                failCountRef.current = 0 // Reset fail count
-                
-                // Auto-recover from error phase if heartbeat succeeds
-                if (phaseRef.current === 'error') {
-                    console.log('[Player] Connection restored, auto-recovering...')
-                    setPhase('playing')
-                }
-
-                if (res.commands && res.commands.length > 0) {
-                    processIncomingCommands(res.commands)
-                }
-            }
-        } catch (err: any) {
-            console.error('[Player] Heartbeat Network Error Detail:', err.name, '|', err.message)
-            const msg = (err.message || '').toLowerCase()
-            
-            // Increment failure count specifically for heartbeat
-            failCountRef.current += 1
-            
-            if (msg.includes('invalid credentials') || msg.includes('inactive device')) {
-                localStorage.removeItem(secretKey(dc))
-                localStorage.removeItem(manifestKey(dc))
-                window.location.reload()
-            }
-
-            // If heartbeat fails 10 times in a row, the network stack might be dead.
-            // Force a reload to let the bootFetch recovery logic take over (offline cache).
-            if (failCountRef.current >= 10) {
-                console.warn('[Player] 10 sequential heartbeat failures. Emergency reload.')
-                window.location.reload()
-            }
-        }
-    }, [dc, phase])
-
-    // ── Init: check for stored secret or URL param ──
     useEffect(() => {
-        if (!dc || bootStartedRef.current) return
-        bootStartedRef.current = true // Lock it immediately
-
-
-        // 1. Check for ?reset=true to clear stale data
-        const params = new URLSearchParams(window.location.search)
-        if (params.get('reset') === 'true') {
-            localStorage.removeItem(secretKey(dc))
-            setSecret('')
-            setPhase('secret')
-            return
-        }
-
-        // 2. Check for ?secret= in URL for auto-login
-        // Check for heartbeat stall
-        if (lastHeartbeatFail) {
-            const now = Date.now()
-            // If heartbeat fails for > 2 mins, show recovery warning
-            if (now - lastHeartbeatFail > 120000) {
-                console.error('[Heartbeat] Connection lost for 2+ minutes')
-                // Instead of full error immediately, let's keep playing but show a tiny subtle indicator 
-                // unless everything is broken
-            }
-        }
-        const urlSecret = params.get('secret')
-        if (urlSecret) {
-            setSecret(urlSecret)
-            secretRef.current = urlSecret
-            localStorage.setItem(secretKey(dc), urlSecret)
-            setPhase('loading')
-            fetchManifest(urlSecret).then(ok => {
-                if (ok) setPhase(p => p === 'standby' ? 'standby' : 'playing')
-                else setPhase('error')
-            })
-            return
-        }
-
-        // 3. Check for stored secret in localStorage
         const stored = localStorage.getItem(secretKey(dc))
         if (stored) {
-            setSecret(stored)
             secretRef.current = stored
-            setPhase('loading')
-
-            // ─── BOOT-CRITICAL: DO NOT SIMPLIFY OR REMOVE bootFetch LOOP ─────────────
-            // This 3-attempt loop exists specifically for Amlogic Android TV boxes where
-            // the network stack is not ready when the app starts after reboot.
-            // Each attempt uses callEdgeFn which has a 25s manualTimeout (in supabase.ts).
-            // After 3 failures, failCountRef >= 3 triggers offline cache load in fetchManifest.
-            // This is the ONLY path that gets the device playing from cache when network
-            // is unavailable at boot. DO NOT replace with a single fetchManifest() call.
-            // DO NOT add waitForNetwork() — navigator.onLine is broken on Chromium 87.
-            // DO NOT reduce loop iterations below 3.
-            // ─────────────────────────────────────────────────────────────────────────────
-            const bootFetch = async () => {
-                await new Promise(r => setTimeout(r, 2000)) // Give Amlogic network stack more time to settle
-                let bootOk = false
-
-                // Attempt 1: Initial check
-                console.log(`[Boot] Manifest attempt 1/3...`)
-                if (await fetchManifest(stored, 25000)) {
-                    bootOk = true
-                } else {
-                    // Attempt 2: Retry
-                    await new Promise(r => setTimeout(r, 3000))
-                    console.log(`[Boot] Manifest attempt 2/3...`)
-                    if (await fetchManifest(stored, 25000)) {
-                        bootOk = true
-                    } else {
-                        // Attempt 3: Final retry (will trigger offline cache if network still down)
-                        await new Promise(r => setTimeout(r, 4000))
-                        console.log(`[Boot] Manifest attempt 3/3 (Triggering offline cache check)...`)
-                        if (await fetchManifest(stored, 25000)) {
-                            bootOk = true
-                        }
-                    }
-                }
-
-                if (bootOk) {
-                    setPhase(p => p === 'standby' ? 'standby' : 'playing')
-                } else {
-                    // If even the 3rd attempt (cache) fails, show error
-                    setPhase('error')
-                }
-            }
-
-            bootFetch()
+            fetchManifest(stored).then(ok => setPhase(ok ? 'playing' : 'error'))
         } else {
             setPhase('pairing')
-            initPairing()
         }
-    }, [dc, initPairing]) // eslint-disable-line
+    }, [dc, fetchManifest])
 
-    useEffect(() => {
-        if (phase !== 'pairing' || !dc) return
-        const timer = setInterval(async () => {
-            try {
-                const data = await callEdgeFn('device-pairing', { action: 'CLAIM_POLL', device_code: dc })
-                if (data.device_secret) {
-                    handleSecret(data.device_secret)
-                }
-            } catch { /* wait for next poll */ }
-        }, 5000)
-        return () => clearInterval(timer)
-    }, [phase, dc]) // eslint-disable-line
-
-    // ── Polling: manifest every poll_seconds, heartbeat every 30s ──
-    useEffect(() => {
-        if ((phase !== 'playing' && phase !== 'standby') || !secret) {
-            if (manifestTimerRef.current) clearInterval(manifestTimerRef.current)
-            if (hbTimerRef.current) clearInterval(hbTimerRef.current)
-            return
-        }
-
-        const pollSec = manifest?.poll_seconds ?? 30
-        const pollMs = phase === 'standby' ? 30_000 : pollSec * 1000
-
-        console.log(`[Player] Starting polling timers. Phase: ${phase}, Poll: ${pollSec}s`)
-
-        // Clear existing to avoid duplicates on re-run
-        if (manifestTimerRef.current) clearInterval(manifestTimerRef.current)
-        if (hbTimerRef.current) clearInterval(hbTimerRef.current)
-
-        manifestTimerRef.current = setInterval(async () => {
-            if (isTransitioningRef.current) return
-            const ok = await fetchManifest(secretRef.current)
-            if (ok && phase === 'standby') setPhase('playing')
-        }, pollMs)
-
-        // ─── STAGGERED HEARTBEAT FIX ──────────────────────────────────────────
-        // Stagger heartbeat by 15s to ensure it perfectly alternates with 
-        // the 3s manifest poll on older Amlogic devices.
-        const staggerMs = 15000 + (Math.random() * 5000) // Add 5s jitter
-        const startHeartbeat = () => {
-            hbTimerRef.current = setInterval(() => {
-                sendHeartbeat(secretRef.current)
-            }, HEARTBEAT_INTERVAL_MS)
-        }
-
-        const initialHbTimeout = setTimeout(() => {
-            sendHeartbeat(secretRef.current)
-            startHeartbeat()
-        }, staggerMs)
-
-        return () => {
-            if (manifestTimerRef.current) clearInterval(manifestTimerRef.current)
-            if (hbTimerRef.current) clearInterval(hbTimerRef.current)
-            clearTimeout(initialHbTimeout)
-        }
-    }, [phase, !!secret, manifest?.poll_seconds]) // Stable dependencies
-
-    // ── Handle secret submission ──
-    const handleSecret = async (s: string) => {
-        setPhase('loading')
-        setSecret(s)
-        secretRef.current = s
+    const handleSecret = (s: string) => {
         localStorage.setItem(secretKey(dc), s)
-        const ok = await fetchManifest(s)
-        if (ok) {
-            setPhase(p => p === 'standby' ? 'standby' : 'playing')
-        } else {
-            setPhase('error')
-        }
+        secretRef.current = s
+        setPhase('loading')
+        fetchManifest(s).then(ok => setPhase(ok ? 'playing' : 'error'))
     }
 
-    // ── Retry ──
-    const handleRetry = () => {
-        console.log('[Player] Manual retry triggered...')
-        if (secretRef.current) {
-            setPhase('loading')
-            fetchManifest(secretRef.current).then(ok => {
-                if (ok) setPhase('playing')
-                else setPhase('error')
-            })
-        } else {
-            window.location.reload()
-        }
-    }
-
-    // ── Resolve playlist items for playback ──
-    const getPlaylistItems = (): ManifestItem[] => {
-        if (!manifest || !manifest.region_playlists) return []
-        const rp = manifest.region_playlists
-        // Use first available region (prefer 'full')
-        const regions = Object.keys(rp)
-        if (regions.length === 0) return []
-
-        const regionKey = rp['full'] ? 'full' : regions[0]
-        return rp[regionKey] || []
-    }
-
-    // ── Pre-calculate corner tap zone ──
-    const cornerTapZone = (
-        <div
-            onClick={(e) => {
-                e.stopPropagation();
-                handleCornerTap();
-            }}
-            style={{
-                position: 'fixed',
-                top: 0,
-                right: 0,
-                width: 120,
-                height: 120,
-                zIndex: 9999999,
-                cursor: 'pointer',
-                // background: 'rgba(255,0,0,0.1)', // debug
-            }}
-        />
+    if (phase === 'loading') return <LoadingState progress={syncProgress} />
+    if (phase === 'secret') return <SecretPrompt device_code={dc} onSubmit={handleSecret} />
+    if (phase === 'error') return <ErrorState dc={dc} msg="Pipeline synchronization failed" onRetry={() => window.location.reload()} />
+    if (phase === 'pairing') return (
+        <div style={{ position: 'fixed', inset: 0, background: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <AmbientOrbs />
+            <div style={{ zIndex: 1, textAlign: 'center' }}>
+                <Logo />
+                <GlassCard style={{ marginTop: '2.5rem' }}>
+                    <div style={{ color: '#00daf3', fontSize: '0.7rem' }}>Pairing Code</div>
+                    <div style={{ fontSize: '3rem', fontWeight: 900, color: 'white' }}>{dc.slice(-6).toUpperCase()}</div>
+                    <button onClick={() => setPhase('secret')} style={{ background: 'none', color: '#475569', fontSize: '0.7rem', textDecoration: 'underline', marginTop: '1rem', border: 'none', cursor: 'pointer' }}>Manual Secret</button>
+                </GlassCard>
+            </div>
+        </div>
     )
 
-    // ── Admin panel button style helper ──
-    const btnStyle = (bg: string, color = '#f1f5f9'): React.CSSProperties => ({
-        padding: '0.875rem 1.25rem', borderRadius: 12, fontSize: '0.9rem',
-        fontWeight: 600, background: bg, border: '1px solid rgba(255,255,255,0.08)',
-        color, cursor: 'pointer', textAlign: 'center' as const,
-    })
-
-    // ── Hidden Admin Panel overlay ──
-    const AdminPanel = () => (
-        <>
-            {/* PIN Prompt */}
-            {showPinPrompt && (
-                <div id="pin-prompt" style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99998,
-                    background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center'
-                }}>
-                    <div style={{
-                        background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)',
-                        borderRadius: 20, padding: '2rem', width: 280, textAlign: 'center'
-                    }}>
-                        <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>🔐</div>
-                        <div style={{ fontWeight: 700, color: '#f1f5f9', marginBottom: '0.25rem' }}>Admin Access</div>
-                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '1.25rem' }}>Enter PIN to continue</div>
-                        {/* PIN dots display */}
-                        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-                            {[0, 1, 2, 3].map(i => (
-                                <div key={i} style={{
-                                    width: 14, height: 14, borderRadius: '50%',
-                                    background: pinInput.length > i ? '#ef4444' : '#1e293b',
-                                    border: '2px solid ' + (pinError ? '#ef4444' : '#334155'),
-                                    transition: 'all 0.2s'
-                                }} />
-                            ))}
-                        </div>
-                        {pinError && <div style={{ fontSize: '0.75rem', color: '#ef4444', marginBottom: '0.75rem' }}>Incorrect PIN</div>}
-                        {/* Numpad */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
-                            {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].map((k, i) => (
-                                <button key={i} onClick={() => {
-                                    if (!k) return
-                                    if (k === '⌫') { setPinInput(p => p.slice(0, -1)); setPinError(false); return }
-                                    const next = pinInput + k
-                                    setPinInput(next)
-                                    if (next.length === 4) handlePinSubmit(next)
-                                }} style={{
-                                    padding: '0.85rem', borderRadius: 10, fontSize: '1.1rem', fontWeight: 600,
-                                    background: k ? '#1e293b' : 'transparent',
-                                    border: '1px solid ' + (k ? '#334155' : 'transparent'),
-                                    color: '#f1f5f9', cursor: k ? 'pointer' : 'default',
-                                    transition: 'background 0.15s'
-                                }}>{k}</button>
-                            ))}
-                        </div>
-                        <button onClick={() => { setShowPinPrompt(false); setPinInput('') }}
-                            style={{ marginTop: '1rem', width: '100%', padding: '0.5rem', background: 'transparent', border: '1px solid #334155', borderRadius: 8, color: '#64748b', cursor: 'pointer', fontSize: '0.875rem' }}>
-                            Cancel
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* Admin Panel */}
-            {showAdminPanel && (
-                <div id="admin-overlay" style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999,
-                    background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(16px)',
-                    display: 'flex', flexDirection: 'column',
-                }}>
-                    {/* Header */}
-                    <div style={{ padding: '1.5rem 2rem', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <div>
-                            <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#f1f5f9' }}>⚙️ Admin Panel</div>
-                            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.2rem' }}>Device: {dc} · v{version || 'unknown'}</div>
-                        </div>
-                        <button onClick={() => setShowAdminPanel(false)}
-                            style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#94a3b8', padding: '0.5rem 1rem', cursor: 'pointer', fontSize: '0.875rem' }}>
-                            ✕ Close
-                        </button>
-                    </div>
-
-                    {/* Info grid */}
-                    <div style={{ padding: '1.5rem 2rem', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
-                        {[
-                            { label: 'Device Code', value: dc },
-                            { label: 'Connection', value: offline ? '🔴 Offline' : '🟢 Online' },
-                            { label: 'Content Version', value: version || '—' },
-                            { label: 'Assets Cached', value: String(manifest?.assets?.length || 0) },
-                            { label: 'Regions', value: Object.keys(manifest?.region_playlists || {}).join(', ') || '—' },
-                            { label: 'Pub Scope', value: manifest?.resolved?.scope || 'Global' },
-                        ].map(({ label, value }) => (
-                            <div key={label} style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: '0.875rem 1rem' }}>
-                                <div style={{ fontSize: '0.65rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>{label}</div>
-                                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#f8fafc', wordBreak: 'break-all' }}>{value}</div>
-                            </div>
-                        ))}
-                    </div>
-
-                    {/* Actions */}
-                    <div style={{ padding: '0 2rem', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
-                        <button onClick={() => { setShowAdminPanel(false); window.location.reload() }} style={btnStyle('#1e293b')}>
-                            🔄 Force Reload
-                        </button>
-                        <button onClick={() => {
-                            localStorage.removeItem(manifestKey(dc))
-                            setShowAdminPanel(false)
-                            window.location.reload()
-                        }} style={btnStyle('#1e293b')}>
-                            🗑️ Clear Cache &amp; Reload
-                        </button>
-                        <button onClick={() => {
-                            localStorage.removeItem(secretKey(dc))
-                            localStorage.removeItem(manifestKey(dc))
-                            setShowAdminPanel(false)
-                            window.location.reload()
-                        }} style={btnStyle('#7f1d1d', '#fca5a5')}>
-                            ⚠️ Unpair Device
-                        </button>
-                        <button onClick={() => {
-                            setDebugJSON(JSON.stringify(manifest, null, 2))
-                            setShowDebugManifest(true)
-                            setShowLogs(false)
-                        }} style={btnStyle('rgba(255,255,255,0.05)', '#94a3b8')}>
-                            🔍 Debug Manifest
-                        </button>
-                        <button onClick={() => {
-                            setShowLogs(true)
-                            setShowDebugManifest(false)
-                        }} style={btnStyle('rgba(255,255,255,0.05)', '#f1f5f9')}>
-                            📄 View Logs
-                        </button>
-                        <button onClick={() => {
-                            window.dispatchEvent(new CustomEvent('omnipush_force_play'))
-                            setShowAdminPanel(false)
-                        }} style={btnStyle('#14532d', '#86efac')}>
-                            ▶ Force Play (Reset Logic)
-                        </button>
-                    </div>
-
-                    {showDebugManifest && (
-                        <div style={{ padding: '0 2rem 1.5rem', flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                            <div style={{ fontSize: '0.7rem', color: '#475569', marginBottom: '0.5rem' }}>INTERNAL MANIFEST STATE</div>
-                            <pre style={{
-                                flex: 1, background: '#020617', padding: '1rem', borderRadius: 8,
-                                fontSize: '0.65rem', color: '#64748b', fontFamily: 'monospace',
-                                border: '1px solid #1e293b', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
-                                overflowY: 'auto'
-                            }}>
-                                {debugJSON}
-                            </pre>
-                            <button onClick={() => setShowDebugManifest(false)} style={{ marginTop: '0.75rem', padding: '0.6rem', borderRadius: 6, background: '#1e293b', color: 'white', border: 'none', cursor: 'pointer' }}>Close</button>
-                        </div>
-                    )}
-
-                    {showLogs && (
-                        <div style={{ padding: '0 2rem 1.5rem', flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                            <div style={{ fontSize: '0.7rem', color: '#475569', marginBottom: '0.5rem' }}>DEVICE DIAGNOSTIC LOGS (Last 50)</div>
-                            <div style={{
-                                flex: 1, background: '#020617', padding: '1rem', borderRadius: 8,
-                                fontSize: '0.65rem', color: '#94a3b8', fontFamily: 'monospace',
-                                border: '1px solid #1e293b', overflowY: 'auto'
-                            }}>
-                                {consoleLogs.length === 0 ? "No logs available yet." : consoleLogs.map((log, i) => (
-                                    <div key={i} style={{ borderBottom: '1px solid #0f172a', padding: '2px 0', color: log.includes('ERR') ? '#ef4444' : log.includes('WARN') ? '#f59e0b' : '#94a3b8' }}>
-                                        {log}
-                                    </div>
-                                ))}
-                            </div>
-                            <button onClick={() => setShowLogs(false)} style={{ marginTop: '0.75rem', padding: '0.6rem', borderRadius: 6, background: '#1e293b', color: 'white', border: 'none', cursor: 'pointer' }}>Close</button>
-                        </div>
-                    )}
-                    <div style={{ padding: '1.5rem 2rem', fontSize: '0.7rem', color: '#334155', textAlign: 'center' }}>
-                        OmniPush Admin · Tap anywhere outside or press Close to exit
-                    </div>
-                </div>
-            )}
-        </>
-    )
-
-    // ── Main Content Resolver ──
     const regions = manifest?.layout?.regions || [{ id: 'full', x: 0, y: 0, width: 100, height: 100 }]
-    const hasAnyContent = manifest ? Object.values(manifest.region_playlists || {}).some(items => items.length > 0) : false
-
-    const renderMain = () => {
-        if (phase === 'loading' || (!manifest && phase !== 'pairing' && phase !== 'secret' && phase !== 'error')) {
-            return <LoadingState progress={syncProgress} />
-        }
-        if (phase === 'pairing') return (
-            <div style={{ position: 'fixed', inset: 0, background: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <AmbientOrbs />
-                <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem', maxWidth: 480, width: '100%' }}>
-                    <Logo />
-                    <div style={{ marginTop: '2.5rem' }}>
-                        <GlassCard>
-                            <div style={{ marginBottom: '2rem' }}>
-                                <div style={{ fontSize: '0.7rem', color: '#00daf3', textTransform: 'uppercase', letterSpacing: '0.2em', fontWeight: 800, marginBottom: '0.5rem' }}>New Device Setup</div>
-                                <div style={{ color: '#fff', fontSize: '1.25rem', fontWeight: 700 }}>Initialization Code</div>
-                            </div>
-
-                            <div style={{ display: 'flex', justifyContent: 'center', gap: '0.6rem', marginBottom: '2.5rem' }}>
-                                {(pairingPin || '------').split('').map((char, i) => (
-                                    <div key={i} style={{
-                                        width: 48, height: 68, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)',
-                                        borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        fontSize: '2.25rem', fontWeight: 900, color: '#00daf3', fontFamily: 'monospace',
-                                        textShadow: '0 0 15px rgba(0, 218, 243, 0.4)',
-                                        transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-                                        transform: char === '-' ? 'scale(0.95)' : 'scale(1.05)'
-                                    }}>
-                                        {char === '-' ? '' : char}
-                                    </div>
-                                ))}
-                            </div>
-
-                            <div style={{ background: 'rgba(15, 23, 42, 0.5)', padding: '1.25rem', borderRadius: 16, marginBottom: '2rem', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: '1.25rem', textAlign: 'left' }}>
-                                <div style={{ background: 'white', padding: '0.5rem', borderRadius: 8, flexShrink: 0 }}>
-                                    <QRCodeSVG value={`${window.location.origin}/player/${dc}?pairing=${pairingPin}`} size={84} level="M" />
-                                </div>
-                                <div style={{ color: '#94a3b8', fontSize: '0.8rem', lineHeight: 1.5 }}>
-                                    Go to <strong style={{color: '#fff'}}>Admin → Devices</strong><br />
-                                    Scan QR or enter pin to link<br />
-                                    this screen to your network.
-                                </div>
-                            </div>
-
-                            <button
-                                onClick={() => setPhase('secret')}
-                                style={{ background: 'none', border: 'none', color: '#475569', fontSize: '0.7rem', cursor: 'pointer', textDecoration: 'underline', transition: 'color 0.2s' }}
-                            >
-                                Use manual Secret Key
-                            </button>
-                        </GlassCard>
-                    </div>
-                </div>
-                <BottomBar device_code={dc} />
-            </div>
-        )
-
-        if (phase === 'secret') return <SecretPrompt device_code={dc} onSubmit={handleSecret} />
-        if (phase === 'error') return <ErrorState device_code={dc} msg={errorMsg} onRetry={handleRetry} />
-
-        // ── Standby / No Content published yet ──
-        if (phase === 'standby' || (manifest && !hasAnyContent)) {
-            return (
-                <div style={{ position: 'fixed', inset: 0, background: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <AmbientOrbs />
-                    <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem', maxWidth: 600 }}>
-                        <Logo />
-                        <div style={{ marginTop: '3rem' }}>
-                            <div style={{ fontSize: '3rem', marginBottom: '1.5rem', filter: 'drop-shadow(0 0 20px rgba(0, 218, 243, 0.2))' }}>⚡</div>
-                            <div style={{ fontWeight: 800, color: '#fff', fontSize: '1.5rem', marginBottom: '0.5rem' }}>System Stream Active</div>
-                            <div style={{ color: '#94a3b8', fontSize: '1rem', marginBottom: '2rem' }}>
-                                Linked as <span style={{ color: '#00daf3', fontWeight: 600 }}>{manifest?.resolved?.role || 'Display Node'}</span>
-                            </div>
-
-                            <div style={{ 
-                                display: 'inline-flex', alignItems: 'center', gap: '0.75rem', 
-                                padding: '1rem 2rem', borderRadius: 999, background: 'rgba(0, 218, 243, 0.05)', 
-                                border: '1px solid rgba(0, 218, 243, 0.15)', color: '#00daf3', fontWeight: 700, fontSize: '0.9rem' 
-                            }}>
-                                <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#00daf3', display: 'inline-block', boxShadow: '0 0 12px #00daf3', animation: 'pulse 2s infinite' }} />
-                                DISP_ONLINE // READY_TO_BROADCAST
-                            </div>
-
-                            <div style={{ marginTop: '3rem', color: '#334155', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                                Heartbeat Active · Last Sync: {lastSyncTime || 'now'}
-                            </div>
-                        </div>
-                    </div>
-                    <BottomBar device_code={dc} />
-                </div>
-            )
-        }
-
-        // ── Normal Playback ──
-        return (
-            <div style={{
-                position: 'fixed',
-                top: 0, left: 0, right: 0, bottom: 0,
-                width: '100%',
-                height: '100%',
-                background: (IS_ANDROID_NATIVE && phase === 'playing') ? 'transparent' : '#000',
-                overflow: 'hidden',
-                margin: 0, padding: 0,
-                zIndex: 1,
-            }}>
-                {regions.map((reg) => {
-                    const regionItems = manifest?.region_playlists?.[reg.id] || []
-                    if (regionItems.length === 0) return null
-                    return (
-                        <PlaybackEngine
-                            key={reg.id}
-                            region={reg}
-                            items={regionItems}
-                            assets={manifest!.assets}
-                            isNative={IS_ANDROID_NATIVE}
-                            showDebug={showDebugOverlay}
-                            deviceCode={dc}
-                            consecutiveErrorsRef={consecutiveErrorsRef}
-                            lastMediaErrorRef={lastMediaErrorRef}
-                        />
-                    )
-                })}
-
-                {/* Overlays */}
-                {offline && (
-                    <div style={{
-                        position: 'fixed',
-                        top: 32,
-                        right: 32,
-                        zIndex: 10000,
-                        color: '#ef4444',
-                        opacity: 0.6,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        pointerEvents: 'none'
-                    }}>
-                        <WifiOff size={32} strokeWidth={2.5} />
-                    </div>
-                )}
-                <style>{`
-                    @keyframes slideIn {
-                        from { transform: translateY(20px); opacity: 0; }
-                        to { transform: translateY(0); opacity: 1; }
-                    }
-                    @keyframes spin {
-                        from { transform: rotate(0deg); }
-                        to { transform: rotate(360deg); }
-                    }
-                    @keyframes pulse {
-                        0% { transform: scale(1); opacity: 1; }
-                        50% { transform: scale(1.1); opacity: 0.8; }
-                        100% { transform: scale(1); opacity: 1; }
-                    }
-                `}</style>
-            </div>
-        )
-    }
 
     return (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', overflow: 'hidden', background: (isAndroidNative && phase === 'playing') ? 'transparent' : '#000', touchAction: 'none' }}>
-            {renderMain()}
-            {cornerTapZone}
-            
-            {/* Debug Tap Zone (Top-Right) */}
-            <div
-                onClick={(e) => {
-                    e.stopPropagation();
-                    if (offline) {
-                        setShowOfflineIndicator(true);
-                        setTimeout(() => setShowOfflineIndicator(false), 5000);
-                    }
-                    handleDebugCornerTap();
-                }}
-                style={{
-                    position: 'fixed', top: 0, right: 0,
-                    width: 120, height: 120, zIndex: 9999999,
-                    cursor: 'pointer',
-                }}
-            />
-
-            {/* Debug Overlay UI */}
-            {showDebugOverlay && (
-                <div style={{
-                    position: 'fixed', bottom: 10, right: 10, zIndex: 100000,
-                    background: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(10px)',
-                    border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8,
-                    padding: '8px 12px', minWidth: 180, pointerEvents: 'none',
-                    boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-                }}>
-                    <div style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', marginBottom: 6, paddingBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.6rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>📡 Debug Info</span>
-                        <span style={{ fontSize: '0.6rem', color: offline ? '#ef4444' : '#22c55e', fontWeight: 700 }}>{offline ? 'OFFLINE' : 'ONLINE'}</span>
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'auto auto', gap: '4px 12px', fontSize: '10px', fontFamily: 'monospace' }}>
-                        <span style={{ color: '#64748b' }}>Last Sync:</span>
-                        <span style={{ color: '#f1f5f9', textAlign: 'right' }}>{lastSyncTime}</span>
-                        <span style={{ color: '#64748b' }}>Media:</span>
-                        <span style={{ color: '#f1f5f9', textAlign: 'right' }}>{manifest?.assets?.length || 0} assets</span>
-                        <span style={{ color: '#64748b' }}>Phase:</span>
-                        <span style={{ color: '#f1f5f9', textAlign: 'right', fontWeight: 700 }}>{phase.toUpperCase()}</span>
-                        <span style={{ color: '#64748b' }}>ID/DC:</span>
-                        <span style={{ color: '#f1f5f9', textAlign: 'right' }}>{dc}</span>
-                        <span style={{ color: '#64748b' }}>Uptime:</span>
-                        <span style={{ color: '#f1f5f9', textAlign: 'right' }}>{Math.floor((Date.now() - mountTimeRef.current) / 60000)}m</span>
-                        {telemetry?.local_ip && (
-                            <>
-                                <span style={{ color: '#64748b' }}>Network:</span>
-                                <span style={{ color: '#f1f5f9', textAlign: 'right' }}>{telemetry.local_ip}</span>
-                            </>
-                        )}
-                        {telemetry?.storage_total_gb && (
-                            <>
-                                <span style={{ color: '#64748b' }}>Storage:</span>
-                                <span style={{ color: '#f1f5f9', textAlign: 'right' }}>{telemetry.storage_free_gb}/{telemetry.storage_total_gb} GB free</span>
-                            </>
-                        )}
-                        {telemetry?.ram_total_mb && (
-                            <>
-                                <span style={{ color: '#64748b' }}>RAM:</span>
-                                <span style={{ color: '#f1f5f9', textAlign: 'right' }}>{Math.round(telemetry.ram_total_mb)} MB</span>
-                            </>
-                        )}
-                        <span style={{ color: '#64748b' }}>Env/UA:</span>
-                        <span style={{ color: '#f1f5f9', textAlign: 'right' }}>Signage Web-V1</span>
-                    </div>
-                    {remoteLogs.length > 0 && remoteLogs[0].type === 'error' && (
-                        <div style={{ marginTop: 6, paddingTop: 4, borderTop: '1px solid rgba(255,255,255,0.05)', color: '#ef4444', fontSize: '9px', fontStyle: 'italic' }}>
-                            ⚠️ {remoteLogs[0].msg.slice(0, 50)}...
-                        </div>
-                    )}
+        <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: '#000' }} onClick={e => { if (e.detail === 5) setShowDebug(!showDebug) }}>
+            <style>{globalStyle}</style>
+            {regions.map(reg => (
+                <PlaybackEngine
+                    key={reg.id}
+                    region={reg}
+                    items={manifest?.region_playlists?.[reg.id] || []}
+                    assets={manifest!.assets}
+                    isNative={IS_ANDROID_NATIVE}
+                    showDebug={showDebug}
+                    deviceCode={dc}
+                    consecutiveErrorsRef={consecutiveErrorsRef}
+                    lastMediaErrorRef={lastMediaErrorRef}
+                />
+            ))}
+            {showDebug && (
+                <div style={{ position: 'fixed', bottom: 20, right: 20, background: 'rgba(0,0,0,0.8)', padding: '1rem', borderRadius: 12, color: 'white', fontSize: '0.7rem', fontFamily: 'monospace' }}>
+                    <div>DC: {dc}</div>
+                    <button onClick={() => { localStorage.clear(); window.location.reload() }} style={{ marginTop: '1rem', width: '100%', background: '#ef4444', color: 'white', border: 'none', padding: '0.5rem' }}>Full Reset</button>
                 </div>
             )}
-
-            <AdminPanel />
+            <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, padding: '2rem 3rem', display: 'flex', justifyContent: 'space-between', zIndex: 100, pointerEvents: 'none' }}>
+                <LiveClock />
+                <div style={{ color: '#475569', fontSize: '0.7rem' }}>ID: {dc}</div>
+            </div>
         </div>
     )
 }
