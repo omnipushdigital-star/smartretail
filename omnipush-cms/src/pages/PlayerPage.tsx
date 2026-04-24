@@ -163,11 +163,8 @@ const PlaybackEngine = React.memo(({
     const getUrl = useCallback((item: ManifestItem) => {
         if (item.type === 'web_url' || item.type === 'html') return item.web_url
         const asset = assets.find(a => a.media_id === item.media_id)
-        if (!asset) return null
-        const cacheName = `omnipush_cache_${deviceCode}_${asset.media_id}`
-        const cached = localStorage.getItem(cacheName)
-        return cached || asset.url
-    }, [assets, deviceCode])
+        return asset?.url || null
+    }, [assets])
 
     const advance = useCallback(() => {
         if (!itemsRef.current.length) return
@@ -175,8 +172,11 @@ const PlaybackEngine = React.memo(({
         activeIdxRef.current = nextIdx
         const newLayer = { idx: nextIdx, key: Date.now() }
         
-        // CORTEX-OPTIMIZATION: On Amlogic/Old WebViews, we limit to 2 layers max
-        setLayers(prev => [prev[activeLayer], newLayer].slice(-2))
+        setLayers(prev => {
+            const next = [...prev, newLayer]
+            if (next.length > 2) return next.slice(-2)
+            return next
+        })
         setActiveLayer(1)
         
         setTimeout(() => {
@@ -191,9 +191,9 @@ const PlaybackEngine = React.memo(({
                 <div style={{ 
                     position: 'absolute', left: `${region.x}%`, top: `${region.y}%`, 
                     width: `${region.width}%`, height: `${region.height}%`, 
-                    border: '2px dashed #333', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#333' 
+                    border: '2px solid red', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'red' 
                 }}>
-                    Empty Region: {region.id}
+                    REGION EMPTY: {region.id}
                 </div>
             )
         }
@@ -204,10 +204,7 @@ const PlaybackEngine = React.memo(({
         <div style={{
             position: 'absolute', left: `${region.x}%`, top: `${region.y}%`,
             width: `${region.width}%`, height: `${region.height}%`,
-            background: '#000', overflow: 'hidden',
-            // HARDWARE-ACCEL: Force GPU context on Amlogic
-            transform: 'translateZ(0)',
-            backfaceVisibility: 'hidden'
+            background: 'transparent', overflow: 'hidden',
         }}>
             {layers.map((layer, lIdx) => {
                 const item = itemsRef.current[layer.idx]
@@ -218,11 +215,11 @@ const PlaybackEngine = React.memo(({
                         position: 'absolute', inset: 0,
                         width: '100%', height: '100%',
                         opacity: isActive ? 1 : 0,
+                        visibility: (isActive || lIdx < activeLayer) ? 'visible' : 'hidden',
                         transition: `opacity ${TRANSITION_DURATION}ms linear`,
-                        // FIX: Explicit z-index to prevent under-rendering on old WebKit
-                        zIndex: isActive ? 10 : 5,
-                        pointerEvents: isActive ? 'auto' : 'none',
-                        background: '#000'
+                        // FIX: Transparent background to allow hardware video punch-through
+                        background: 'transparent',
+                        zIndex: isActive ? 10 : 5
                     }}>
                         <RegionPlayer
                             item={item}
@@ -252,18 +249,13 @@ const RegionPlayer = ({ item, url, isActive, onEnded, onError, onReady }: {
 
     useEffect(() => {
         if (!isActive) {
-            if (videoRef.current) { 
-                videoRef.current.pause()
-                // Amlogic Fix: Don't reset currentTime if not visible, just leave paused
-                // videoRef.current.currentTime = 0 
-            }
+            if (videoRef.current) videoRef.current.pause()
             if (timerRef.current) clearTimeout(timerRef.current)
             return
         }
 
         if (item.type === 'video') {
             if (videoRef.current) {
-                // Amlogic Fix: Ensure load() is called
                 videoRef.current.load()
                 videoRef.current.play().then(() => onReady()).catch(e => { 
                     if (e.name !== 'AbortError') onError(`Playback: ${e.message}`) 
@@ -276,12 +268,11 @@ const RegionPlayer = ({ item, url, isActive, onEnded, onError, onReady }: {
         }
     }, [isActive, item, onEnded, onError, onReady])
 
-    // Amlogic / Signage Fixes: Add crossOrigin and disableContextMenu
     if (item.type === 'image') {
         return (
             <img 
                 src={url} 
-                style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
+                style={{ width: '100%', height: '100%', objectFit: 'contain', background: 'transparent' }} 
                 crossOrigin="anonymous" 
                 alt="" 
             />
@@ -296,8 +287,7 @@ const RegionPlayer = ({ item, url, isActive, onEnded, onError, onReady }: {
                 muted 
                 playsInline 
                 onEnded={onEnded} 
-                style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
-                // HARDWARE: Add these for better Android performance
+                style={{ width: '100%', height: '100%', objectFit: 'contain', background: 'transparent' }}
                 disablePictureInPicture
                 preload="auto"
                 controls={false}
@@ -388,6 +378,7 @@ export default function PlayerPage() {
         try {
             const data = await callEdgeFn('device-manifest', { device_code: dc, device_secret: sec }, 10000)
             if (data.error) throw new Error(data.error)
+            
             if (data.assets?.length) {
                 setSyncProgress({ current: 0, total: data.assets.length })
                 for (let i = 0; i < data.assets.length; i++) {
@@ -396,8 +387,15 @@ export default function PlayerPage() {
                 }
                 setSyncProgress(null)
             }
-            setManifest(data)
-            localStorage.setItem(manifestKey(dc), JSON.stringify(data))
+
+            // CORTEX-FIX: Swap HTTPS URLs for local Blob URLs after sync completes
+            const hydratedData = { ...data }
+            if (data.assets?.length) {
+                hydratedData.assets = await hydrateAssetsFromCache(data.assets)
+            }
+
+            setManifest(hydratedData)
+            localStorage.setItem(manifestKey(dc), JSON.stringify(hydratedData))
             setOffline(false)
             return true
         } catch (err) {
@@ -460,8 +458,10 @@ export default function PlayerPage() {
                 />
             ))}
             {showDebug && (
-                <div style={{ position: 'fixed', bottom: 20, right: 20, background: 'rgba(0,0,0,0.8)', padding: '1rem', borderRadius: 12, color: 'white', fontSize: '0.7rem', fontFamily: 'monospace' }}>
+                <div style={{ position: 'fixed', bottom: 20, right: 20, background: 'rgba(0,0,0,0.8)', padding: '1rem', borderRadius: 12, color: 'white', fontSize: '0.7rem', fontFamily: 'monospace', zIndex: 9999 }}>
                     <div>DC: {dc}</div>
+                    <div>Phase: {phase}</div>
+                    <div>Assets: {manifest?.assets?.length || 0}</div>
                     <button onClick={() => { localStorage.clear(); window.location.reload() }} style={{ marginTop: '1rem', width: '100%', background: '#ef4444', color: 'white', border: 'none', padding: '0.5rem' }}>Full Reset</button>
                 </div>
             )}
@@ -472,3 +472,4 @@ export default function PlayerPage() {
         </div>
     )
 }
+
