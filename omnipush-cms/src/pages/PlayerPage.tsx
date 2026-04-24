@@ -435,6 +435,13 @@ export default function PlayerPage() {
         }
     }, [dc, fetchManifest])
 
+    const handleSecret = (s: string) => {
+        localStorage.setItem(`omnipush_secret_${dc}`, s)
+        secretRef.current = s
+        setPhase('loading')
+        fetchManifest(s).then(ok => setPhase(ok ? 'playing' : 'error'))
+    }
+
 
     if (phase === 'loading') return <LoadingState progress={syncProgress} />
     if (phase === 'secret') return <SecretPrompt device_code={dc} onSubmit={handleSecret} />
