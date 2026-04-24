@@ -276,7 +276,7 @@ const RegionPlayer = ({ item, url, isActive, onEnded, onError, onReady }: {
                     width: '100%', height: '100%', 
                     objectFit: 'fill', 
                     background: 'transparent',
-                    webkitTransform: 'translate3d(0,0,0)'
+                    WebkitTransform: 'translate3d(0,0,0)'
                 }} 
                 crossOrigin="anonymous" 
                 alt="" 
@@ -296,7 +296,7 @@ const RegionPlayer = ({ item, url, isActive, onEnded, onError, onReady }: {
                     width: '100%', height: '100%', 
                     objectFit: 'fill', 
                     background: 'transparent',
-                    webkitTransform: 'translate3d(0,0,0)'
+                    WebkitTransform: 'translate3d(0,0,0)'
                 }}
                 disablePictureInPicture
                 preload="auto"
