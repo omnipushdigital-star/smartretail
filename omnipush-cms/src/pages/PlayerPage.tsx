@@ -174,21 +174,40 @@ const PlaybackEngine = React.memo(({
         const nextIdx = (activeIdxRef.current + 1) % itemsRef.current.length
         activeIdxRef.current = nextIdx
         const newLayer = { idx: nextIdx, key: Date.now() }
-        setLayers(prev => [prev[activeLayer], newLayer])
+        
+        // CORTEX-OPTIMIZATION: On Amlogic/Old WebViews, we limit to 2 layers max
+        setLayers(prev => [prev[activeLayer], newLayer].slice(-2))
         setActiveLayer(1)
+        
         setTimeout(() => {
-            setLayers(prev => [prev[1]])
+            setLayers(prev => [prev[prev.length - 1]])
             setActiveLayer(0)
         }, TRANSITION_DURATION + 100)
     }, [activeLayer])
 
-    if (!items.length) return null
+    if (!items.length) {
+        if (showDebug) {
+            return (
+                <div style={{ 
+                    position: 'absolute', left: `${region.x}%`, top: `${region.y}%`, 
+                    width: `${region.width}%`, height: `${region.height}%`, 
+                    border: '2px dashed #333', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#333' 
+                }}>
+                    Empty Region: {region.id}
+                </div>
+            )
+        }
+        return null
+    }
 
     return (
         <div style={{
             position: 'absolute', left: `${region.x}%`, top: `${region.y}%`,
             width: `${region.width}%`, height: `${region.height}%`,
-            background: '#000', overflow: 'hidden'
+            background: '#000', overflow: 'hidden',
+            // HARDWARE-ACCEL: Force GPU context on Amlogic
+            transform: 'translateZ(0)',
+            backfaceVisibility: 'hidden'
         }}>
             {layers.map((layer, lIdx) => {
                 const item = itemsRef.current[layer.idx]
@@ -197,9 +216,13 @@ const PlaybackEngine = React.memo(({
                 return (
                     <div key={layer.key} style={{
                         position: 'absolute', inset: 0,
+                        width: '100%', height: '100%',
                         opacity: isActive ? 1 : 0,
-                        transition: `opacity ${TRANSITION_DURATION}ms ease-in-out`,
-                        zIndex: isActive ? 2 : 1
+                        transition: `opacity ${TRANSITION_DURATION}ms linear`,
+                        // FIX: Explicit z-index to prevent under-rendering on old WebKit
+                        zIndex: isActive ? 10 : 5,
+                        pointerEvents: isActive ? 'auto' : 'none',
+                        background: '#000'
                     }}>
                         <RegionPlayer
                             item={item}
@@ -207,6 +230,7 @@ const PlaybackEngine = React.memo(({
                             isActive={isActive}
                             onEnded={advance}
                             onError={(err) => {
+                                console.error(`[Engine] Error:`, err)
                                 consecutiveErrorsRef.current++
                                 lastMediaErrorRef.current = err
                                 advance()
@@ -228,13 +252,22 @@ const RegionPlayer = ({ item, url, isActive, onEnded, onError, onReady }: {
 
     useEffect(() => {
         if (!isActive) {
-            if (videoRef.current) { videoRef.current.pause(); videoRef.current.currentTime = 0 }
+            if (videoRef.current) { 
+                videoRef.current.pause()
+                // Amlogic Fix: Don't reset currentTime if not visible, just leave paused
+                // videoRef.current.currentTime = 0 
+            }
             if (timerRef.current) clearTimeout(timerRef.current)
             return
         }
+
         if (item.type === 'video') {
             if (videoRef.current) {
-                videoRef.current.play().then(() => onReady()).catch(e => { if (e.name !== 'AbortError') onError(e.message) })
+                // Amlogic Fix: Ensure load() is called
+                videoRef.current.load()
+                videoRef.current.play().then(() => onReady()).catch(e => { 
+                    if (e.name !== 'AbortError') onError(`Playback: ${e.message}`) 
+                })
             }
         } else {
             onReady()
@@ -243,11 +276,49 @@ const RegionPlayer = ({ item, url, isActive, onEnded, onError, onReady }: {
         }
     }, [isActive, item, onEnded, onError, onReady])
 
-    if (item.type === 'image') return <img src={url} style={{ width: '100%', height: '100%', objectFit: 'contain' }} alt="" />
-    if (item.type === 'video') return <video ref={videoRef} src={url} muted playsInline onEnded={onEnded} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-    if (item.type === 'web_url' || item.type === 'html') return <iframe src={url} style={{ width: '100%', height: '100%', border: 'none' }} title="web" />
+    // Amlogic / Signage Fixes: Add crossOrigin and disableContextMenu
+    if (item.type === 'image') {
+        return (
+            <img 
+                src={url} 
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
+                crossOrigin="anonymous" 
+                alt="" 
+            />
+        )
+    }
+
+    if (item.type === 'video') {
+        return (
+            <video 
+                ref={videoRef} 
+                src={url} 
+                muted 
+                playsInline 
+                onEnded={onEnded} 
+                style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
+                // HARDWARE: Add these for better Android performance
+                disablePictureInPicture
+                preload="auto"
+                controls={false}
+            />
+        )
+    }
+
+    if (item.type === 'web_url' || item.type === 'html') {
+        return (
+            <iframe 
+                src={url} 
+                style={{ width: '100%', height: '100%', border: 'none', background: 'white' }} 
+                title="web" 
+                sandbox="allow-scripts allow-same-origin"
+            />
+        )
+    }
+
     return null
 }
+
 
 const LoadingState = ({ progress }: { progress: any }) => (
     <div style={{ position: 'fixed', inset: 0, background: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
