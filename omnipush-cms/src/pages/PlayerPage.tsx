@@ -435,15 +435,6 @@ export default function PlayerPage() {
         }
     }, [dc, fetchManifest])
 
-    if (phase === 'pairing' && !IS_ANDROID_NATIVE) {
-        return (
-            <div style={{ position: 'fixed', inset: 0, background: '#020617', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                <Logo />
-                    <div style={{ color: '#475569', fontSize: '0.7rem' }}>HW-ID: {dc}</div>
-                </div>
-            </div>
-        )
-    }
 
     if (phase === 'loading') return <LoadingState progress={syncProgress} />
     if (phase === 'secret') return <SecretPrompt device_code={dc} onSubmit={handleSecret} />
