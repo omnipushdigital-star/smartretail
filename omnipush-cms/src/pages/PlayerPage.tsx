@@ -1660,8 +1660,10 @@ export default function PlayerPage() {
                     checksum_sha256: asset.checksum_sha256
                 })
 
-                // Skip blob hydration for PPT/Presentation as documented in stable core
-                if (asset.type !== 'ppt' && asset.type !== 'presentation') {
+                // Skip blob hydration for PPT/Presentation as documented in stable core.
+                // Also skip blob hydration for videos because native HW Decoders (e.g. Amlogic S905W2)
+                // cannot parse memory-mapped blob URIs. Rely on WebView HTTP disk caching instead.
+                if (asset.type !== 'ppt' && asset.type !== 'presentation' && !asset.type.startsWith('video/')) {
                     if (idx !== -1) updatedAssets[idx] = { ...asset, url: blobUrl }
                 }
             } catch (err: any) {
