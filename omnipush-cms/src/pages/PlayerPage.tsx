@@ -379,6 +379,7 @@ export default function PlayerPage() {
     const [syncProgress, setSyncProgress] = useState<{ current: number; total: number } | null>(null)
     const [offline, setOffline] = useState(false)
     const [showDebug, setShowDebug] = useState(false)
+    const [pairingCode, setPairingCode] = useState<string | null>(null)
     
     const secretRef = useRef('')
     const versionRef = useRef<string | null>(null)
@@ -416,21 +417,75 @@ export default function PlayerPage() {
         }
     }, [dc])
 
+    // --- PAIRING & AUTH LOGIC ---
     useEffect(() => {
-        const stored = localStorage.getItem(secretKey(dc))
-        if (stored) {
-            secretRef.current = stored
-            fetchManifest(stored).then(ok => setPhase(ok ? 'playing' : 'error'))
-        } else {
+        const initPairing = async () => {
+            if (IS_ANDROID_NATIVE) return // Native handles auth via its own means/injection
+
+            const storedSecret = localStorage.getItem(`omnipush_secret_${dc}`)
+            if (storedSecret) {
+                secretRef.current = storedSecret
+                fetchManifest(storedSecret).then(ok => setPhase(ok ? 'playing' : 'error'))
+                return
+            }
+
+            // No secret? Need pairing
             setPhase('pairing')
+            try {
+                const res = await callEdgeFn('device-pairing', { action: 'INIT', device_code: dc })
+                if (res.pairing_pin) {
+                    setPairingCode(res.pairing_pin)
+                }
+            } catch (e) {
+                console.error("Pairing Init Failed", e)
+            }
         }
+        initPairing()
     }, [dc, fetchManifest])
+
+    // Poll for claim status if in pairing mode
+    useEffect(() => {
+        if (phase !== 'pairing' || IS_ANDROID_NATIVE) return
+
+        const poll = setInterval(async () => {
+            try {
+                const res = await callEdgeFn('device-pairing', { action: 'CLAIM_POLL', device_code: dc })
+                if (res.status === 'CLAIMED' && res.device_secret) {
+                    localStorage.setItem(`omnipush_secret_${dc}`, res.device_secret)
+                    secretRef.current = res.device_secret
+                    setPhase('loading')
+                    fetchManifest(res.device_secret).then(ok => setPhase(ok ? 'playing' : 'error'))
+                    clearInterval(poll)
+                }
+            } catch (e) {
+                console.error("Poll Error:", e)
+            }
+        }, 5000)
+
+        return () => clearInterval(poll)
+    }, [phase, dc, fetchManifest])
 
     const handleSecret = (s: string) => {
         localStorage.setItem(secretKey(dc), s)
         secretRef.current = s
         setPhase('loading')
         fetchManifest(s).then(ok => setPhase(ok ? 'playing' : 'error'))
+    }
+
+    if (phase === 'pairing' && !IS_ANDROID_NATIVE) {
+        return (
+            <div style={{ position: 'fixed', inset: 0, background: '#020617', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                <Logo />
+                <div style={{ marginTop: '4rem', textAlign: 'center' }}>
+                    <div style={{ color: '#00daf3', fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Pairing Code</div>
+                    <div style={{ fontSize: '5rem', fontWeight: 900, color: 'white', letterSpacing: '0.1em' }}>{pairingCode || '••••'}</div>
+                    <div style={{ marginTop: '2rem', color: '#64748b', fontSize: '0.9rem' }}>Enter this code in the Omnipush CMS to register this device</div>
+                </div>
+                <div style={{ position: 'fixed', bottom: 40, opacity: 0.5 }}>
+                    <div style={{ color: '#475569', fontSize: '0.7rem' }}>HW-ID: {dc}</div>
+                </div>
+            </div>
+        )
     }
 
     if (phase === 'loading') return <LoadingState progress={syncProgress} />
