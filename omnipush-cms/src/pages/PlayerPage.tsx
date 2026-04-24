@@ -69,7 +69,7 @@ const DEFAULT_WEB_DURATION = 30
 const DEFAULT_VIDEO_DURATION = 300
 const TRANSITION_DURATION = 800 // 0.8s smooth transition
 const READY_TIMING = 500 // 500ms safety buffer for Android hardware
-const IS_ANDROID_NATIVE = !!(window as any).AndroidHealth
+const IS_ANDROID_NATIVE = !!(window as any).AndroidHealth && (navigator.userAgent.includes('OmniPush') || navigator.userAgent.includes('Electron'))
 
 function secretKey(code: string) { return `omnipush_device_secret:${code}` }
 function manifestKey(code: string) { return `omnipush_manifest:${code}` }
@@ -1436,7 +1436,7 @@ export default function PlayerPage() {
 
     // Detect Android native video bridge (APK exposing AndroidHealth JS interface)
     // CORTEX: Robust check must include userAgent to prevent Chrome spoofing/mockers
-    const isAndroidNative = !!(window as any).AndroidHealth
+    const isAndroidNative = !!(window as any).AndroidHealth && navigator.userAgent.includes('OmniPush')
 
     useEffect(() => {
         // Global hook for child components to report transition states
