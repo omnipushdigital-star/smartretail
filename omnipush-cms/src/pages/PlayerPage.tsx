@@ -264,6 +264,11 @@ function UnifiedDoubleBuffer({ items, assets, idx, onAdvance, effect = 'fade', s
         const asset = assets.find(a => a.media_id === item.media_id)
         const url = asset?.url || item.web_url || ''
         let type = asset?.type || item.type || (item.media_id ? 'video' : 'image')
+        
+        // Normalize MIME types (e.g. video/mp4 -> video)
+        if (type.startsWith('video/')) type = 'video'
+        else if (type.startsWith('image/')) type = 'image'
+
         if (url) {
             const ext = url.split('?')[0].split('.').pop()?.toLowerCase()
             if (['mp4', 'webm', 'mov', 'ogg'].includes(ext || '')) type = 'video'
