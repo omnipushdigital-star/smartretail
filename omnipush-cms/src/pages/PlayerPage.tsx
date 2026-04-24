@@ -205,6 +205,8 @@ const PlaybackEngine = React.memo(({
             position: 'absolute', left: `${region.x}%`, top: `${region.y}%`,
             width: `${region.width}%`, height: `${region.height}%`,
             background: 'transparent', overflow: 'hidden',
+            // CORTEX-FIX: Red border to detect if region container is rendering correctly
+            border: showDebug ? '2px solid #ef4444' : 'none',
         }}>
             {layers.map((layer, lIdx) => {
                 const item = itemsRef.current[layer.idx]
@@ -291,6 +293,9 @@ const RegionPlayer = ({ item, url, isActive, onEnded, onError, onReady }: {
                 src={url} 
                 muted 
                 playsInline 
+                autoPlay
+                // @ts-ignore
+                webkit-playsinline="true"
                 onEnded={onEnded} 
                 style={{ 
                     width: '100%', height: '100%', 
