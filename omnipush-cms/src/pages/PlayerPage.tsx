@@ -272,7 +272,12 @@ const RegionPlayer = ({ item, url, isActive, onEnded, onError, onReady }: {
         return (
             <img 
                 src={url} 
-                style={{ width: '100%', height: '100%', objectFit: 'contain', background: 'transparent' }} 
+                style={{ 
+                    width: '100%', height: '100%', 
+                    objectFit: 'fill', 
+                    background: 'transparent',
+                    webkitTransform: 'translate3d(0,0,0)'
+                }} 
                 crossOrigin="anonymous" 
                 alt="" 
             />
@@ -287,13 +292,19 @@ const RegionPlayer = ({ item, url, isActive, onEnded, onError, onReady }: {
                 muted 
                 playsInline 
                 onEnded={onEnded} 
-                style={{ width: '100%', height: '100%', objectFit: 'contain', background: 'transparent' }}
+                style={{ 
+                    width: '100%', height: '100%', 
+                    objectFit: 'fill', 
+                    background: 'transparent',
+                    webkitTransform: 'translate3d(0,0,0)'
+                }}
                 disablePictureInPicture
                 preload="auto"
                 controls={false}
             />
         )
     }
+
 
     if (item.type === 'web_url' || item.type === 'html') {
         return (
@@ -442,7 +453,7 @@ export default function PlayerPage() {
     const regions = manifest?.layout?.regions || [{ id: 'full', x: 0, y: 0, width: 100, height: 100 }]
 
     return (
-        <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: '#000' }} onClick={e => { if (e.detail === 5) setShowDebug(!showDebug) }}>
+        <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'transparent' }} onClick={e => { if (e.detail === 5) setShowDebug(!showDebug) }}>
             <style>{globalStyle}</style>
             {regions.map(reg => (
                 <PlaybackEngine
@@ -458,18 +469,30 @@ export default function PlayerPage() {
                 />
             ))}
             {showDebug && (
-                <div style={{ position: 'fixed', bottom: 20, right: 20, background: 'rgba(0,0,0,0.8)', padding: '1rem', borderRadius: 12, color: 'white', fontSize: '0.7rem', fontFamily: 'monospace', zIndex: 9999 }}>
-                    <div>DC: {dc}</div>
-                    <div>Phase: {phase}</div>
-                    <div>Assets: {manifest?.assets?.length || 0}</div>
-                    <button onClick={() => { localStorage.clear(); window.location.reload() }} style={{ marginTop: '1rem', width: '100%', background: '#ef4444', color: 'white', border: 'none', padding: '0.5rem' }}>Full Reset</button>
+                <div style={{ position: 'fixed', bottom: 100, right: 20, background: 'rgba(0,0,0,0.9)', padding: '1.5rem', borderRadius: 16, color: 'white', fontSize: '0.75rem', fontFamily: 'monospace', zIndex: 9999, border: '1px solid rgba(255,255,255,0.1)', minWidth: 260 }}>
+                    <div style={{ color: '#00daf3', fontWeight: 900, marginBottom: '0.5rem' }}>CORTEX DIAGNOSTICS</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: '0.2rem' }}>
+                        <span>Device:</span> <span style={{ color: '#fff' }}>{dc}</span>
+                        <span>Phase:</span> <span style={{ color: '#fff' }}>{phase}</span>
+                        <span>Regions:</span> <span style={{ color: '#fff' }}>{regions.length}</span>
+                        <span>Assets:</span> <span style={{ color: '#fff' }}>{manifest?.assets?.length || 0}</span>
+                        <span>Errors:</span> <span style={{ color: consecutiveErrorsRef.current > 0 ? '#ef4444' : '#22c55e' }}>{consecutiveErrorsRef.current}</span>
+                        {lastMediaErrorRef.current && (
+                            <>
+                                <span>Latest:</span> <span style={{ color: '#ef4444', wordBreak: 'break-all' }}>{lastMediaErrorRef.current}</span>
+                            </>
+                        )}
+                    </div>
+                    <button onClick={() => { localStorage.clear(); window.location.reload() }} style={{ marginTop: '1rem', width: '100%', background: '#ef4444', color: 'white', border: 'none', padding: '0.75rem', borderRadius: 8, fontWeight: 700 }}>Factory Reset</button>
+                    <button onClick={() => setShowDebug(false)} style={{ marginTop: '0.5rem', width: '100%', background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', padding: '0.75rem', borderRadius: 8 }}>Close</button>
                 </div>
             )}
             <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, padding: '2rem 3rem', display: 'flex', justifyContent: 'space-between', zIndex: 100, pointerEvents: 'none' }}>
                 <LiveClock />
-                <div style={{ color: '#475569', fontSize: '0.7rem' }}>ID: {dc}</div>
+                <div style={{ color: '#475569', fontSize: '0.7rem' }}>CORE-ID: {dc}</div>
             </div>
         </div>
     )
 }
+
 
