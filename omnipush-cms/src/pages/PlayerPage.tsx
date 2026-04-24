@@ -486,7 +486,8 @@ export default function PlayerPage() {
                 <Logo />
                 <GlassCard style={{ marginTop: '2.5rem' }}>
                     <div style={{ color: '#00daf3', fontSize: '0.7rem' }}>Pairing Code</div>
-                    <div style={{ fontSize: '3rem', fontWeight: 900, color: 'white' }}>{dc.slice(-6).toUpperCase()}</div>
+                    <div style={{ fontSize: '3rem', fontWeight: 900, color: 'white' }}>{dc.toUpperCase()}</div>
+                    <div style={{ color: '#475569', fontSize: '0.6rem', marginTop: '0.5rem' }}>HW-ID: {dc}</div>
                     <button onClick={() => setPhase('secret')} style={{ background: 'none', color: '#475569', fontSize: '0.7rem', textDecoration: 'underline', marginTop: '1rem', border: 'none', cursor: 'pointer' }}>Manual Secret</button>
                 </GlassCard>
             </div>
