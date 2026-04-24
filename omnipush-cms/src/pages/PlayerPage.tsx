@@ -61,6 +61,7 @@ interface Manifest {
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
+const TRANSPARENT_BASE64 = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
 const HEARTBEAT_INTERVAL_MS = 30_000
 const DEFAULT_IMAGE_DURATION = 10
@@ -187,6 +188,7 @@ function VideoElement({ url, isReady, onReady, onEnded, onError }: VideoElementP
             onCanPlay={onReady}
             onEnded={onEnded}
             onError={(e) => onError('Video Error')}
+            poster={TRANSPARENT_BASE64}
         />
     )
 }
@@ -274,6 +276,10 @@ function UnifiedDoubleBuffer({ items, assets, idx, onAdvance, effect = 'fade', s
             if (['mp4', 'webm', 'mov', 'ogg'].includes(ext || '')) type = 'video'
             if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext || '')) type = 'image'
         }
+        if (!url && !item.media_id && item.type !== 'web_url') {
+            console.warn(`[UDB] ⚠️ Item ${item.id} has no URL or media_id. Fallback to placeholder.`);
+        }
+
         return { url, type }
     }, [assets])
 
@@ -412,7 +418,13 @@ function UnifiedDoubleBuffer({ items, assets, idx, onAdvance, effect = 'fade', s
 
         setTimeout(() => {
             if (nextType === 'video') {
-                if (!nextVideo) { transitioningRef.current = false; setIsTransitioning(false); return }
+                if (!nextVideo || !nextUrl) { 
+                    console.error('[UDB] ❌ Cannot load next video: missing element or URL');
+                    transitioningRef.current = false; 
+                    setIsTransitioning(false); 
+                    advanceBufferRef.current(true); // skip it
+                    return 
+                }
                 
                 console.log('[UDB] Loading next video into hardware slot...')
                 nextVideo.src = nextUrl
@@ -625,7 +637,7 @@ function UnifiedDoubleBuffer({ items, assets, idx, onAdvance, effect = 'fade', s
                                     if (lastMediaErrorRef) lastMediaErrorRef.current = `Slot ${i} err @ ${new Date().toLocaleTimeString()}`
                                     if (i === activeSlotRef.current) advanceBufferRef.current(true)
                                 }}
-                                poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+                                poster={TRANSPARENT_BASE64}
                             />
                         ) : (
                             <img
@@ -759,6 +771,11 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
         return activeItems.every(it => {
             const asset = assets.find(a => a.media_id === it.media_id)
             let type = asset?.type || it.type || (it.media_id ? 'video' : 'image')
+            
+            // CORTEX: Normalize MIME types
+            if (type.startsWith('video/')) type = 'video'
+            else if (type.startsWith('image/')) type = 'image'
+
             const url = asset?.url || it.web_url
             if (url) {
                 const ext = url.split('?')[0].split('.').pop()?.toLowerCase()
@@ -895,10 +912,15 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
         const url = asset?.url || item.web_url
         let type = asset?.type || item.type || (item.media_id ? 'video' : 'image')
 
+        // CORTEX: Normalize MIME types
+        if (type.startsWith('video/')) type = 'video'
+        else if (type.startsWith('image/')) type = 'image'
+
         if (url) {
             const ext = url.split('?')[0].split('.').pop()?.toLowerCase()
             if (['mp4', 'webm', 'mov', 'ogg'].includes(ext || '')) type = 'video'
-            if (['ppt', 'pptx'].includes(ext || '')) type = 'presentation'
+            if (['ppt', 'pptx'].includes(ext || '')) type = 'image' // normalize ppt as image for simple render if needed
+            if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext || '')) type = 'image'
         }
 
         const visible = isActive || (isSwapping && targetIdx === prevIdx)
@@ -1907,7 +1929,6 @@ export default function PlayerPage() {
             // 1. RAM (navigator.deviceMemory - Chrome/Android only)
             if ((navigator as any).deviceMemory) {
                 meta.ram_total_mb = (navigator as any).deviceMemory * 1024
-                // Browsers don't expose free RAM for security reasons
             }
 
             // 2. Storage (Browser Storage Quota API)
