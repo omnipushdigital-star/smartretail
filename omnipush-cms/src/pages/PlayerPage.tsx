@@ -248,6 +248,14 @@ const RegionPlayer = ({ item, url, isActive, onEnded, onError, onReady }: {
 }) => {
     const videoRef = useRef<HTMLVideoElement>(null)
     const timerRef = useRef<any>(null)
+    const [statusOverlay, setStatusOverlay] = useState<string | null>(item.type.toUpperCase())
+    const [currentUrl, setCurrentUrl] = useState(url)
+
+    useEffect(() => {
+        setStatusOverlay(item.type.toUpperCase() + (item.media_id ? `:${item.media_id.slice(0,4)}` : ''))
+        const t = setTimeout(() => setStatusOverlay(null), 3000)
+        return () => clearTimeout(t)
+    }, [item])
 
     useEffect(() => {
         if (!isActive) {
@@ -260,7 +268,15 @@ const RegionPlayer = ({ item, url, isActive, onEnded, onError, onReady }: {
             if (videoRef.current) {
                 videoRef.current.load()
                 videoRef.current.play().then(() => onReady()).catch(e => { 
-                    if (e.name !== 'AbortError') onError(`Playback: ${e.message}`) 
+                    if (e.name !== 'AbortError') {
+                        // CORTEX-FALLBACK: If blob fails, try remote URL (item.web_url contains remote for local assets too)
+                        if (currentUrl.startsWith('blob:') && item.type === 'video') {
+                            const assetUrl = (item as any)._remote_url || url
+                            console.warn("[Player] Blob fail, falling back to remote", assetUrl)
+                            setCurrentUrl(assetUrl)
+                        }
+                        onError(`Playback: ${e.message}`) 
+                    }
                 })
             }
         } else {
@@ -268,45 +284,62 @@ const RegionPlayer = ({ item, url, isActive, onEnded, onError, onReady }: {
             const duration = item.duration_seconds || (item.type === 'image' ? DEFAULT_IMAGE_DURATION : DEFAULT_WEB_DURATION)
             timerRef.current = setTimeout(onEnded, duration * 1000)
         }
-    }, [isActive, item, onEnded, onError, onReady])
+    }, [isActive, item, onEnded, onError, onReady, currentUrl])
 
     if (item.type === 'image') {
         return (
-            <img 
-                src={url} 
-                style={{ 
-                    width: '100%', height: '100%', 
-                    objectFit: 'fill', 
-                    background: 'transparent',
-                    WebkitTransform: 'translate3d(0,0,0)'
-                }} 
-                crossOrigin="anonymous" 
-                alt="" 
-            />
+            <div style={{ width: '100%', height: '100%', background: 'transparent' }}>
+                <img 
+                    src={currentUrl} 
+                    style={{ 
+                        width: '100%', height: '100%', 
+                        objectFit: 'fill', 
+                        background: 'transparent',
+                    }} 
+                    crossOrigin="anonymous" 
+                    alt="" 
+                />
+                {statusOverlay && (
+                    <div style={{ position: 'absolute', top: 5, left: 5, background: 'rgba(0,218,243,0.8)', color: 'black', padding: '2px 6px', fontSize: '10px', fontWeight: 900, borderRadius: 4, zIndex: 1000 }}>
+                        {statusOverlay}
+                    </div>
+                )}
+            </div>
         )
     }
 
     if (item.type === 'video') {
         return (
-            <video 
-                ref={videoRef} 
-                src={url} 
-                muted 
-                playsInline 
-                autoPlay
-                // @ts-ignore
-                webkit-playsinline="true"
-                onEnded={onEnded} 
-                style={{ 
-                    width: '100%', height: '100%', 
-                    objectFit: 'fill', 
-                    background: 'transparent',
-                    WebkitTransform: 'translate3d(0,0,0)'
-                }}
-                disablePictureInPicture
-                preload="auto"
-                controls={false}
-            />
+            <div style={{ width: '100%', height: '100%', background: 'transparent' }}>
+                <video 
+                    ref={videoRef} 
+                    src={currentUrl} 
+                    muted 
+                    playsInline 
+                    autoPlay
+                    // @ts-ignore
+                    webkit-playsinline="true"
+                    onEnded={onEnded} 
+                    style={{ 
+                        width: '100%', height: '100%', 
+                        objectFit: 'fill', 
+                        background: 'transparent',
+                    }}
+                    disablePictureInPicture
+                    preload="auto"
+                    controls={false}
+                    onError={() => {
+                        const err = videoRef.current?.error
+                        const msg = err ? `CODE:${err.code} ${err.message}` : 'Unknown'
+                        onError(`VideoError: ${msg}`)
+                    }}
+                />
+                {statusOverlay && (
+                    <div style={{ position: 'absolute', top: 5, left: 5, background: 'rgba(0,218,243,0.8)', color: 'black', padding: '2px 6px', fontSize: '10px', fontWeight: 900, borderRadius: 4, zIndex: 1000 }}>
+                        {statusOverlay}
+                    </div>
+                )}
+            </div>
         )
     }
 
