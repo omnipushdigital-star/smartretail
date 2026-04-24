@@ -277,7 +277,7 @@ function UnifiedDoubleBuffer({ items, assets, idx, onAdvance, effect = 'fade', s
             if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext || '')) type = 'image'
         }
         if (!url && !item.media_id && item.type !== 'web_url') {
-            console.warn(`[UDB] ⚠️ Item ${item.id} has no URL or media_id. Fallback to placeholder.`);
+            console.warn(`[UDB] ⚠️ Item ${item.playlist_item_id} has no URL or media_id. Fallback to placeholder.`);
         }
 
         return { url, type }
