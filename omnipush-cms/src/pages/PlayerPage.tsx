@@ -605,7 +605,7 @@ function UnifiedDoubleBuffer({ items, assets, idx, onAdvance, effect = 'fade', s
                                 ref={videoRefs[i]}
                                 src={url || undefined}
                                 style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block', background: isNative ? 'transparent' : '#000' }}
-                                muted playsInline preload="auto" poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+                                muted playsInline preload="auto"
                                 loop={items.length === 1}
                                 onCanPlay={() => {
                                     if (i === 0 && idxRef.current === 0 && activeSlotRef.current === 0) {
