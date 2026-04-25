@@ -598,7 +598,7 @@ function UnifiedDoubleBuffer({ items, assets, idx, onAdvance, effect = 'fade', s
 
     // ΓöÇΓöÇ Render ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     return (
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', background: isNative ? 'transparent' : '#000', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', background: '#000', overflow: 'hidden' }}>
             {([0, 1] as const).map(i => {
                 const { url, type } = slotData[i]
                 const slotStyle = getSlotStyle(i)
@@ -609,7 +609,7 @@ function UnifiedDoubleBuffer({ items, assets, idx, onAdvance, effect = 'fade', s
                             <video
                                 ref={videoRefs[i]}
                                 src={url || undefined}
-                                style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block', background: isNative ? 'transparent' : '#000' }}
+                                style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block', background: '#000' }}
                                 muted playsInline preload="auto"
                                 loop={items.length === 1}
                                 onCanPlay={() => {
@@ -891,7 +891,7 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
             opacity: isActive ? (isTargetReady ? 1 : 0) : (isTargetReady ? 0 : 1),
             transform: 'translate3d(0, 0, 0)',
             transition: transitionType === 'none' ? 'none' : `all ${TRANSITION_DURATION}ms cubic-bezier(0.4, 0, 0.2, 1)`,
-            background: isNative ? 'transparent' : '#000',
+            background: '#000',
             willChange: 'transform, opacity',
             backfaceVisibility: 'hidden',
             pointerEvents: isActive ? 'auto' : 'none'
@@ -938,7 +938,7 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
                 position: 'absolute',
                 top: 0, left: 0, width: '100%', height: '100%',
                 zIndex: isActive ? 10 : 5,
-                background: isNative ? 'transparent' : '#000',
+                background: '#000',
                 margin: 0, padding: 0, overflow: 'hidden',
                 visibility: visible ? 'visible' : 'hidden',
                 ...getTransitionStyles(isActive, transitionType),
@@ -1003,7 +1003,7 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
             position: 'absolute',
             top: `${region.y}%`, left: `${region.x}%`,
             width: `${region.width}%`, height: `${region.height}%`,
-            background: isNative ? 'transparent' : '#000',
+            background: '#000',
             overflow: 'hidden',
             margin: 0, padding: 0,
             transform: 'translate3d(0, 0, 0)', // Create containment layer
@@ -1492,21 +1492,6 @@ export default function PlayerPage() {
         updateAndroidStatus(phase)
     }, [phase, updateAndroidStatus])
 
-    // ΓöÇΓöÇ Native Mode: Make WebView transparent so native SurfaceView video shows through ΓöÇΓöÇ
-    // When the APK sets webView.setBackgroundColor(Color.TRANSPARENT), the HTML layer
-    // must also have transparent backgrounds or the native video remains occluded.
-    useEffect(() => {
-        if (!isAndroidNative || phase !== 'playing') return
-        document.documentElement.style.background = 'transparent'
-        document.body.style.background = 'transparent'
-        const root = document.getElementById('root')
-        if (root) root.style.background = 'transparent'
-        return () => {
-            document.documentElement.style.background = ''
-            document.body.style.background = ''
-            if (root) root.style.background = ''
-        }
-    }, [isAndroidNative, phase])
 
     // ΓöÇΓöÇ Hidden Admin Panel (5-tap top-right corner) ΓöÇΓöÇ
     const ADMIN_PIN = '2580'
@@ -2560,7 +2545,7 @@ export default function PlayerPage() {
                 top: 0, left: 0, right: 0, bottom: 0,
                 width: '100%',
                 height: '100%',
-                background: (IS_ANDROID_NATIVE && phase === 'playing') ? 'transparent' : '#000',
+                background: '#000',
                 overflow: 'hidden',
                 margin: 0, padding: 0,
                 zIndex: 1,
@@ -2620,12 +2605,7 @@ export default function PlayerPage() {
     }
 
     return (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', overflow: 'hidden', background: (isAndroidNative && phase === 'playing') ? 'transparent' : '#000', touchAction: 'none' }}>
-            {isAndroidNative && phase === 'playing' && (
-                <style>{`
-                    body, html, #root { background: transparent !important; }
-                `}</style>
-            )}
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', overflow: 'hidden', background: '#000', touchAction: 'none' }}>
             {renderMain()}
             {cornerTapZone}
             
