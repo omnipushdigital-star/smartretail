@@ -1982,7 +1982,16 @@ export default function PlayerPage() {
             }
 
             console.log('[Player] Sending heartbeat...')
-            const res = await callEdgeFn('device-heartbeat', payload, 30000, false) // 30s timeout, no auth
+            let res = await callEdgeFn('device-heartbeat', payload, 30000, false) // 30s timeout, no auth
+            
+            // CORTEX: Android WebView Network Dropping Mitigation
+            // Native apps (Box/Emulator) commonly drop intermittent fetch requests when the OS scheduler stalls.
+            // Automatically retry once after a short delay before surfacing the error to the Admin Dashboard.
+            if (res.error && res.is_network_failure) {
+                console.warn('[Player] Initial heartbeat fetch failed, attempting automatic network retry...')
+                await new Promise(r => setTimeout(r, 2000))
+                res = await callEdgeFn('device-heartbeat', payload, 30000, false)
+            }
 
             // If heartbeat was successful and contained an ACK for a command, we can clear the ref
             if (!res.error && ackCommandIdRef.current) {
