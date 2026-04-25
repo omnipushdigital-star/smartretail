@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo, useLayoutEffect } from 'react'
+﻿import React, { useEffect, useRef, useState, useCallback, useMemo, useLayoutEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { WifiOff, Tv2, Lock, RefreshCw, Clock, Image as ImageIcon } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
@@ -2422,7 +2422,7 @@ export default function PlayerPage() {
         if (phase === 'pairing') return (
             <div style={bgStyle}>
                 <AmbientOrbs />
-                <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem', maxWidth: 650 }}>
+                <div style={{ zIndex: 1, position: 'relative', textAlign: 'center', padding: '2rem', maxWidth: 450 }}>
                     <Logo />
                     <div style={{ marginTop: '2.5rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: '2.5rem 2rem' }}>
                         <div style={{ marginBottom: '1.5rem' }}>
@@ -2430,8 +2430,8 @@ export default function PlayerPage() {
                             <div style={{ color: '#f1f5f9', fontSize: '1.125rem', fontWeight: 600 }}>Get started in 30 seconds</div>
                         </div>
 
-                        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
-                            {(pairingPin || '--------').split('').map((char, i) => (
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', marginBottom: '2rem' }}>
+                            {(pairingPin || '------').split('').map((char, i) => (
                                 <div key={i} style={{
                                     width: 48, height: 64, background: '#0f172a', border: '1px solid #1e293b',
                                     borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -2445,7 +2445,7 @@ export default function PlayerPage() {
 
                         <div style={{ color: '#94a3b8', fontSize: '0.875rem', lineHeight: 1.6, marginBottom: '2rem' }}>
                             Go to <strong style={{ color: '#f1f5f9' }}>Admin ΓåÆ Devices</strong> on your CMS <br />
-                            and enter this 8-digit code to link this screen.
+                            and enter this 6-digit code to link this screen.
                         </div>
 
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>

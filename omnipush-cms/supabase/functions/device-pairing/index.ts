@@ -25,7 +25,7 @@ Deno.serve(async (req: Request) => {
         if (action === 'INIT') {
             if (!device_code) throw new Error("device_code required");
 
-            const pin = Math.floor(100000 + Math.random() * 900000).toString();
+            const pin = Math.floor(10000000 + Math.random() * 90000000).toString();
             const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // Increased to 15 mins for safety
 
             console.log(`[Pairing] INIT: Generating PIN ${pin} for ${device_code}`);

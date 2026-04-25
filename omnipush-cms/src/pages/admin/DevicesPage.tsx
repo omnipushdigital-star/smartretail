@@ -192,7 +192,7 @@ export default function DevicesPage() {
     }
 
     const handleClaim = async () => {
-        if (claimPin.length !== 6) return toast.error('Please enter a 6-digit PIN')
+        if (claimPin.length !== 8) return toast.error('Please enter an 8-digit PIN')
         setClaiming(true)
         try {
             const res = await callEdgeFn('device-pairing', { action: 'CLAIM', pairing_pin: claimPin, tenant_id: currentTenantId })
@@ -1057,7 +1057,7 @@ export default function DevicesPage() {
             {showClaimModal && (
                 <Modal title="🔗 Pair Screen with Code" onClose={() => setShowClaimModal(false)}>
                     <div style={{ fontSize: '0.875rem', color: '#94a3b8', marginBottom: '1.5rem', lineHeight: 1.6 }}>
-                        Enter the 6-digit code displayed on your player screen to securely link it to this account.
+                        Enter the 8-digit code displayed on your player screen to securely link it to this account.
                     </div>
 
                     <div className="form-group" style={{ marginBottom: '1.5rem' }}>
@@ -1066,15 +1066,15 @@ export default function DevicesPage() {
                             type="text"
                             className="input-field"
                             value={claimPin}
-                            onChange={e => setClaimPin(e.target.value.toUpperCase().slice(0, 6))}
-                            placeholder="000000"
+                            onChange={e => setClaimPin(e.target.value.toUpperCase().slice(0, 8))}
+                            placeholder="00000000"
                             style={{ textAlign: 'center', fontSize: '2rem', letterSpacing: '0.5em', fontWeight: 800, height: '4rem' }}
                         />
                     </div>
 
                     <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
                         <button className="btn-secondary" onClick={() => setShowClaimModal(false)}>Cancel</button>
-                        <button className="btn-primary" onClick={handleClaim} disabled={claiming || claimPin.length !== 6}>
+                        <button className="btn-primary" onClick={handleClaim} disabled={claiming || claimPin.length !== 8}>
                             {claiming && <Loader2 size={14} />}
                             {claiming ? 'Pairing...' : 'Pair Device'}
                         </button>
