@@ -2000,9 +2000,17 @@ export default function PlayerPage() {
             }
 
             if (res.error) {
-                console.error('[Player] Heartbeat Server Error:', res.error)
+                // Network failures are transient — use console.warn to avoid surfacing
+                // them in the native Android reportError bridge (which would pollute
+                // the "Last JS Error" field in the device's info screen).
+                // Only genuine server-side errors get console.error treatment.
+                if (res.is_network_failure) {
+                    console.warn('[Player] Heartbeat Network Failure (transient, not reported to native bridge):', res.error)
+                } else {
+                    console.error('[Player] Heartbeat Server Error:', res.error)
+                }
             } else {
-                console.log(`[Player] Heartbeat Recorded Γ£à (${phase})`)
+                console.log(`[Player] Heartbeat Recorded ✅ (${phase})`)
                 lastErrorRef.current = null 
                 failCountRef.current = 0 // Reset fail count
                 
@@ -2017,7 +2025,8 @@ export default function PlayerPage() {
                 }
             }
         } catch (err: any) {
-            console.error('[Player] Heartbeat Network Error Detail:', err.name, '|', err.message)
+            // Unexpected JS exception (not a network failure returned by callEdgeFn)
+            console.warn('[Player] Heartbeat unexpected exception:', err.name, '|', err.message)
             const msg = (err.message || '').toLowerCase()
             
             // Increment failure count specifically for heartbeat

@@ -104,6 +104,7 @@ serve(async (req: Request) => {
             last_seen_at: new Date().toISOString(),
             last_ip: ip,
             last_version: current_version || body.app_version || null,
+            last_js_error: null, // Wipe the error from the dashboard to remove ambiguity
         }).eq("id", device.id);
 
         // Fetch pending commands to return in the response
