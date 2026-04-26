@@ -590,7 +590,6 @@ function UnifiedDoubleBuffer({ items, assets, idx, onAdvance, effect = 'fade', s
             }
         } else {
             base.opacity = isActive ? 1 : 0
-            base.visibility = isActive ? 'visible' : 'hidden'
             base.transform = 'translate3d(0,0,0)'
         }
         return base
@@ -940,7 +939,6 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
                 zIndex: isActive ? 10 : 5,
                 background: '#000',
                 margin: 0, padding: 0, overflow: 'hidden',
-                visibility: visible ? 'visible' : 'hidden',
                 ...getTransitionStyles(isActive, transitionType),
                 willChange: 'transform, opacity'
             }}>
