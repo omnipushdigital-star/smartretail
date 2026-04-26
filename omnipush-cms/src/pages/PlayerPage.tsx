@@ -1291,14 +1291,8 @@ console.log = (...args) => {
     consoleLogs.push(log)
     if (consoleLogs.length > MAX_LOGS) consoleLogs.shift()
     
-    // NEW: Update remote logs state for debug overlay
-    // Use timeout to decouple from React's synchronous render phase to avoid Error 301 infinite render loops
-    if (setRemoteLogsRef.current) {
-        const ref = setRemoteLogsRef.current
-        setTimeout(() => {
-            ref((prev: any[]) => [{ time: new Date().toLocaleTimeString(), msg, type: 'info' }, ...prev].slice(0, 5))
-        }, 0)
-    }
+    // CORTEX: Bridge for global console hijacking removed from direct state to avoid Error 301
+    // Logs now go into a global array; the UI will pull from this array on an interval.
 
     originalLog.apply(console, args)
 
@@ -1328,14 +1322,7 @@ console.error = (...args) => {
     consoleLogs.push(log)
     if (consoleLogs.length > MAX_LOGS) consoleLogs.shift()
 
-    // NEW: Update remote logs state for debug overlay
-    // Use timeout to decouple from React's synchronous render phase to avoid Error 301 infinite render loops
-    if (setRemoteLogsRef.current) {
-        const ref = setRemoteLogsRef.current
-        setTimeout(() => {
-            ref((prev: any[]) => [{ time: new Date().toLocaleTimeString(), msg, type: 'error' }, ...prev].slice(0, 5))
-        }, 0)
-    }
+    // Bridge removed to prevent loops.
 
     originalError.apply(console, args)
 
@@ -1365,7 +1352,8 @@ console.warn = (...args) => {
 }
 
 // CORTEX: Bridge for global console hijacking to React state
-const setRemoteLogsRef = { current: null as any };
+// CORTEX: Global log storage (outside React cycle to prevent loop-starvation)
+const consoleLogs: string[] = []
 
 export default function PlayerPage() {
     const { device_code } = useParams<{ device_code: string }>()
@@ -1426,7 +1414,8 @@ export default function PlayerPage() {
     const [showDebugOverlay, setShowDebugOverlay] = useState(false)
     const [telemetry, setTelemetry] = useState<any>(null)
     const [lastSyncTime, setLastSyncTime] = useState(new Date().toLocaleTimeString())
-    const [remoteLogs, setRemoteLogs] = useState<{ time: string, msg: string, type: 'info' | 'error' }[]>([])
+    // CORTEX: State for UI pulses (to refresh logs without a reactive loop)
+    const [, setLogPulse] = useState(0)
     const manifestTimerRef = useRef<any>(null)
     const hbTimerRef = useRef<any>(null)
     const failCountRef = useRef(0)
@@ -1441,8 +1430,9 @@ export default function PlayerPage() {
 
     // Bridge state to global ref for console hijacking
     useEffect(() => {
-        setRemoteLogsRef.current = setRemoteLogs;
-        return () => { setRemoteLogsRef.current = null; }
+        // CORTEX: High-frequency log pulse to keep Debug Overlay updated without state loops
+        const logPulseTimer = setInterval(() => setLogPulse(p => p + 1), 2500)
+        return () => clearInterval(logPulseTimer)
     }, [])
 
     // Detect Android native video bridge (APK exposing AndroidHealth JS interface)
@@ -2559,6 +2549,7 @@ export default function PlayerPage() {
                 zIndex: 1,
             }}>
                 {regions.map((reg) => {
+                    // CORTEX: Use memoized items to prevent PlaybackEngine from re-effecting on every parent render
                     const regionItems = manifest?.region_playlists?.[reg.id] || []
                     if (regionItems.length === 0) return null
                     return (
@@ -2679,9 +2670,9 @@ export default function PlayerPage() {
                         <span style={{ color: '#64748b' }}>Env/UA:</span>
                         <span style={{ color: '#f1f5f9', textAlign: 'right' }}>Signage Web-V1</span>
                     </div>
-                    {remoteLogs.length > 0 && remoteLogs[0].type === 'error' && (
+                    {false && (
                         <div style={{ marginTop: 6, paddingTop: 4, borderTop: '1px solid rgba(255,255,255,0.05)', color: '#ef4444', fontSize: '9px', fontStyle: 'italic' }}>
-                            ΓÜá∩╕Å {remoteLogs[0].msg.slice(0, 50)}...
+                            ΓÜá∩╕Å {[][0].msg.slice(0, 50)}...
                         </div>
                     )}
                 </div>
