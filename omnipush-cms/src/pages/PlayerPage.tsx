@@ -257,6 +257,9 @@ function UnifiedDoubleBuffer({ items, assets, idx, onAdvance, effect = 'fade', s
     const transitioningRef = useRef(false)
     const sortedRef = useRef<ManifestItem[]>([])
     const isTransitioningRef = useRef(false)
+    // Native ExoPlayer bridge state (Amlogic/Android TV boxes)
+    const nativeVideoActiveRef = useRef(false)
+    const [nativeVideoActive, setNativeVideoActive] = useState(false)
 
     const sorted = useMemo(() =>
         [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
@@ -423,14 +426,33 @@ function UnifiedDoubleBuffer({ items, assets, idx, onAdvance, effect = 'fade', s
 
         setTimeout(() => {
             if (nextType === 'video') {
-                if (!nextVideo || !nextUrl) { 
+                if (!nextVideo || !nextUrl) {
                     console.error('[UDB] Γ¥î Cannot load next video: missing element or URL');
-                    transitioningRef.current = false; 
-                    setIsTransitioning(false); 
+                    transitioningRef.current = false;
+                    setIsTransitioning(false);
                     advanceBufferRef.current(true); // skip it
-                    return 
+                    return
                 }
-                
+
+                // On Android TV boxes (Amlogic), HTML5 video decoder routes frames through
+                // Amlogic's proprietary video tunnel which bypasses SurfaceFlinger — shows black.
+                // Use native ExoPlayer instead: WebView becomes transparent, ExoPlayer renders below.
+                const ah = IS_ANDROID_NATIVE ? (window as any).AndroidHealth : null
+                if (ah?.playNativeVideo) {
+                    console.log('[UDB] Native ExoPlayer video:', nextUrl)
+                    ;(window as any).onNativeVideoEnded = () => {
+                        delete (window as any).onNativeVideoEnded
+                        nativeVideoActiveRef.current = false
+                        setNativeVideoActive(false)
+                        setTimeout(() => advanceBufferRef.current(), 200)
+                    }
+                    nativeVideoActiveRef.current = true
+                    setNativeVideoActive(true)
+                    ah.playNativeVideo(nextUrl)
+                    commitAdvance()
+                    return
+                }
+
                 console.log('[UDB] Loading next video into hardware slot...')
                 nextVideo.src = nextUrl
                 nextVideo.muted = true
@@ -459,7 +481,13 @@ function UnifiedDoubleBuffer({ items, assets, idx, onAdvance, effect = 'fade', s
                     }, 5000)
                 }
             } else {
-                // Image
+                // Image (or other non-video)
+                // Stop native ExoPlayer if it was playing a video
+                if (IS_ANDROID_NATIVE && nativeVideoActiveRef.current) {
+                    ;(window as any).AndroidHealth?.stopNativeVideo?.()
+                    nativeVideoActiveRef.current = false
+                    setNativeVideoActive(false)
+                }
                 setSlotData(prev => {
                     const up = [...prev] as [{ url: string; type: string }, { url: string; type: string }]
                     up[nextSlot] = { url: nextUrl, type: nextType }
@@ -471,6 +499,14 @@ function UnifiedDoubleBuffer({ items, assets, idx, onAdvance, effect = 'fade', s
     }, [getItemData, getItemDuration, onAdvance, triggerWatchdog, videoRefs, isNative])
 
     useEffect(() => { advanceBufferRef.current = advanceBuffer })
+
+    // Toggle WebView transparency for native ExoPlayer video (Amlogic TV boxes)
+    useEffect(() => {
+        if (!IS_ANDROID_NATIVE) return
+        const bg = nativeVideoActive ? 'transparent' : '#000'
+        document.documentElement.style.background = bg
+        document.body.style.background = bg
+    }, [nativeVideoActive])
 
     // Sync local ref with parent idx prop to maintain single source of truth
     useEffect(() => {
@@ -603,8 +639,8 @@ function UnifiedDoubleBuffer({ items, assets, idx, onAdvance, effect = 'fade', s
                 const slotStyle = getSlotStyle(i)
                 const isSlotActive = i === activeSlot
                 return (
-                    <div key={i} style={slotStyle}>
-                        {type === 'video' ? (
+                    <div key={i} style={{ ...slotStyle, background: (IS_ANDROID_NATIVE && nativeVideoActive && isSlotActive) ? 'transparent' : slotStyle.background }}>
+                        {IS_ANDROID_NATIVE && nativeVideoActive && isSlotActive ? null : type === 'video' ? (
                             <video
                                 ref={videoRefs[i]}
                                 src={url || undefined}
