@@ -569,7 +569,7 @@ function UnifiedDoubleBuffer({ items, assets, idx, onAdvance, effect = 'fade', s
             position: 'absolute',
             top: 0, left: 0, right: 0, bottom: 0,
             width: '100%', height: '100%',
-            background: isNative ? 'transparent' : '#000',
+            background: '#000',
             transition: isTransitioning ? 'opacity 600ms ease-in-out, transform 600ms ease-in-out' : 'none',
             zIndex: isActive ? 10 : 5,
             pointerEvents: 'none',
