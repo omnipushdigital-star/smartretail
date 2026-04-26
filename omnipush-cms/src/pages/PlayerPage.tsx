@@ -1351,9 +1351,7 @@ console.warn = (...args) => {
     }
 }
 
-// CORTEX: Bridge for global console hijacking to React state
-// CORTEX: Global log storage (outside React cycle to prevent loop-starvation)
-const consoleLogs: string[] = []
+
 
 export default function PlayerPage() {
     const { device_code } = useParams<{ device_code: string }>()
@@ -2670,11 +2668,7 @@ export default function PlayerPage() {
                         <span style={{ color: '#64748b' }}>Env/UA:</span>
                         <span style={{ color: '#f1f5f9', textAlign: 'right' }}>Signage Web-V1</span>
                     </div>
-                    {false && (
-                        <div style={{ marginTop: 6, paddingTop: 4, borderTop: '1px solid rgba(255,255,255,0.05)', color: '#ef4444', fontSize: '9px', fontStyle: 'italic' }}>
-                            ΓÜá∩╕Å {[][0].msg.slice(0, 50)}...
-                        </div>
-                    )}
+                    {/* Diagnostics: Pulled from pulse-updated global array in child components */}
                 </div>
             )}
 
