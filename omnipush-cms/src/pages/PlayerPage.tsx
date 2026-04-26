@@ -1292,8 +1292,12 @@ console.log = (...args) => {
     if (consoleLogs.length > MAX_LOGS) consoleLogs.shift()
     
     // NEW: Update remote logs state for debug overlay
+    // Use timeout to decouple from React's synchronous render phase to avoid Error 301 infinite render loops
     if (setRemoteLogsRef.current) {
-        setRemoteLogsRef.current((prev: any[]) => [{ time: new Date().toLocaleTimeString(), msg, type: 'info' }, ...prev].slice(0, 5))
+        const ref = setRemoteLogsRef.current
+        setTimeout(() => {
+            ref((prev: any[]) => [{ time: new Date().toLocaleTimeString(), msg, type: 'info' }, ...prev].slice(0, 5))
+        }, 0)
     }
 
     originalLog.apply(console, args)
@@ -1325,8 +1329,12 @@ console.error = (...args) => {
     if (consoleLogs.length > MAX_LOGS) consoleLogs.shift()
 
     // NEW: Update remote logs state for debug overlay
+    // Use timeout to decouple from React's synchronous render phase to avoid Error 301 infinite render loops
     if (setRemoteLogsRef.current) {
-        setRemoteLogsRef.current((prev: any[]) => [{ time: new Date().toLocaleTimeString(), msg, type: 'error' }, ...prev].slice(0, 5))
+        const ref = setRemoteLogsRef.current
+        setTimeout(() => {
+            ref((prev: any[]) => [{ time: new Date().toLocaleTimeString(), msg, type: 'error' }, ...prev].slice(0, 5))
+        }, 0)
     }
 
     originalError.apply(console, args)
@@ -1443,7 +1451,9 @@ export default function PlayerPage() {
 
     // DIAGNOSTIC: Log native detection state — visible in ADB logcat via OmniPushLogs bridge
     // TODO: Remove after confirming Android Box detection is correct
-    console.log(`[CORTEX_DIAG] IS_ANDROID_NATIVE=${IS_ANDROID_NATIVE} | AndroidHealth=${!!(window as any).AndroidHealth} | UA=${navigator.userAgent.substring(0, 120)}`)
+    useEffect(() => {
+        console.log(`[CORTEX_DIAG] IS_ANDROID_NATIVE=${IS_ANDROID_NATIVE} | AndroidHealth=${!!(window as any).AndroidHealth} | UA=${navigator.userAgent.substring(0, 120)}`)
+    }, [IS_ANDROID_NATIVE])
 
     useEffect(() => {
         // Global hook for child components to report transition states
