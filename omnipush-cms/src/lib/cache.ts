@@ -173,10 +173,9 @@ export async function hydrateAssetsFromCache(
         assets.map(async (asset) => {
             if (!asset.media_id || !asset.url) return asset
 
-            // HTML assets must always load from their origin URL.
-            // Converting to blob: breaks relative paths (CSS/JS/images) inside the file.
-            if (asset.type === 'html') {
-                console.log(`[Cache] Skipping blob hydration for HTML asset ${asset.media_id} — using origin URL`)
+            // HTML assets: blob: breaks relative paths inside the file.
+            // Video assets: native HW decoders and ExoPlayer cannot open blob: URIs.
+            if (asset.type === 'html' || asset.type === 'video' || asset.type.startsWith('video/')) {
                 return asset
             }
 

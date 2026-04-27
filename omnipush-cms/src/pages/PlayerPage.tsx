@@ -201,6 +201,7 @@ function VideoElement({ url, isReady, onReady, onEnded, onError }: VideoElementP
 interface PlaybackProps {
     items: ManifestItem[]
     assets: ManifestAsset[]
+    nativeAssets?: ManifestAsset[]
     region: { id: string; x: number; y: number; width: number; height: number }
     isNative?: boolean
     showDebug?: boolean
@@ -217,9 +218,10 @@ interface PlaybackProps {
 // Videos: advance on onEnded + watchdog
 // Images: advance via per-item duration timer
 // Web/iFrame: handled by PlaybackEngine fallback when needed
-function UnifiedDoubleBuffer({ items, assets, idx, onAdvance, effect = 'fade', showDebug = false, isNative = false, consecutiveErrorsRef, lastMediaErrorRef }: {
+function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effect = 'fade', showDebug = false, isNative = false, consecutiveErrorsRef, lastMediaErrorRef }: {
     items: ManifestItem[]
     assets: ManifestAsset[]
+    nativeAssets?: ManifestAsset[]
     idx: number
     onAdvance: (newIdx: number) => void
     effect?: string
@@ -439,7 +441,14 @@ function UnifiedDoubleBuffer({ items, assets, idx, onAdvance, effect = 'fade', s
                 // Use native ExoPlayer instead: WebView becomes transparent, ExoPlayer renders below.
                 const ah = IS_ANDROID_NATIVE ? (window as any).AndroidHealth : null
                 if (ah?.playNativeVideo) {
-                    console.log('[UDB] Native ExoPlayer video:', nextUrl)
+                    // Blob URLs are WebView-only — ExoPlayer needs the original HTTP URL.
+                    // nativeAssets carries the pre-hydration URLs from the server manifest.
+                    let exoUrl = nextUrl
+                    if (exoUrl.startsWith('blob:') && nextItem.media_id) {
+                        const orig = nativeAssets?.find(a => a.media_id === nextItem.media_id)?.url
+                        if (orig && !orig.startsWith('blob:')) exoUrl = orig
+                    }
+                    console.log('[UDB] Native ExoPlayer video:', exoUrl)
                     ;(window as any).onNativeVideoEnded = () => {
                         delete (window as any).onNativeVideoEnded
                         nativeVideoActiveRef.current = false
@@ -448,7 +457,7 @@ function UnifiedDoubleBuffer({ items, assets, idx, onAdvance, effect = 'fade', s
                     }
                     nativeVideoActiveRef.current = true
                     setNativeVideoActive(true)
-                    ah.playNativeVideo(nextUrl)
+                    ah.playNativeVideo(exoUrl)
                     commitAdvance()
                     return
                 }
@@ -724,7 +733,7 @@ function UnifiedDoubleBuffer({ items, assets, idx, onAdvance, effect = 'fade', s
 
 // ΓöÇΓöÇΓöÇ Playback Engine ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
-function PlaybackEngine({ items, assets, region, isNative = false, showDebug = false, consecutiveErrorsRef, lastMediaErrorRef }: PlaybackProps) {
+function PlaybackEngine({ items, assets, nativeAssets, region, isNative = false, showDebug = false, consecutiveErrorsRef, lastMediaErrorRef }: PlaybackProps) {
     const [idx, setIdx] = useState(0)
     const [prevIdx, setPrevIdx] = useState<number | null>(null)
     const [isSwapping, setIsSwapping] = useState(false)
@@ -1050,6 +1059,7 @@ function PlaybackEngine({ items, assets, region, isNative = false, showDebug = f
                     key={activeItems.map(i => i.playlist_item_id).join(',')}
                     items={activeItems}
                     assets={assets}
+                    nativeAssets={nativeAssets}
                     idx={idx}
                     onAdvance={(newIdx) => advance(newIdx)}
                     effect={(activeItems[idx] as any)?.settings?.transition || 'fade'}
@@ -1439,6 +1449,8 @@ export default function PlayerPage() {
     useEffect(() => { phaseRef.current = phase }, [phase])
     const [secret, setSecret] = useState<string>('')
     const [manifest, setManifest] = useState<Manifest | null>(null)
+    // Stores original HTTP URLs before blob hydration — used by ExoPlayer (can't open blob: URLs)
+    const nativeAssetsRef = useRef<ManifestAsset[]>([])
     const [offline, setOffline] = useState(false)
     const [errorMsg, setErrorMsg] = useState('')
     const [version, setVersion] = useState<string | null>(null)
@@ -1708,10 +1720,11 @@ export default function PlayerPage() {
                     checksum_sha256: asset.checksum_sha256
                 })
 
-                // Skip blob hydration for PPT/Presentation as documented in stable core.
-                // Also skip blob hydration for videos because native HW Decoders (e.g. Amlogic S905W2)
-                // cannot parse memory-mapped blob URIs. Rely on WebView HTTP disk caching instead.
-                if (asset.type !== 'ppt' && asset.type !== 'presentation' && !asset.type.startsWith('video/')) {
+                // Skip blob hydration for PPT/Presentation and video types.
+                // Native HW decoders (Amlogic S905W2) and ExoPlayer cannot use blob: URIs.
+                // Videos rely on WebView/ExoPlayer HTTP disk caching instead.
+                const isVideo = asset.type === 'video' || asset.type.startsWith('video/')
+                if (asset.type !== 'ppt' && asset.type !== 'presentation' && !isVideo) {
                     if (idx !== -1) updatedAssets[idx] = { ...asset, url: blobUrl }
                 }
             } catch (err: any) {
@@ -1818,6 +1831,8 @@ export default function PlayerPage() {
             // localStorage always stores remote URLs so offline re-hydration works after reboot.
             let manifestToApply = data
             if (data.assets && !isSyncingRef.current) {
+                // Save original HTTP URLs before blob hydration — ExoPlayer needs these
+                nativeAssetsRef.current = data.assets
                 isSyncingRef.current = true
                 try {
                     const blobAssets = await syncAssets(data.assets)
@@ -2592,6 +2607,7 @@ export default function PlayerPage() {
                             region={reg}
                             items={regionItems}
                             assets={manifest!.assets}
+                            nativeAssets={nativeAssetsRef.current}
                             isNative={IS_ANDROID_NATIVE}
                             showDebug={showDebugOverlay}
                             deviceCode={dc}
