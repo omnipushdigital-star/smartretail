@@ -1696,6 +1696,8 @@ export default function PlayerPage() {
         const assetsToActuallySync = assetsToSync.filter(a => {
             // HTML assets are always served from origin URL ΓÇö blob: URLs break relative paths inside the file
             if (a.type === 'html') return false
+            // file:// URLs are already on native storage ΓÇö fetch() cannot open them in WebView
+            if (a.url?.startsWith('file://')) return false
             return a.url && !a.url.startsWith('blob:')
         })
 
@@ -1831,11 +1833,36 @@ export default function PlayerPage() {
             // localStorage always stores remote URLs so offline re-hydration works after reboot.
             let manifestToApply = data
             if (data.assets && !isSyncingRef.current) {
-                // Save original HTTP URLs before blob hydration — ExoPlayer needs these
-                nativeAssetsRef.current = data.assets
+                let assetsToUse = data.assets
+
+                if (IS_ANDROID_NATIVE) {
+                    const ah = (window as any).AndroidHealth
+                    // Trigger background download of all assets on the native side
+                    if (ah?.syncAssetsFromManifest) {
+                        ah.syncAssetsFromManifest(JSON.stringify(data.assets))
+                    }
+                    // Merge currently cached file:// paths from native storage
+                    if (ah?.getLocalAssetMap) {
+                        try {
+                            const localMap: Record<string, string> = JSON.parse(ah.getLocalAssetMap())
+                            if (Object.keys(localMap).length > 0) {
+                                assetsToUse = data.assets.map((a: any) =>
+                                    localMap[a.media_id] ? { ...a, url: localMap[a.media_id] } : a
+                                )
+                            }
+                        } catch (e) {
+                            // keep assetsToUse = data.assets on parse error
+                        }
+                    }
+                }
+
+                // INVARIANT: nativeAssetsRef.current MUST be set before syncAssets runs.
+                // It stores the merged assetsToUse (file:// or HTTPS) so ExoPlayer can
+                // resolve blob→real URL at call site. Do NOT move this line below syncAssets.
+                nativeAssetsRef.current = assetsToUse
                 isSyncingRef.current = true
                 try {
-                    const blobAssets = await syncAssets(data.assets)
+                    const blobAssets = await syncAssets(assetsToUse)
                     manifestToApply = { ...data, assets: blobAssets }
                 } finally {
                     isSyncingRef.current = false
@@ -2230,6 +2257,69 @@ export default function PlayerPage() {
             clearTimeout(initialHbTimeout)
         }
     }, [phase, !!secret, manifest?.poll_seconds]) // Stable dependencies
+
+    // ΓöÇΓöÇ Stable ref to fetchManifest so Realtime/interval callback never captures stale closure ΓöÇΓöÇ
+    const fetchManifestRef = useRef<() => void>(() => {})
+    useEffect(() => {
+        fetchManifestRef.current = () => fetchManifest(secretRef.current)
+    }, [fetchManifest])
+
+    // ΓöÇΓöÇ Realtime subscription + 30-min fallback poll (Android offline sync) ΓöÇΓöÇ
+    useEffect(() => {
+        if (!IS_ANDROID_NATIVE) return
+        const pubId = manifest?.resolved?.pub_id
+        if (!pubId) return
+
+        let channel: any = null
+        let intervalId: ReturnType<typeof setInterval> | null = null
+
+        const triggerSync = () => fetchManifestRef.current()
+
+        // Allow native PlayerActivity to trigger a manifest refresh directly
+        ;(window as any).onCmsPlaylistChanged = triggerSync
+
+        const setupRealtime = async () => {
+            try {
+                // Get the first playlist_item_id from the manifest's region_playlists
+                const regionPlaylists = manifest?.region_playlists ?? {}
+                const firstRegionItems: ManifestItem[] = Object.values(regionPlaylists)[0] ?? []
+                const firstItemId = firstRegionItems[0]?.playlist_item_id
+                if (!firstItemId) return
+
+                // Query playlist_items to get the playlist_id for this item
+                const { data: item } = await supabase
+                    .from('playlist_items')
+                    .select('playlist_id')
+                    .eq('id', firstItemId)
+                    .single()
+
+                if (!item?.playlist_id) return
+
+                channel = supabase
+                    .channel(`playlist-${item.playlist_id}`)
+                    .on('postgres_changes', {
+                        event: '*',
+                        schema: 'public',
+                        table: 'playlist_items',
+                        filter: `playlist_id=eq.${item.playlist_id}`
+                    }, () => triggerSync())
+                    .subscribe()
+            } catch (e) {
+                // Realtime setup failed ΓÇö 30-min interval fallback below covers it
+            }
+        }
+
+        setupRealtime()
+
+        // 30-min fallback poll ΓÇö Amlogic WebSocket connections may silently drop
+        intervalId = setInterval(triggerSync, 30 * 60 * 1000)
+
+        return () => {
+            ;(window as any).onCmsPlaylistChanged = undefined
+            if (channel) supabase.removeChannel(channel)
+            if (intervalId) clearInterval(intervalId)
+        }
+    }, [manifest?.resolved?.pub_id]) // eslint-disable-line
 
     // ΓöÇΓöÇ Handle secret submission ΓöÇΓöÇ
     const handleSecret = async (s: string) => {
