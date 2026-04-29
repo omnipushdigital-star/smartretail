@@ -448,7 +448,7 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
                 ;(window as any).onNativeVideoEnded = () => {
                     delete (window as any).onNativeVideoEnded
                     setNativeTransitioning(true)
-                    setTimeout(() => advanceBufferRef.current(), 200)
+                    advanceBufferRef.current()
                 }
                 nativeVideoActiveRef.current = true
                 setNativeVideoActive(true)
