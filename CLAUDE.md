@@ -45,6 +45,49 @@ amvideo tunnel makes the video plane invisible to screencap AND to the physical 
 Never set the WebView permanently transparent. Old decoder frames bleed through between clips
 and cause visual artifacts on hardware boxes.
 
+### 5. file:// paths go to ExoPlayer only — never into WebView rendering
+
+**Files:** `omnipush-cms/src/pages/PlayerPage.tsx` → `syncAssets`
+
+`assetsToUse` must always hold original HTTPS URLs. WebView blocks `file://` URLs loaded
+from an HTTPS origin (security restriction) — putting them in `assetsToUse` causes a black
+screen with "Not allowed to load local resource" in logcat.
+
+`nativeAssetsRef.current` is the only place that gets `file://` paths (merged from
+`AndroidHealth.getLocalAssetMap()`). ExoPlayer resolves the URL at playback time via:
+```ts
+nativeAssets?.find(a => a.media_id === nextItem.media_id)?.url
+```
+This lookup must run unconditionally (not only when URL starts with `blob:`), so cached
+`file://` paths are used even when `assetsToUse` holds HTTPS.
+
+### 6. WiFi indicator must disappear instantly on network restore
+
+**File:** `SmartRetailPlayer/app/src/main/java/com/omnipush/smartretail/activities/PlayerActivity.kt`
+
+`onAvailable()` must call `adminHandler.removeCallbacks(reloadRunnable)` **before** hiding
+`offlineLayout`. This cancels any pending scheduled reload so the indicator vanishes the
+instant connectivity returns, not after the retry delay fires.
+
+`scheduleReload()` must use `adminHandler.postDelayed(reloadRunnable, ...)` (named runnable,
+reusable handler) — never an anonymous `Handler(Looper.getMainLooper()).postDelayed(...)`.
+An anonymous handler produces a callback that cannot be cancelled.
+
+`RECONNECT_DELAY_MS` is **15 seconds** — do not increase. The device caches content locally
+so there is no user-visible gap during the retry window.
+
+### 7. MediaCacheManager: treat JSON null checksum as absent
+
+**File:** `SmartRetailPlayer/app/src/main/java/com/omnipush/smartretail/managers/MediaCacheManager.kt`
+
+`JSONObject.optString("checksum_sha256")` returns the **string** `"null"` when the JSON
+value is JSON null — it does NOT return Kotlin null. Always filter with:
+```kotlin
+.takeIf { it.isNotEmpty() && it != "null" }
+```
+Without this check every asset with a null checksum is saved as `null.<ext>`, causing all
+such assets to collide on the same file and corrupt each other.
+
 ---
 
 ## Device Notes
