@@ -441,12 +441,13 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
                 // Use native ExoPlayer instead: WebView becomes transparent, ExoPlayer renders below.
                 const ah = IS_ANDROID_NATIVE ? (window as any).AndroidHealth : null
                 if (ah?.playNativeVideo) {
-                    // Blob URLs are WebView-only — ExoPlayer needs the original HTTP URL.
-                    // nativeAssets carries the pre-hydration URLs from the server manifest.
+                    // Always resolve via nativeAssets by media_id — nativeAssets holds
+                    // file:// paths when cached locally (offline playback) or HTTPS otherwise.
+                    // This ensures ExoPlayer uses local files when internet is down.
                     let exoUrl = nextUrl
-                    if (exoUrl.startsWith('blob:') && nextItem.media_id) {
-                        const orig = nativeAssets?.find(a => a.media_id === nextItem.media_id)?.url
-                        if (orig && !orig.startsWith('blob:')) exoUrl = orig
+                    if (nextItem.media_id) {
+                        const nativeUrl = nativeAssets?.find(a => a.media_id === nextItem.media_id)?.url
+                        if (nativeUrl && !nativeUrl.startsWith('blob:')) exoUrl = nativeUrl
                     }
                     console.log('[UDB] Native ExoPlayer video:', exoUrl)
                     ;(window as any).onNativeVideoEnded = () => {
