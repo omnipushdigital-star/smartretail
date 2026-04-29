@@ -427,11 +427,39 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
             }
         }
 
-        // CORTEX: Staggered load for Amlogic hardware HTML5 video decoder.
-        // ExoPlayer (native Android path) handles its own decoder lifecycle — no delay needed.
-        // The 1000ms was causing a black screen between playlist loops on Android.
-        const ah_check = IS_ANDROID_NATIVE ? (window as any).AndroidHealth : null
-        const decoderSafetyDelay = ah_check?.playNativeVideo ? 0 : (isNative ? 1000 : 80)
+        // ExoPlayer path: bypass setTimeout entirely — no decoder safety delay needed.
+        // ExoPlayer manages its own decoder lifecycle; the 1000ms delay was for Amlogic
+        // HTML5 video hardware decoder only.
+        if (nextType === 'video') {
+            const ah = IS_ANDROID_NATIVE ? (window as any).AndroidHealth : null
+            if (ah?.playNativeVideo) {
+                if (!nextUrl) {
+                    console.error('[UDB] Cannot load next video: missing URL')
+                    transitioningRef.current = false
+                    setIsTransitioning(false)
+                    return
+                }
+                let exoUrl = nextUrl
+                if (nextItem.media_id) {
+                    const nativeUrl = nativeAssets?.find(a => a.media_id === nextItem.media_id)?.url
+                    if (nativeUrl && !nativeUrl.startsWith('blob:')) exoUrl = nativeUrl
+                }
+                console.log('[UDB] Native ExoPlayer video:', exoUrl)
+                ;(window as any).onNativeVideoEnded = () => {
+                    delete (window as any).onNativeVideoEnded
+                    setNativeTransitioning(true)
+                    setTimeout(() => advanceBufferRef.current(), 200)
+                }
+                nativeVideoActiveRef.current = true
+                setNativeVideoActive(true)
+                ah.playNativeVideo(exoUrl)
+                commitAdvance()
+                return
+            }
+        }
+
+        // HTML5 video / image path — Amlogic HTML5 decoder needs staggered load.
+        const decoderSafetyDelay = (isNative || IS_ANDROID_NATIVE) ? 1000 : 80
 
         setTimeout(() => {
             if (nextType === 'video') {
@@ -440,34 +468,6 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
                     transitioningRef.current = false;
                     setIsTransitioning(false);
                     advanceBufferRef.current(true); // skip it
-                    return
-                }
-
-                // On Android TV boxes (Amlogic), HTML5 video decoder routes frames through
-                // Amlogic's proprietary video tunnel which bypasses SurfaceFlinger — shows black.
-                // Use native ExoPlayer instead: WebView becomes transparent, ExoPlayer renders below.
-                const ah = IS_ANDROID_NATIVE ? (window as any).AndroidHealth : null
-                if (ah?.playNativeVideo) {
-                    // Always resolve via nativeAssets by media_id — nativeAssets holds
-                    // file:// paths when cached locally (offline playback) or HTTPS otherwise.
-                    // This ensures ExoPlayer uses local files when internet is down.
-                    let exoUrl = nextUrl
-                    if (nextItem.media_id) {
-                        const nativeUrl = nativeAssets?.find(a => a.media_id === nextItem.media_id)?.url
-                        if (nativeUrl && !nativeUrl.startsWith('blob:')) exoUrl = nativeUrl
-                    }
-                    console.log('[UDB] Native ExoPlayer video:', exoUrl)
-                    ;(window as any).onNativeVideoEnded = () => {
-                        delete (window as any).onNativeVideoEnded
-                        // Fade overlay in first, then advance — keeps body transparent so
-                        // ExoPlayer last frame stays visible under the fade.
-                        setNativeTransitioning(true)
-                        setTimeout(() => advanceBufferRef.current(), 200)
-                    }
-                    nativeVideoActiveRef.current = true
-                    setNativeVideoActive(true)
-                    ah.playNativeVideo(exoUrl)
-                    commitAdvance() // commitAdvance clears nativeTransitioning after 300ms
                     return
                 }
 
