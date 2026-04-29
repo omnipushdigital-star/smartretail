@@ -262,6 +262,7 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
     // Native ExoPlayer bridge state (Amlogic/Android TV boxes)
     const nativeVideoActiveRef = useRef(false)
     const [nativeVideoActive, setNativeVideoActive] = useState(false)
+    const [nativeTransitioning, setNativeTransitioning] = useState(false)
 
     const sorted = useMemo(() =>
         [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
@@ -455,15 +456,16 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
                     console.log('[UDB] Native ExoPlayer video:', exoUrl)
                     ;(window as any).onNativeVideoEnded = () => {
                         delete (window as any).onNativeVideoEnded
-                        // Do NOT set nativeVideoActive=false here — body stays transparent so
-                        // ExoPlayer's last frame stays visible through the transition instead of
-                        // flashing black. nativeVideoActive is set to false only when advancing
-                        // to an image (below), or left true for the next video.
+                        // Fade overlay in first, then advance — keeps body transparent so
+                        // ExoPlayer last frame stays visible under the fade.
+                        setNativeTransitioning(true)
                         setTimeout(() => advanceBufferRef.current(), 200)
                     }
                     nativeVideoActiveRef.current = true
                     setNativeVideoActive(true)
                     ah.playNativeVideo(exoUrl)
+                    // Fade overlay out shortly after new video starts playing
+                    setTimeout(() => setNativeTransitioning(false), 300)
                     commitAdvance()
                     return
                 }
@@ -715,6 +717,16 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
                     </div>
                 )
             })}
+            {IS_ANDROID_NATIVE && (
+                <div style={{
+                    position: 'absolute', inset: 0,
+                    background: '#000',
+                    opacity: nativeTransitioning ? 1 : 0,
+                    transition: nativeTransitioning ? 'opacity 200ms ease-in' : 'opacity 300ms ease-out',
+                    pointerEvents: 'none',
+                    zIndex: 500,
+                }} />
+            )}
             {showDebug && (
                 <div style={{ position: 'absolute', bottom: 8, right: 8, background: 'rgba(0,0,0,0.75)', color: '#0f0', fontSize: 11, padding: '3px 6px', zIndex: 1000, fontFamily: 'monospace', borderRadius: 4, display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span>UDB {debug} | slot:{activeSlot} idx:{idxRef.current}</span>
