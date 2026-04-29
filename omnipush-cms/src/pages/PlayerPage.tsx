@@ -2303,19 +2303,19 @@ export default function PlayerPage() {
 
         const setupRealtime = async () => {
             try {
-                // Get the first playlist_item_id from the manifest's region_playlists
                 const regionPlaylists = manifest?.region_playlists ?? {}
                 const firstRegionItems: ManifestItem[] = Object.values(regionPlaylists)[0] ?? []
                 const firstItemId = firstRegionItems[0]?.playlist_item_id
+                console.log('[Realtime] setupRealtime: firstItemId=', firstItemId)
                 if (!firstItemId) return
 
-                // Query playlist_items to get the playlist_id for this item
-                const { data: item } = await supabase
+                const { data: item, error } = await supabase
                     .from('playlist_items')
                     .select('playlist_id')
                     .eq('id', firstItemId)
                     .single()
 
+                console.log('[Realtime] playlist_id=', item?.playlist_id, 'error=', error?.message)
                 if (!item?.playlist_id) return
 
                 channel = supabase
@@ -2325,10 +2325,15 @@ export default function PlayerPage() {
                         schema: 'public',
                         table: 'playlist_items',
                         filter: `playlist_id=eq.${item.playlist_id}`
-                    }, () => triggerSync())
-                    .subscribe()
-            } catch (e) {
-                // Realtime setup failed ΓÇö 30-min interval fallback below covers it
+                    }, (payload: any) => {
+                        console.log('[Realtime] 🔔 playlist_items change received:', payload?.eventType)
+                        triggerSync()
+                    })
+                    .subscribe((status: string) => {
+                        console.log('[Realtime] subscription status:', status)
+                    })
+            } catch (e: any) {
+                console.log('[Realtime] setup error:', e?.message)
             }
         }
 
