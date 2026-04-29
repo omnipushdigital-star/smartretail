@@ -1833,7 +1833,9 @@ export default function PlayerPage() {
             // localStorage always stores remote URLs so offline re-hydration works after reboot.
             let manifestToApply = data
             if (data.assets && !isSyncingRef.current) {
-                let assetsToUse = data.assets
+                // assetsToUse always keeps original HTTPS URLs — WebView cannot load
+                // file:// URLs from an HTTPS origin (security restriction).
+                const assetsToUse = data.assets
 
                 if (IS_ANDROID_NATIVE) {
                     const ah = (window as any).AndroidHealth
@@ -1841,25 +1843,24 @@ export default function PlayerPage() {
                     if (ah?.syncAssetsFromManifest) {
                         ah.syncAssetsFromManifest(JSON.stringify(data.assets))
                     }
-                    // Merge currently cached file:// paths from native storage
-                    if (ah?.getLocalAssetMap) {
-                        try {
-                            const localMap: Record<string, string> = JSON.parse(ah.getLocalAssetMap())
-                            if (Object.keys(localMap).length > 0) {
-                                assetsToUse = data.assets.map((a: any) =>
-                                    localMap[a.media_id] ? { ...a, url: localMap[a.media_id] } : a
-                                )
-                            }
-                        } catch (e) {
-                            // keep assetsToUse = data.assets on parse error
-                        }
+                    // INVARIANT: nativeAssetsRef set BEFORE syncAssets.
+                    // Merge file:// paths into nativeAssetsRef ONLY — ExoPlayer reads these.
+                    // file:// never goes into assetsToUse/WebView rendering pipeline.
+                    try {
+                        const localMap: Record<string, string> = ah?.getLocalAssetMap
+                            ? JSON.parse(ah.getLocalAssetMap())
+                            : {}
+                        nativeAssetsRef.current = data.assets.map((a: any) =>
+                            localMap[a.media_id] ? { ...a, url: localMap[a.media_id] } : a
+                        )
+                    } catch (e) {
+                        nativeAssetsRef.current = data.assets
                     }
+                } else {
+                    // INVARIANT: nativeAssetsRef set BEFORE syncAssets.
+                    nativeAssetsRef.current = assetsToUse
                 }
 
-                // INVARIANT: nativeAssetsRef.current MUST be set before syncAssets runs.
-                // It stores the merged assetsToUse (file:// or HTTPS) so ExoPlayer can
-                // resolve blob→real URL at call site. Do NOT move this line below syncAssets.
-                nativeAssetsRef.current = assetsToUse
                 isSyncingRef.current = true
                 try {
                     const blobAssets = await syncAssets(assetsToUse)
