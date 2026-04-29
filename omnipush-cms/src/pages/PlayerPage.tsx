@@ -405,7 +405,10 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
             })
             onAdvance(nextIdx)
             setDebug(`${nextIdx + 1}/${s.length} [${nextType}]`)
-            
+
+            // Always clear the native fade overlay — covers video→image and error paths
+            setTimeout(() => setNativeTransitioning(false), 300)
+
             setTimeout(() => setShowNext(true), 80)
             setTimeout(() => {
                 setIsTransitioning(false)
@@ -464,9 +467,7 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
                     nativeVideoActiveRef.current = true
                     setNativeVideoActive(true)
                     ah.playNativeVideo(exoUrl)
-                    // Fade overlay out shortly after new video starts playing
-                    setTimeout(() => setNativeTransitioning(false), 300)
-                    commitAdvance()
+                    commitAdvance() // commitAdvance clears nativeTransitioning after 300ms
                     return
                 }
 
