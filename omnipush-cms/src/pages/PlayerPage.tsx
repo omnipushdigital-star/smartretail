@@ -423,8 +423,11 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
             }
         }
 
-        // CORTEX: Staggered load for Amlogic hardware
-        const decoderSafetyDelay = (isNative || IS_ANDROID_NATIVE) ? 1000 : 80
+        // CORTEX: Staggered load for Amlogic hardware HTML5 video decoder.
+        // ExoPlayer (native Android path) handles its own decoder lifecycle — no delay needed.
+        // The 1000ms was causing a black screen between playlist loops on Android.
+        const ah_check = IS_ANDROID_NATIVE ? (window as any).AndroidHealth : null
+        const decoderSafetyDelay = ah_check?.playNativeVideo ? 0 : (isNative ? 1000 : 80)
 
         setTimeout(() => {
             if (nextType === 'video') {
@@ -452,8 +455,10 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
                     console.log('[UDB] Native ExoPlayer video:', exoUrl)
                     ;(window as any).onNativeVideoEnded = () => {
                         delete (window as any).onNativeVideoEnded
-                        nativeVideoActiveRef.current = false
-                        setNativeVideoActive(false)
+                        // Do NOT set nativeVideoActive=false here — body stays transparent so
+                        // ExoPlayer's last frame stays visible through the transition instead of
+                        // flashing black. nativeVideoActive is set to false only when advancing
+                        // to an image (below), or left true for the next video.
                         setTimeout(() => advanceBufferRef.current(), 200)
                     }
                     nativeVideoActiveRef.current = true
