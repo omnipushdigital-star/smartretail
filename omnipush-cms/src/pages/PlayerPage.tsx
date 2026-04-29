@@ -390,7 +390,10 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
         const { type: currentType } = getItemData(currentItem)
         // Removed redeclaration of currentVideo (already declared above line 296)
 
-        if (currentType === 'video' && currentVideo) {
+        // Skip killDecoder when ExoPlayer is active — HTML5 video element has no source,
+        // and calling v.load() on Amlogic Chrome 83 blocks the main thread for ~2s,
+        // which delays the subsequent mainHandler.post(playNativeVideo) by the same amount.
+        if (currentType === 'video' && currentVideo && !nativeVideoActiveRef.current) {
             killDecoder(currentVideo)
         }
 
