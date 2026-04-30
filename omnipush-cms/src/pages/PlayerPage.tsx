@@ -461,60 +461,56 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
             }
         }
 
-        // HTML5 video / image path — Amlogic HTML5 decoder needs staggered load.
+        // Image / non-video path: bypass setTimeout — images need no decoder delay.
+        // Also stops ExoPlayer immediately so WebView background turns black before image renders.
+        if (nextType !== 'video') {
+            if (IS_ANDROID_NATIVE && nativeVideoActiveRef.current) {
+                ;(window as any).AndroidHealth?.stopNativeVideo?.()
+                nativeVideoActiveRef.current = false
+                setNativeVideoActive(false)
+            }
+            commitAdvance()
+            return
+        }
+
+        // HTML5 video fallback path — Amlogic HTML5 decoder needs staggered load.
         const decoderSafetyDelay = (isNative || IS_ANDROID_NATIVE) ? 1000 : 80
 
         setTimeout(() => {
-            if (nextType === 'video') {
-                if (!nextVideo || !nextUrl) {
-                    console.error('[UDB] Γ¥î Cannot load next video: missing element or URL');
-                    transitioningRef.current = false;
-                    setIsTransitioning(false);
-                    advanceBufferRef.current(true); // skip it
-                    return
-                }
+            if (!nextVideo || !nextUrl) {
+                console.error('[UDB] Cannot load next video: missing element or URL');
+                transitioningRef.current = false;
+                setIsTransitioning(false);
+                advanceBufferRef.current(true); // skip it
+                return
+            }
 
-                console.log('[UDB] Loading next video into hardware slot...')
-                nextVideo.src = nextUrl
-                nextVideo.muted = true
-                nextVideo.load()
-                
-                const doPlay = () => {
-                    nextVideo.play().then(commitAdvance).catch(e => {
-                        console.warn('[UDB] play() failed:', e.name, e.message)
-                        setDebug('PlayErr')
-                        transitioningRef.current = false
-                        setIsTransitioning(false)
-                        setTimeout(() => advanceBufferRef.current(true), 1500)
-                    })
-                }
+            console.log('[UDB] Loading next video into hardware slot...')
+            nextVideo.src = nextUrl
+            nextVideo.muted = true
+            nextVideo.load()
 
-                if (nextVideo.readyState >= 3) {
-                    doPlay()
-                } else {
-                    const onReady = () => { nextVideo.removeEventListener('canplay', onReady); doPlay() }
-                    nextVideo.addEventListener('canplay', onReady)
-                    setTimeout(() => { 
-                        if (transitioningRef.current) {
-                            nextVideo.removeEventListener('canplay', onReady)
-                            doPlay() 
-                        }
-                    }, 5000)
-                }
-            } else {
-                // Image (or other non-video)
-                // Stop native ExoPlayer if it was playing a video
-                if (IS_ANDROID_NATIVE && nativeVideoActiveRef.current) {
-                    ;(window as any).AndroidHealth?.stopNativeVideo?.()
-                    nativeVideoActiveRef.current = false
-                    setNativeVideoActive(false)
-                }
-                setSlotData(prev => {
-                    const up = [...prev] as [{ url: string; type: string }, { url: string; type: string }]
-                    up[nextSlot] = { url: nextUrl, type: nextType }
-                    return up
+            const doPlay = () => {
+                nextVideo.play().then(commitAdvance).catch(e => {
+                    console.warn('[UDB] play() failed:', e.name, e.message)
+                    setDebug('PlayErr')
+                    transitioningRef.current = false
+                    setIsTransitioning(false)
+                    setTimeout(() => advanceBufferRef.current(true), 1500)
                 })
-                commitAdvance()
+            }
+
+            if (nextVideo.readyState >= 3) {
+                doPlay()
+            } else {
+                const onReady = () => { nextVideo.removeEventListener('canplay', onReady); doPlay() }
+                nextVideo.addEventListener('canplay', onReady)
+                setTimeout(() => {
+                    if (transitioningRef.current) {
+                        nextVideo.removeEventListener('canplay', onReady)
+                        doPlay()
+                    }
+                }, 5000)
             }
         }, decoderSafetyDelay)
     }, [getItemData, getItemDuration, onAdvance, triggerWatchdog, videoRefs, isNative])
