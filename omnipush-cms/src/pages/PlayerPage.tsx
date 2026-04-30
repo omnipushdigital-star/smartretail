@@ -2306,16 +2306,14 @@ export default function PlayerPage() {
                 const regionPlaylists = manifest?.region_playlists ?? {}
                 const firstRegionItems: ManifestItem[] = Object.values(regionPlaylists)[0] ?? []
                 const firstItemId = firstRegionItems[0]?.playlist_item_id
-                console.log('[Realtime] setupRealtime: firstItemId=', firstItemId)
                 if (!firstItemId) return
 
-                const { data: item, error } = await supabase
+                const { data: item } = await supabase
                     .from('playlist_items')
                     .select('playlist_id')
                     .eq('id', firstItemId)
                     .single()
 
-                console.log('[Realtime] playlist_id=', item?.playlist_id, 'error=', error?.message)
                 if (!item?.playlist_id) return
 
                 channel = supabase
@@ -2325,15 +2323,12 @@ export default function PlayerPage() {
                         schema: 'public',
                         table: 'playlist_items',
                         filter: `playlist_id=eq.${item.playlist_id}`
-                    }, (payload: any) => {
-                        console.log('[Realtime] 🔔 playlist_items change received:', payload?.eventType)
+                    }, () => {
                         triggerSync()
                     })
-                    .subscribe((status: string) => {
-                        console.log('[Realtime] subscription status:', status)
-                    })
+                    .subscribe()
             } catch (e: any) {
-                console.log('[Realtime] setup error:', e?.message)
+                console.error('[Realtime] setup error:', e?.message)
             }
         }
 
