@@ -464,6 +464,7 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
         // Image / non-video path: bypass setTimeout — images need no decoder delay.
         // Also stops ExoPlayer immediately so WebView background turns black before image renders.
         if (nextType !== 'video') {
+            console.log('[UDB] Image path: url=', nextUrl?.substring(0, 60), 'nativeActive=', nativeVideoActiveRef.current)
             if (IS_ANDROID_NATIVE && nativeVideoActiveRef.current) {
                 ;(window as any).AndroidHealth?.stopNativeVideo?.()
                 nativeVideoActiveRef.current = false
