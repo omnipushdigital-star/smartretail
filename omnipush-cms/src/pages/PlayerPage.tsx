@@ -735,8 +735,14 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
                                 src={url || undefined}
                                 alt=""
                                 style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }}
-                                onLoad={() => {
-                                    console.log(`[UDB] ✅ Img slot ${i} loaded: ${url?.substring(0, 60)} nativeActive=${nativeVideoActive}`)
+                                onLoad={(e) => {
+                                    const imgEl = e.currentTarget as HTMLImageElement
+                                    const imgStyle = window.getComputedStyle(imgEl)
+                                    const parentEl = imgEl.parentElement
+                                    const parentStyle = parentEl ? window.getComputedStyle(parentEl) : null
+                                    console.log(`[UDB] ✅ Img slot ${i} loaded: ${url?.substring(0, 60)}`)
+                                    console.log(`[UDB] img: opacity=${imgStyle.opacity} visibility=${imgStyle.visibility} display=${imgStyle.display} w=${imgEl.offsetWidth} h=${imgEl.offsetHeight}`)
+                                    console.log(`[UDB] parent: opacity=${parentStyle?.opacity} visibility=${parentStyle?.visibility} display=${parentStyle?.display} w=${parentEl?.offsetWidth} h=${parentEl?.offsetHeight} bg=${parentStyle?.backgroundColor}`)
                                 }}
                                 onError={() => {
                                     console.log(`[UDB] ❌ Img slot ${i} ERROR: ${url?.substring(0, 60)}`)
