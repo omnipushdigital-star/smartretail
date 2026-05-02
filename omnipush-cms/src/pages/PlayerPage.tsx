@@ -464,11 +464,14 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
         // Image / non-video path: bypass setTimeout — images need no decoder delay.
         // Also stops ExoPlayer immediately so WebView background turns black before image renders.
         if (nextType !== 'video') {
-            console.log('[UDB] Image path: url=', nextUrl?.substring(0, 60), 'nativeActive=', nativeVideoActiveRef.current)
+            console.log('[UDB] Image path: url=', nextUrl?.substring(0, 60), 'nativeActive=', nativeVideoActiveRef.current, 'type=', nextType)
             if (IS_ANDROID_NATIVE && nativeVideoActiveRef.current) {
+                console.log('[UDB] Stopping ExoPlayer for image transition')
                 ;(window as any).AndroidHealth?.stopNativeVideo?.()
                 nativeVideoActiveRef.current = false
                 setNativeVideoActive(false)
+            } else if (IS_ANDROID_NATIVE) {
+                console.log('[UDB] Image path: ExoPlayer was NOT active (nativeActive=false)')
             }
             commitAdvance()
             return
@@ -702,7 +705,11 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
                                 src={url || undefined}
                                 alt=""
                                 style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }}
+                                onLoad={() => {
+                                    console.log(`[UDB] ✅ Img slot ${i} loaded: ${url?.substring(0, 60)} nativeActive=${nativeVideoActive}`)
+                                }}
                                 onError={() => {
+                                    console.log(`[UDB] ❌ Img slot ${i} ERROR: ${url?.substring(0, 60)}`)
                                     if (consecutiveErrorsRef) consecutiveErrorsRef.current += 1
                                     if (lastMediaErrorRef) lastMediaErrorRef.current = `Img slot ${i} err @ ${new Date().toLocaleTimeString()}`
                                     if (isSlotActive) advanceBufferRef.current(true)
