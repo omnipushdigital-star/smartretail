@@ -119,6 +119,12 @@ const globalStyle = `
     display: block !important;
     pointer-events: none;
     background: transparent !important;
+  }
+
+  /* GPU layer hint for video only — img gets this from its parent slot div.
+     Applying translate3d to img creates a nested GPU layer inside the already-composited
+     slot div, which can cause black rendering artifacts on Android WebView. */
+  video, iframe {
     -webkit-transform: translate3d(0,0,0);
     transform: translate3d(0,0,0);
   }
@@ -627,7 +633,11 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
             top: 0, left: 0, right: 0, bottom: 0,
             width: '100%', height: '100%',
             background: '#000',
-            transition: isTransitioning ? 'opacity 600ms ease-in-out, transform 600ms ease-in-out' : 'none',
+            // CORTEX: Keep transition constant — toggling between '600ms' and 'none' in
+            // the same render as an opacity change triggers an Android WebView CSS-engine
+            // freeze where the element gets stuck opaque. Constant value is safe because
+            // the property only fires when the VALUE of opacity/transform changes.
+            transition: 'opacity 600ms ease-in-out, transform 600ms ease-in-out',
             zIndex: isActive ? 10 : 5,
             pointerEvents: 'none',
             overflow: 'hidden',
@@ -725,12 +735,15 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
                     </div>
                 )
             })}
-            {IS_ANDROID_NATIVE && (
+            {/* CORTEX: Only render this overlay when transitioning. When opacity:0 with a CSS
+                transition, Android WebView promotes it to a GPU compositing layer even at
+                opacity:0. On all Android WebView versions this GPU layer renders its
+                background:#000 opaquely, covering images beneath. Fix: don't put it in the
+                DOM at all unless an actual cover is needed. */}
+            {IS_ANDROID_NATIVE && nativeTransitioning && (
                 <div style={{
                     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
                     background: '#000',
-                    opacity: nativeTransitioning ? 1 : 0,
-                    transition: 'opacity 300ms ease-in-out',
                     pointerEvents: 'none',
                     zIndex: 500,
                 }} />
