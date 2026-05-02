@@ -727,10 +727,10 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
             })}
             {IS_ANDROID_NATIVE && (
                 <div style={{
-                    position: 'absolute', inset: 0,
+                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
                     background: '#000',
                     opacity: nativeTransitioning ? 1 : 0,
-                    transition: nativeTransitioning ? 'opacity 200ms ease-in' : 'opacity 300ms ease-out',
+                    transition: 'opacity 300ms ease-in-out',
                     pointerEvents: 'none',
                     zIndex: 500,
                 }} />
