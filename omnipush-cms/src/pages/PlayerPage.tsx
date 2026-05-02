@@ -270,6 +270,11 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
     const [nativeVideoActive, setNativeVideoActive] = useState(false)
     const [nativeTransitioning, setNativeTransitioning] = useState(false)
 
+    // CORTEX: Track which sorted[] index lives in each slot.
+    // Used in render to compute URLs live from current assets (blob URLs arrive
+    // after boot, so reading slotData.url would be stale). -1 = not yet initialised.
+    const slotItemIdxRef = useRef<[number, number]>([-1, -1])
+
     const sorted = useMemo(() =>
         [...items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
     [items])
@@ -406,6 +411,7 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
         const commitAdvance = () => {
             activeSlotRef.current = nextSlot
             idxRef.current = nextIdx
+            slotItemIdxRef.current[nextSlot] = nextIdx  // Keep live-URL ref in sync
             setActiveSlot(nextSlot)
             setSlotData(prev => {
                 const up = [...prev] as [{ url: string; type: string }, { url: string; type: string }]
@@ -557,8 +563,11 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
         
         const data0 = getItemData(item0)
         const data1 = item1 ? getItemData(item1) : { url: '', type: 'video' }
-        
-        console.log(`[UDB] Booting at index ${startIdx}...`)
+
+        // Initialise slot→item mapping so live URL lookup works immediately on first render
+        slotItemIdxRef.current = [startIdx, item1 ? (startIdx + 1) % sorted.length : startIdx]
+
+        console.log(`[UDB] Booting at index ${startIdx}... slot0=${data0.type} url=${data0.url?.substring(0, 50)}`)
         setSlotData([data0, data1])
         activeSlotRef.current = 0
         
@@ -666,7 +675,18 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
     return (
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', background: '#000', overflow: 'hidden' }}>
             {([0, 1] as const).map(i => {
-                const { url, type } = slotData[i]
+                // CORTEX: Compute URL live from current assets, not from stale slotData.
+                // slotData.url is set once at boot (or on each advance) — if syncAssets
+                // completes after boot, slotData keeps the stale HTTPS/empty URL and the
+                // img src never updates, causing a permanent black screen.
+                // Computing via getItemData() reads from the current assets prop, so blob
+                // URLs are always used as soon as they are available.
+                const { url: slotUrl, type } = slotData[i]
+                const slotItemIdx = slotItemIdxRef.current[i]
+                const slotItem = (slotItemIdx >= 0 && slotItemIdx < sortedRef.current.length)
+                    ? sortedRef.current[slotItemIdx]
+                    : undefined
+                const url = slotItem ? (getItemData(slotItem).url || slotUrl) : slotUrl
                 const slotStyle = getSlotStyle(i)
                 const isSlotActive = i === activeSlot
                 return (
