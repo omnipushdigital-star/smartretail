@@ -1517,6 +1517,8 @@ export default function PlayerPage() {
     const [manifest, setManifest] = useState<Manifest | null>(null)
     // Stores original HTTP URLs before blob hydration — used by ExoPlayer (can't open blob: URLs)
     const nativeAssetsRef = useRef<ManifestAsset[]>([])
+    // Guard: prevents state updates after component unmounts (fire-and-forget BG sync IIFE)
+    const bgSyncActiveRef = useRef(true)
     const [offline, setOffline] = useState(false)
     const [errorMsg, setErrorMsg] = useState('')
     const [version, setVersion] = useState<string | null>(null)
@@ -1545,6 +1547,12 @@ export default function PlayerPage() {
         // CORTEX: High-frequency log pulse to keep Debug Overlay updated without state loops
         const logPulseTimer = setInterval(() => setLogPulse(p => p + 1), 2500)
         return () => clearInterval(logPulseTimer)
+    }, [])
+
+    // Unmount guard for the fire-and-forget BG sync IIFE (prevents setState on dead component)
+    useEffect(() => {
+        bgSyncActiveRef.current = true
+        return () => { bgSyncActiveRef.current = false }
     }, [])
 
     // Detect Android native video bridge (APK exposing AndroidHealth JS interface)
@@ -1752,10 +1760,6 @@ export default function PlayerPage() {
         }
     }, [dc, captureBrowserScreenshot])
 
-    // ΓöÇΓöÇ Asset Sync (Offline Cache) ΓöÇΓöÇ
-    // Returns the hydrated asset list (blob: URLs replacing remote CDN URLs).
-    // Caller is responsible for applying the result to manifest state.
-    // This ensures UDB always initializes with local blob: URLs, never remote CDN.
     const initPairing = useCallback(async () => {
         try {
             const data = await callEdgeFn('device-pairing', { action: 'INIT', device_code: dc })
@@ -1840,8 +1844,6 @@ export default function PlayerPage() {
                 return true
             }
 
-            // ΓöÇΓöÇ Download all assets to IndexedDB before applying manifest ΓöÇΓöÇ
-            // Guarantees UDB always initializes with blob: URLs (never remote CDN).
             // ── Stream-First Asset Hydration ────────────────────────────────────────
             // Phase 1 (instant): read IndexedDB — blob: for cached assets, HTTPS for new ones.
             //   Apply manifest immediately. setPhase('playing') fires without waiting for downloads.
@@ -1890,6 +1892,8 @@ export default function PlayerPage() {
                     !a.url.startsWith('blob:') &&
                     !a.url.startsWith('file://') &&
                     a.type !== 'html' &&
+                    a.type !== 'ppt' &&
+                    a.type !== 'presentation' &&
                     a.type !== 'video' &&
                     !a.type.startsWith('video/')
                 )
@@ -1922,23 +1926,24 @@ export default function PlayerPage() {
                                         console.error(`[Cache] BG download failed for ${asset.media_id}: ${err?.message}`)
                                     } finally {
                                         completed++
-                                        setSyncProgress({ current: completed, total: uncached.length })
+                                        if (bgSyncActiveRef.current) setSyncProgress({ current: completed, total: uncached.length })
                                     }
                                 })
                             )
 
                             // Single manifest update — HTTPS URLs replaced by blob: URLs.
                             // Functional update reads current state so stale-closure is not an issue.
-                            setManifest(prev => {
-                                if (!prev) return prev
-                                const updatedAssets = prev.assets.map(a =>
-                                    blobMap[a.media_id] ? { ...a, url: blobMap[a.media_id] } : a
-                                )
-                                return { ...prev, assets: updatedAssets }
-                            })
-
-                            console.log(`[Cache] BG sync done: ${Object.keys(blobMap).length}/${uncached.length} cached.`)
-                            setTimeout(() => setSyncProgress(null), 2000)
+                            if (bgSyncActiveRef.current) {
+                                setManifest(prev => {
+                                    if (!prev) return prev
+                                    const updatedAssets = prev.assets.map(a =>
+                                        blobMap[a.media_id] ? { ...a, url: blobMap[a.media_id] } : a
+                                    )
+                                    return { ...prev, assets: updatedAssets }
+                                })
+                                console.log(`[Cache] BG sync done: ${Object.keys(blobMap).length}/${uncached.length} cached.`)
+                                setTimeout(() => { if (bgSyncActiveRef.current) setSyncProgress(null) }, 2000)
+                            }
                         } finally {
                             isSyncingRef.current = false
                         }
