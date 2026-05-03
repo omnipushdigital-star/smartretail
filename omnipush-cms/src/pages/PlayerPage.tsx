@@ -448,16 +448,23 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
         if (nextType === 'video') {
             const ah = IS_ANDROID_NATIVE ? (window as any).AndroidHealth : null
             if (ah?.playNativeVideo) {
-                if (!nextUrl) {
-                    console.error('[UDB] Cannot load next video: missing URL')
-                    transitioningRef.current = false
-                    setIsTransitioning(false)
-                    return
-                }
-                let exoUrl = nextUrl
+                // Resolve the URL ExoPlayer should play. Prefer a cached file:// path from
+                // nativeAssets (works fully offline). Fall back to the HTTPS URL from
+                // nextUrl. ExoPlayer cannot open blob: URIs, so those are rejected.
+                let exoUrl = nextUrl && !nextUrl.startsWith('blob:') ? nextUrl : ''
                 if (nextItem.media_id) {
                     const nativeUrl = nativeAssets?.find(a => a.media_id === nextItem.media_id)?.url
                     if (nativeUrl && !nativeUrl.startsWith('blob:')) exoUrl = nativeUrl
+                }
+                if (!exoUrl) {
+                    // Neither HTTPS nor cached file:// is available — the manifest item is
+                    // broken (missing/null asset URL). Skip past it instead of retrying
+                    // forever. commitAdvance() advances idxRef so the next tick moves on.
+                    console.error(`[UDB] Skipping next video — no playable URL for media_id=${nextItem.media_id}`)
+                    if (consecutiveErrorsRef) consecutiveErrorsRef.current += 1
+                    if (lastMediaErrorRef) lastMediaErrorRef.current = `Missing video URL @ ${new Date().toLocaleTimeString()}`
+                    commitAdvance()
+                    return
                 }
                 console.log('[UDB] Native ExoPlayer video:', exoUrl)
                 ;(window as any).onNativeVideoEnded = () => {
@@ -735,14 +742,8 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
                                 src={url || undefined}
                                 alt=""
                                 style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }}
-                                onLoad={(e) => {
-                                    const imgEl = e.currentTarget as HTMLImageElement
-                                    const imgStyle = window.getComputedStyle(imgEl)
-                                    const parentEl = imgEl.parentElement
-                                    const parentStyle = parentEl ? window.getComputedStyle(parentEl) : null
-                                    console.log(`[UDB] ✅ Img slot ${i} loaded: ${url?.substring(0, 60)}`)
-                                    console.log(`[UDB] img: opacity=${imgStyle.opacity} visibility=${imgStyle.visibility} display=${imgStyle.display} w=${imgEl.offsetWidth} h=${imgEl.offsetHeight}`)
-                                    console.log(`[UDB] parent: opacity=${parentStyle?.opacity} visibility=${parentStyle?.visibility} display=${parentStyle?.display} w=${parentEl?.offsetWidth} h=${parentEl?.offsetHeight} bg=${parentStyle?.backgroundColor}`)
+                                onLoad={() => {
+                                    console.log(`[UDB] ✅ Img slot ${i} loaded`)
                                 }}
                                 onError={() => {
                                     console.log(`[UDB] ❌ Img slot ${i} ERROR: ${url?.substring(0, 60)}`)
@@ -1755,59 +1756,6 @@ export default function PlayerPage() {
     // Returns the hydrated asset list (blob: URLs replacing remote CDN URLs).
     // Caller is responsible for applying the result to manifest state.
     // This ensures UDB always initializes with local blob: URLs, never remote CDN.
-    const syncAssets = useCallback(async (assetsToSync: ManifestAsset[]): Promise<ManifestAsset[]> => {
-        if (!assetsToSync || assetsToSync.length === 0) return assetsToSync
-
-        const assetsToActuallySync = assetsToSync.filter(a => {
-            // HTML assets are always served from origin URL ΓÇö blob: URLs break relative paths inside the file
-            if (a.type === 'html') return false
-            // file:// URLs are already on native storage ΓÇö fetch() cannot open them in WebView
-            if (a.url?.startsWith('file://')) return false
-            return a.url && !a.url.startsWith('blob:')
-        })
-
-        if (assetsToActuallySync.length === 0) {
-            console.log('[Cache] All assets already cached or skipped.')
-            return assetsToSync
-        }
-
-        console.log(`[Cache] Syncing ${assetsToActuallySync.length} assets...`)
-        setSyncProgress({ current: 0, total: assetsToActuallySync.length })
-
-        const updatedAssets = [...assetsToSync]
-        let completed = 0
-
-        for (const asset of assetsToActuallySync) {
-            const idx = updatedAssets.findIndex(a => a.media_id === asset.media_id)
-            try {
-                const blobUrl = await downloadAndCache({
-                    media_id: asset.media_id,
-                    url: asset.url!,
-                    type: asset.type,
-                    checksum_sha256: asset.checksum_sha256
-                })
-
-                // Skip blob hydration for PPT/Presentation and video types.
-                // Native HW decoders (Amlogic S905W2) and ExoPlayer cannot use blob: URIs.
-                // Videos rely on WebView/ExoPlayer HTTP disk caching instead.
-                const isVideo = asset.type === 'video' || asset.type.startsWith('video/')
-                if (asset.type !== 'ppt' && asset.type !== 'presentation' && !isVideo) {
-                    if (idx !== -1) updatedAssets[idx] = { ...asset, url: blobUrl }
-                }
-            } catch (err: any) {
-                const reason = err?.message || (typeof err === 'string' ? err : 'Network/CORS blocked')
-                console.error(`[Cache] Sync FAILED for ${asset.media_id} (${asset.type}): ${reason} | URL: ${asset.url}`)
-                // On failure: keep the remote URL so playback can still stream as fallback
-            } finally {
-                completed++
-                setSyncProgress({ current: completed, total: assetsToActuallySync.length })
-            }
-        }
-
-        setTimeout(() => setSyncProgress(null), 2000)
-        return updatedAssets // Caller applies this to manifest ΓÇö do NOT call setManifest here
-    }, [])
-
     const initPairing = useCallback(async () => {
         try {
             const data = await callEdgeFn('device-pairing', { action: 'INIT', device_code: dc })
@@ -1894,23 +1842,28 @@ export default function PlayerPage() {
 
             // ΓöÇΓöÇ Download all assets to IndexedDB before applying manifest ΓöÇΓöÇ
             // Guarantees UDB always initializes with blob: URLs (never remote CDN).
-            // isSyncingRef prevents concurrent syncs when polls overlap during a long download.
-            // localStorage always stores remote URLs so offline re-hydration works after reboot.
+            // ── Stream-First Asset Hydration ────────────────────────────────────────
+            // Phase 1 (instant): read IndexedDB — blob: for cached assets, HTTPS for new ones.
+            //   Apply manifest immediately. setPhase('playing') fires without waiting for downloads.
+            // Phase 2 (background): download uncached assets in parallel. When all complete,
+            //   a single setManifest() functional update swaps HTTPS → blob: URLs silently.
+            //   getItemData() picks up the new URLs on the next rotation (useCallback([assets])).
+            // INVARIANTS (CLAUDE.md):
+            //   • Videos never get blob: URLs — excluded from both phases.
+            //   • nativeAssetsRef is set before any sync runs (preserved below).
+            //   • file:// paths only go into nativeAssetsRef, never into manifest.assets.
+            //   • WiFi offline indicator is untouched — offline/setOffline state not modified here.
             let manifestToApply = data
+
             if (data.assets && !isSyncingRef.current) {
-                // assetsToUse always keeps original HTTPS URLs — WebView cannot load
-                // file:// URLs from an HTTPS origin (security restriction).
                 const assetsToUse = data.assets
 
+                // INVARIANT: nativeAssetsRef set BEFORE any sync (CLAUDE.md invariant #2)
                 if (IS_ANDROID_NATIVE) {
                     const ah = (window as any).AndroidHealth
-                    // Trigger background download of all assets on the native side
                     if (ah?.syncAssetsFromManifest) {
                         ah.syncAssetsFromManifest(JSON.stringify(data.assets))
                     }
-                    // INVARIANT: nativeAssetsRef set BEFORE syncAssets.
-                    // Merge file:// paths into nativeAssetsRef ONLY — ExoPlayer reads these.
-                    // file:// never goes into assetsToUse/WebView rendering pipeline.
                     try {
                         const localMap: Record<string, string> = ah?.getLocalAssetMap
                             ? JSON.parse(ah.getLocalAssetMap())
@@ -1922,19 +1875,77 @@ export default function PlayerPage() {
                         nativeAssetsRef.current = data.assets
                     }
                 } else {
-                    // INVARIANT: nativeAssetsRef set BEFORE syncAssets.
                     nativeAssetsRef.current = assetsToUse
                 }
 
-                isSyncingRef.current = true
-                try {
-                    const blobAssets = await syncAssets(assetsToUse)
-                    manifestToApply = { ...data, assets: blobAssets }
-                } finally {
-                    isSyncingRef.current = false
+                // Phase 1: instant IndexedDB hydration — no network, no waiting.
+                const hydratedAssets = await hydrateAssetsFromCache(assetsToUse)
+                manifestToApply = { ...data, assets: hydratedAssets }
+
+                // Phase 2: download assets that are still on HTTPS (not yet in IndexedDB).
+                // Exclude: videos (ExoPlayer/HTTPS only), html (blob: breaks relative paths),
+                //          already-cached blob: URLs, native file:// URLs.
+                const uncached = hydratedAssets.filter(a =>
+                    a.url &&
+                    !a.url.startsWith('blob:') &&
+                    !a.url.startsWith('file://') &&
+                    a.type !== 'html' &&
+                    a.type !== 'video' &&
+                    !a.type.startsWith('video/')
+                )
+
+                if (uncached.length > 0) {
+                    isSyncingRef.current = true
+                    setSyncProgress({ current: 0, total: uncached.length })
+
+                    // Fire-and-forget: do NOT await. fetchManifest returns immediately
+                    // so bootFetch can call setPhase('playing') without delay.
+                    ;(async () => {
+                        let completed = 0
+                        const blobMap: Record<string, string> = {}
+                        try {
+                            await Promise.allSettled(
+                                uncached.map(async (asset) => {
+                                    try {
+                                        const blobUrl = await downloadAndCache({
+                                            media_id: asset.media_id,
+                                            url: asset.url!,
+                                            type: asset.type,
+                                            checksum_sha256: asset.checksum_sha256
+                                        })
+                                        // Only store genuine blob: URLs — downloadAndCache may
+                                        // return the original HTTPS URL as a CORS/network fallback.
+                                        if (blobUrl.startsWith('blob:')) {
+                                            blobMap[asset.media_id] = blobUrl
+                                        }
+                                    } catch (err: any) {
+                                        console.error(`[Cache] BG download failed for ${asset.media_id}: ${err?.message}`)
+                                    } finally {
+                                        completed++
+                                        setSyncProgress({ current: completed, total: uncached.length })
+                                    }
+                                })
+                            )
+
+                            // Single manifest update — HTTPS URLs replaced by blob: URLs.
+                            // Functional update reads current state so stale-closure is not an issue.
+                            setManifest(prev => {
+                                if (!prev) return prev
+                                const updatedAssets = prev.assets.map(a =>
+                                    blobMap[a.media_id] ? { ...a, url: blobMap[a.media_id] } : a
+                                )
+                                return { ...prev, assets: updatedAssets }
+                            })
+
+                            console.log(`[Cache] BG sync done: ${Object.keys(blobMap).length}/${uncached.length} cached.`)
+                            setTimeout(() => setSyncProgress(null), 2000)
+                        } finally {
+                            isSyncingRef.current = false
+                        }
+                    })()
                 }
             } else if (data.assets && isSyncingRef.current) {
-                console.log('[Player] Asset sync already in progress ΓÇö applying manifest with current URLs.')
+                console.log('[Player] Asset sync already in progress — applying manifest with current URLs.')
             }
 
             console.log(`[Player] Applying manifest update (diff detected or first load)`)
@@ -2025,7 +2036,7 @@ export default function PlayerPage() {
             }
             return false
         }
-    }, [dc, syncAssets, initPairing])
+    }, [dc, initPairing])
 
     // ΓöÇΓöÇ Send heartbeat ΓöÇΓöÇ
     const sendHeartbeat = useCallback(async (sec: string) => {
@@ -2757,6 +2768,13 @@ export default function PlayerPage() {
                     // CORTEX: Use memoized items to prevent PlaybackEngine from re-effecting on every parent render
                     const regionItems = manifest?.region_playlists?.[reg.id] || []
                     if (regionItems.length === 0) return null
+                    // Skip zero-dimension regions — they are invisible and create a wasted
+                    // UDB instance. This can happen when a manifest has a second region with
+                    // x/y/width/height values that resolve to 0% × 0% of the container.
+                    if ((reg.width ?? 0) <= 0 || (reg.height ?? 0) <= 0) {
+                        console.warn(`[PlayerPage] Skipping zero-dimension region: ${reg.id} (${reg.width}×${reg.height})`)
+                        return null
+                    }
                     return (
                         <PlaybackEngine
                             key={reg.id}
