@@ -698,7 +698,12 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
                 const isSlotActive = i === activeSlot
                 return (
                     <div key={i} style={{ ...slotStyle, background: (IS_ANDROID_NATIVE && nativeVideoActive && isSlotActive) ? 'transparent' : slotStyle.background }}>
-                        {IS_ANDROID_NATIVE && nativeVideoActive && isSlotActive ? null : type === 'video' ? (
+                        {/* On Android, ExoPlayer handles ALL video — never render HTML5 <video>.
+                            The old guard (nativeVideoActive && isSlotActive) was incomplete:
+                            the inactive slot and post-video transitions still rendered the element,
+                            causing Chrome to create a MediaCodec decoder that routes through the
+                            Amlogic amvideo tunnel → black screen on physical HDMI output. */}
+                        {IS_ANDROID_NATIVE && type === 'video' ? null : type === 'video' ? (
                             <video
                                 ref={videoRefs[i]}
                                 src={url || undefined}
@@ -2812,6 +2817,25 @@ export default function PlayerPage() {
                         pointerEvents: 'none'
                     }}>
                         <WifiOff size={32} strokeWidth={2.5} />
+                    </div>
+                )}
+                {/* Background cache sync indicator — disappears when downloads complete */}
+                {syncProgress && (
+                    <div style={{
+                        position: 'fixed',
+                        bottom: 16,
+                        right: 16,
+                        zIndex: 10000,
+                        background: 'rgba(0,0,0,0.55)',
+                        color: '#94a3b8',
+                        fontSize: '0.6rem',
+                        padding: '3px 7px',
+                        borderRadius: 4,
+                        fontFamily: 'monospace',
+                        pointerEvents: 'none',
+                        letterSpacing: '0.03em',
+                    }}>
+                        ↓ {syncProgress.current}/{syncProgress.total}
                     </div>
                 )}
                 <style>{`
