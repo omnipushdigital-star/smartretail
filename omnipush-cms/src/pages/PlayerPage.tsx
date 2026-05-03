@@ -683,9 +683,9 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', background: '#000', overflow: 'hidden' }}>
             {([0, 1] as const).map(i => {
                 // CORTEX: Compute URL live from current assets, not from stale slotData.
-                // slotData.url is set once at boot (or on each advance) — if syncAssets
-                // completes after boot, slotData keeps the stale HTTPS/empty URL and the
-                // img src never updates, causing a permanent black screen.
+                // slotData.url is set once at boot (or on each advance) — if the background
+                // cache IIFE completes after boot, slotData keeps the stale HTTPS/empty URL
+                // and the img src never updates, causing a permanent black screen.
                 // Computing via getItemData() reads from the current assets prop, so blob
                 // URLs are always used as soon as they are available.
                 const { url: slotUrl, type } = slotData[i]
@@ -1892,6 +1892,7 @@ export default function PlayerPage() {
                     !a.url.startsWith('blob:') &&
                     !a.url.startsWith('file://') &&
                     a.type !== 'html' &&
+                    a.type !== 'web_url' &&
                     a.type !== 'ppt' &&
                     a.type !== 'presentation' &&
                     a.type !== 'video' &&
@@ -1900,7 +1901,7 @@ export default function PlayerPage() {
 
                 if (uncached.length > 0) {
                     isSyncingRef.current = true
-                    setSyncProgress({ current: 0, total: uncached.length })
+                    if (bgSyncActiveRef.current) setSyncProgress({ current: 0, total: uncached.length })
 
                     // Fire-and-forget: do NOT await. fetchManifest returns immediately
                     // so bootFetch can call setPhase('playing') without delay.
@@ -1962,7 +1963,7 @@ export default function PlayerPage() {
             setLastSyncTime(new Date().toLocaleTimeString())
             if (phaseRef.current === 'error') setPhase('playing')
 
-            // Assets already synced above ΓÇö do NOT call syncAssets again here
+            // BG cache IIFE above handles asset hydration — do not add blocking sync here
 
             const win = window as any
             if (win.AndroidHealth?.setStoreInfo) {
