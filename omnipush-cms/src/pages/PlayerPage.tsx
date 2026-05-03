@@ -546,6 +546,25 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
         const bg = nativeVideoActive ? 'transparent' : '#000'
         document.documentElement.style.background = bg
         document.body.style.background = bg
+
+        // ANDROID EXOPLAYER: The WebView sits on top of ExoPlayer's TextureView.
+        // For video to show, ALL HTML container backgrounds must be transparent —
+        // not just html/body. The fixed player root div and any intermediate divs
+        // have hardcoded background:'#000' that blocks the TextureView beneath.
+        // CSS injection with !important overrides those inline JSX styles without
+        // requiring state to be lifted up through the component tree.
+        const styleId = 'omnipush-native-video-bg'
+        let styleEl = document.getElementById(styleId) as HTMLStyleElement | null
+        if (nativeVideoActive) {
+            if (!styleEl) {
+                styleEl = document.createElement('style')
+                styleEl.id = styleId
+                document.head.appendChild(styleEl)
+            }
+            styleEl.textContent = 'html,body,#root,#root>div{background:transparent!important}'
+        } else {
+            styleEl?.remove()
+        }
     }, [nativeVideoActive])
 
     // Sync local ref with parent idx prop to maintain single source of truth
@@ -680,7 +699,7 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
 
     // ΓöÇΓöÇ Render ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     return (
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', background: '#000', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', background: (IS_ANDROID_NATIVE && nativeVideoActive) ? 'transparent' : '#000', overflow: 'hidden' }}>
             {([0, 1] as const).map(i => {
                 // CORTEX: Compute URL live from current assets, not from stale slotData.
                 // slotData.url is set once at boot (or on each advance) — if the background
