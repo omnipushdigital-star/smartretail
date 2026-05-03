@@ -45,6 +45,7 @@ Two-phase asset hydration inside `syncAssets`:
 - The `<LoadingState>` component and `syncProgress` state remain. Progress now shows as a non-blocking indicator during Phase 2 rather than gating the loading screen. (Full loading screen redesign is a separate spec — issue #2.)
 - All CLAUDE.md critical invariants (video blob: exclusion, nativeAssetsRef ordering, ExoPlayer TextureView, WebView background rules) are untouched.
 - Desktop/browser players are unaffected — the change is purely in orchestration order, not in what gets cached.
+- **Network detection and WiFi offline indicator are fully preserved.** The `offline` state, the `<WifiOff>` icon overlay, and the Android `NetworkReceiver` / `onAvailable` / `onLost` / `scheduleReload` flow in `PlayerActivity` are not touched by this change. The offline indicator must continue to appear immediately when connectivity is lost and disappear instantly when it is restored (per CLAUDE.md invariant #6).
 
 ## Success criteria
 
