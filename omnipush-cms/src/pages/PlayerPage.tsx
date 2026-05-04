@@ -484,6 +484,17 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
                 setNativeVideoActive(true)
                 ah.playNativeVideo(exoUrl)
                 commitAdvance()
+                // INVARIANT: ExoPlayer has no onTimeUpdate equivalent, so commitAdvance's
+                // duration-based watchdog (dur + 20s) is the ONLY safety net. If duration_seconds
+                // in the DB is wrong (e.g. 7s stored for a 31s video), the watchdog fires mid-video.
+                // Fix: override with max(actual_dur, DEFAULT_VIDEO_DURATION) so the watchdog is
+                // always at least 320s — making it emergency-only. onNativeVideoEnded is the
+                // primary advance signal; the watchdog only fires if ExoPlayer truly hangs.
+                {
+                    const exoDur = Math.max(getItemDuration(nextItem), DEFAULT_VIDEO_DURATION * 1000)
+                    console.log(`[UDB] ExoPlayer watchdog override: ${exoDur + 20000}ms (db=${getItemDuration(nextItem)}ms, floor=${DEFAULT_VIDEO_DURATION * 1000}ms)`)
+                    triggerWatchdog(exoDur + 20000)
+                }
                 return
             }
         }

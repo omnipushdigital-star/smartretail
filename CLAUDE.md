@@ -129,7 +129,31 @@ cancelled. A stale watchdog firing 25s after an old transition (while a new tran
 700ms `transitioningRef=true` window) causes a spurious force-advance, which cascades into
 rapid-advance: each forced advance starts another 25s timer, creating an unstoppable loop.
 
-### 10. MediaCacheManager: treat JSON null checksum as absent
+### 10. ExoPlayer watchdog must use max(duration, DEFAULT_VIDEO_DURATION) — never trust duration_seconds alone
+
+**File:** `omnipush-cms/src/pages/PlayerPage.tsx` → `advanceBuffer` → ExoPlayer path
+
+`commitAdvance()` sets the watchdog to `duration_seconds × 1000 + 20,000`. For HTML5 video, `onTimeUpdate`
+fires 4×/sec and resets the watchdog to 15s ahead — so the DB value does not matter. **ExoPlayer has no
+`onTimeUpdate` equivalent.** The watchdog fires exactly at `duration_seconds + 20s`.
+
+If `duration_seconds` in the DB is wrong (e.g. 7s stored, actual video is 31s), the watchdog fires at 27s
+and force-advances mid-video — cutting playback short. This is the primary cause of media synchronization
+mismatch on the TV box.
+
+**Fix:** After `commitAdvance()` in the ExoPlayer path, immediately override the watchdog:
+```js
+const exoDur = Math.max(getItemDuration(nextItem), DEFAULT_VIDEO_DURATION * 1000)
+triggerWatchdog(exoDur + 20000)
+```
+
+This makes the watchdog emergency-only (fires only if ExoPlayer truly hangs). `onNativeVideoEnded` is
+the primary advance signal and handles normal end-of-video transition.
+
+**Do NOT** rely on `duration_seconds` being accurate in the DB. Inaccurate durations are common when
+videos are uploaded without metadata extraction.
+
+### 11. MediaCacheManager: treat JSON null checksum as absent
 
 **File:** `SmartRetailPlayer/app/src/main/java/com/omnipush/smartretail/managers/MediaCacheManager.kt`
 
