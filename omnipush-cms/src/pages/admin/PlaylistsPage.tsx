@@ -78,28 +78,42 @@ function SortableItem({ item, onRemove, onUpdateSettings, menus = [] }: {
                     </div>
                 )}
 
-                {/* Speed Editor for Videos */}
+                {/* Speed Editor + effective duration badge for Videos */}
                 {item.type === 'video' && (
-                    <select
-                        value={item.playback_speed || 1.0}
-                        onChange={(e) => onUpdateSettings(item.id, { playback_speed: parseFloat(e.target.value) })}
-                        style={{
-                            fontSize: '0.7rem',
-                            padding: '0.125rem 0.25rem',
-                            background: 'rgba(167, 139, 250, 0.1)',
-                            color: '#c4b5fd',
-                            border: '1px solid rgba(167, 139, 250, 0.2)',
-                            borderRadius: 4,
-                        }}
-                    >
-                        <option value="0.5">0.5x</option>
-                        <option value="0.75">0.75x</option>
-                        <option value="1">1.0x</option>
-                        <option value="1.25">1.25x</option>
-                        <option value="1.5">1.5x</option>
-                        <option value="2">2.0x</option>
-                        <option value="3">3.0x</option>
-                    </select>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <select
+                            value={item.playback_speed || 1.0}
+                            onChange={(e) => {
+                                const newSpeed = parseFloat(e.target.value)
+                                const oldSpeed = parseFloat(String(item.playback_speed)) || 1.0
+                                const rawSeconds = item.duration_seconds ? Math.round(item.duration_seconds * oldSpeed) : 0
+                                const updates: any = { playback_speed: newSpeed }
+                                if (rawSeconds > 0) updates.duration_seconds = Math.ceil(rawSeconds / newSpeed)
+                                onUpdateSettings(item.id, updates)
+                            }}
+                            style={{
+                                fontSize: '0.7rem',
+                                padding: '0.125rem 0.25rem',
+                                background: 'rgba(167, 139, 250, 0.1)',
+                                color: '#c4b5fd',
+                                border: '1px solid rgba(167, 139, 250, 0.2)',
+                                borderRadius: 4,
+                            }}
+                        >
+                            <option value="0.5">0.5x</option>
+                            <option value="0.75">0.75x</option>
+                            <option value="1">1.0x</option>
+                            <option value="1.25">1.25x</option>
+                            <option value="1.5">1.5x</option>
+                            <option value="2">2.0x</option>
+                            <option value="3">3.0x</option>
+                        </select>
+                        {item.duration_seconds != null && (
+                            <span style={{ fontSize: '0.65rem', color: 'rgba(167,139,250,0.6)' }}>
+                                {item.duration_seconds}s
+                            </span>
+                        )}
+                    </div>
                 )}
 
                 {/* Transition Selector */}
@@ -162,7 +176,26 @@ export default function PlaylistsPage() {
     const [devices, setDevices] = useState<any[]>([])
     const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([])
     const [pushing, setPushing] = useState(false)
+    const [probedRawSeconds, setProbedRawSeconds] = useState<number>(0)
+    const [probingDuration, setProbingDuration] = useState(false)
     const { currentTenantId } = useTenant()
+
+    // Auto-probe video duration whenever the selected video changes
+    useEffect(() => {
+        if (addType !== 'video' || !addMediaId) { setProbedRawSeconds(0); return }
+        const asset = mediaAssets.find(a => a.id === addMediaId)
+        if (!asset?.url) return
+        setProbingDuration(true)
+        const vid = document.createElement('video')
+        vid.preload = 'metadata'
+        vid.onloadedmetadata = () => {
+            setProbedRawSeconds(isFinite(vid.duration) ? Math.ceil(vid.duration) : 0)
+            setProbingDuration(false)
+            vid.src = ''
+        }
+        vid.onerror = () => { setProbedRawSeconds(0); setProbingDuration(false) }
+        vid.src = asset.url
+    }, [addMediaId, addType, mediaAssets])
 
     const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }))
 
@@ -297,7 +330,12 @@ export default function PlaylistsPage() {
         } else if (hasLibraryAsset) {
             payload.media_id = addMediaId
             if (['image', 'web_url', 'ppt', 'html'].includes(addType)) payload.duration_seconds = parseInt(addDuration) || 15
-            if (addType === 'video') payload.playback_speed = parseFloat(addPlaybackSpeed) || 1.0
+            if (addType === 'video') {
+                const speed = parseFloat(addPlaybackSpeed) || 1.0
+                payload.playback_speed = speed
+                // Auto-calculated: effective display duration = raw_duration / playback_speed
+                if (probedRawSeconds > 0) payload.duration_seconds = Math.ceil(probedRawSeconds / speed)
+            }
         } else {
             payload.web_url = addUrl
             payload.duration_seconds = parseInt(addDuration) || 15
@@ -645,7 +683,32 @@ export default function PlaylistsPage() {
                                         </div>
                                     </div>
 
-                                    {addType !== 'video' && (
+                                    {addType === 'video' ? (
+                                        <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                                            <label className="label">Playback Speed</label>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                <select
+                                                    className="input-field"
+                                                    value={addPlaybackSpeed}
+                                                    onChange={e => setAddPlaybackSpeed(e.target.value)}
+                                                    style={{ padding: '0.375rem', flex: 1 }}
+                                                >
+                                                    <option value="0.5">0.5x (slow)</option>
+                                                    <option value="0.75">0.75x</option>
+                                                    <option value="1">1.0x (normal)</option>
+                                                    <option value="1.25">1.25x</option>
+                                                    <option value="1.5">1.5x</option>
+                                                    <option value="2">2.0x (fast)</option>
+                                                    <option value="3">3.0x</option>
+                                                </select>
+                                                <span style={{ fontSize: '0.75rem', color: 'var(--color-text-3)', whiteSpace: 'nowrap' }}>
+                                                    {probingDuration ? '⏳ detecting…' : probedRawSeconds > 0
+                                                        ? `${Math.ceil(probedRawSeconds / (parseFloat(addPlaybackSpeed) || 1))}s on screen`
+                                                        : addMediaId ? '— select video' : ''}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ) : (
                                         <div className="form-group" style={{ marginBottom: '0.75rem' }}>
                                             <label className="label">Duration (seconds)</label>
                                             <input className="input-field" type="number" value={addDuration} onChange={e => setAddDuration(e.target.value)} style={{ padding: '0.375rem' }} />
