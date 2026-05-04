@@ -260,6 +260,7 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
     const activeSlotRef = useRef<0 | 1>(0)
     const idxRef = useRef(idx) // Init with parent idx
     const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const transitionWatchdog25sRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const advanceBufferRef = useRef<(force?: boolean, caller?: string) => void>(() => {})
     const bootedRef = useRef(false)
     const transitioningRef = useRef(false)
@@ -377,10 +378,16 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
         transitioningRef.current = true
         if ((window as any).setGlobalTransition) (window as any).setGlobalTransition(true)
 
-        // CORTEX: Emergency transition watchdog. If commitAdvance is never called 
+        // CORTEX: Emergency transition watchdog. If commitAdvance is never called
         // (e.g. video decoder hang), force clear the flag after 25s so polling can resume.
         // 25s is generous for slow networks but still catches true hangs.
-        setTimeout(() => {
+        // IMPORTANT: stored in transitionWatchdog25sRef so each advance cancels the previous.
+        // Previously this was an anonymous setTimeout — it accumulated without cleanup, and
+        // if a stale watchdog fired while a NEW transition was in its 700ms window
+        // (transitioningRef=true), it would force-advance spuriously, cascading into rapid advance.
+        if (transitionWatchdog25sRef.current) clearTimeout(transitionWatchdog25sRef.current)
+        transitionWatchdog25sRef.current = setTimeout(() => {
+            transitionWatchdog25sRef.current = null
             if (transitioningRef.current) {
                 console.warn('[UDB] Transition watchdog timeout - force skipping item')
                 transitioningRef.current = false
