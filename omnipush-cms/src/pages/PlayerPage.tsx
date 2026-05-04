@@ -260,7 +260,7 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
     const activeSlotRef = useRef<0 | 1>(0)
     const idxRef = useRef(idx) // Init with parent idx
     const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-    const advanceBufferRef = useRef<(force?: boolean) => void>(() => {})
+    const advanceBufferRef = useRef<(force?: boolean, caller?: string) => void>(() => {})
     const bootedRef = useRef(false)
     const transitioningRef = useRef(false)
     const sortedRef = useRef<ManifestItem[]>([])
@@ -317,13 +317,14 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
         if (watchdogRef.current) clearTimeout(watchdogRef.current)
         watchdogRef.current = setTimeout(() => {
             setDebug('WD-Skip')
-            advanceBufferRef.current(true)
+            advanceBufferRef.current(true, 'watchdog')
         }, delay)
     }, [])
 
     // ΓöÇΓöÇ Core Advance ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-    const advanceBuffer = useCallback((forceNext = false) => {
+    const advanceBuffer = useCallback((forceNext = false, _caller = 'unknown') => {
         const s = sortedRef.current
+        console.log(`[UDB] advanceBuffer CALLED by="${_caller}" force=${forceNext} transitioning=${transitioningRef.current} idx=${idxRef.current}`)
         if (s.length === 0) return
         if (transitioningRef.current && !forceNext) return
 
@@ -361,7 +362,7 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
                 }
             } else if (type === 'image') {
                 if (imageDurTimerRef.current) clearTimeout(imageDurTimerRef.current)
-                imageDurTimerRef.current = setTimeout(() => advanceBufferRef.current(), getItemDuration(s[0]))
+                imageDurTimerRef.current = setTimeout(() => advanceBufferRef.current(false, 'imgDur-single'), getItemDuration(s[0]))
             }
             // Increase watchdog to 5 mins for single-item safety - don't kill long videos
             triggerWatchdog(300000)
@@ -385,7 +386,7 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
                 transitioningRef.current = false
                 setIsTransitioning(false)
                 if ((window as any).setGlobalTransition) (window as any).setGlobalTransition(false)
-                advanceBufferRef.current(true)
+                advanceBufferRef.current(true, 'transitionWatchdog25s')
             }
         }, 25000)
         setShowNext(false)
@@ -433,7 +434,7 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
 
             if (nextType === 'image') {
                 const dur = getItemDuration(nextItem)
-                imageDurTimerRef.current = setTimeout(() => advanceBufferRef.current(), dur)
+                imageDurTimerRef.current = setTimeout(() => advanceBufferRef.current(false, `imgDur-${dur}ms`), dur)
                 triggerWatchdog(dur + 10000)
             } else {
                 // FALLBACK: If video duration is unknown (0), DEFAULT_VIDEO_DURATION (300s) + safety margin is used.
@@ -470,7 +471,7 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
                 ;(window as any).onNativeVideoEnded = () => {
                     delete (window as any).onNativeVideoEnded
                     setNativeTransitioning(true)
-                    advanceBufferRef.current()
+                    advanceBufferRef.current(false, 'onNativeVideoEnded')
                 }
                 nativeVideoActiveRef.current = true
                 setNativeVideoActive(true)
@@ -504,7 +505,7 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
                 console.error('[UDB] Cannot load next video: missing element or URL');
                 transitioningRef.current = false;
                 setIsTransitioning(false);
-                advanceBufferRef.current(true); // skip it
+                advanceBufferRef.current(true, 'missingVideoElement'); // skip it
                 return
             }
 
@@ -519,7 +520,7 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
                     setDebug('PlayErr')
                     transitioningRef.current = false
                     setIsTransitioning(false)
-                    setTimeout(() => advanceBufferRef.current(true), 1500)
+                    setTimeout(() => advanceBufferRef.current(true, 'videoPlayFailed'), 1500)
                 })
             }
 
@@ -608,7 +609,7 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
             triggerWatchdog(dur + 30000) // 30s buffer for first video boot
         } else {
             const dur = getItemDuration(item0)
-            imageDurTimerRef.current = setTimeout(() => advanceBufferRef.current(), dur)
+            imageDurTimerRef.current = setTimeout(() => advanceBufferRef.current(false, `boot-imgDur-${dur}ms`), dur)
             triggerWatchdog(dur + 15000)
         }
     }, [sorted, getItemData, getItemDuration, triggerWatchdog, videoRefs])
@@ -647,9 +648,9 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
                 const dur = getItemDuration(currentItem)
                 const timeoutLimit = Math.max(dur * 2.5, 60000) // At least 60s
                 if (Date.now() - lastIdxChangeAt > timeoutLimit) {
-                    console.warn(`[UDB] ≡ƒÜ¿ STUCK DETECTED at idx ${lastIdx}. Emergency advance triggered.`)
+                    console.warn(`[UDB] ⚠️ STUCK DETECTED at idx ${lastIdx}. Emergency advance triggered.`)
                     lastIdxChangeAt = Date.now() // Reset timer
-                    advanceBufferRef.current(true)
+                    advanceBufferRef.current(true, 'stallMonitor')
                 }
             } else {
                 lastIdx = idxRef.current
@@ -740,7 +741,7 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
                                 }}
                                 onEnded={() => {
                                     if (consecutiveErrorsRef) consecutiveErrorsRef.current = 0
-                                    if (i === activeSlotRef.current) advanceBufferRef.current()
+                                    if (i === activeSlotRef.current) advanceBufferRef.current(false, `videoOnEnded-slot${i}`)
                                 }}
                                 onTimeUpdate={() => {
                                     // Keep watchdog alive during normal playback (fires ~4x/sec).
@@ -757,7 +758,7 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
                                 onError={() => {
                                     if (consecutiveErrorsRef) consecutiveErrorsRef.current += 1
                                     if (lastMediaErrorRef) lastMediaErrorRef.current = `Slot ${i} err @ ${new Date().toLocaleTimeString()}`
-                                    if (i === activeSlotRef.current) advanceBufferRef.current(true)
+                                    if (i === activeSlotRef.current) advanceBufferRef.current(true, `videoOnError-slot${i}`)
                                 }}
                                 poster={TRANSPARENT_BASE64}
                             />
@@ -773,7 +774,7 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
                                     console.log(`[UDB] ❌ Img slot ${i} ERROR: ${url?.substring(0, 60)}`)
                                     if (consecutiveErrorsRef) consecutiveErrorsRef.current += 1
                                     if (lastMediaErrorRef) lastMediaErrorRef.current = `Img slot ${i} err @ ${new Date().toLocaleTimeString()}`
-                                    if (isSlotActive) advanceBufferRef.current(true)
+                                    if (isSlotActive) advanceBufferRef.current(true, `imgOnError-slot${i}`)
                                 }}
                             />
                         )}
