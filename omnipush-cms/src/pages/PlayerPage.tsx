@@ -569,7 +569,12 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
                 styleEl.id = styleId
                 document.head.appendChild(styleEl)
             }
-            styleEl.textContent = 'html,body,#root,#root>div{background:transparent!important}'
+            // #root>div           = PlayerPage outer fixed div
+            // #root>div>div       = Normal playback container (position:fixed, background:#000)
+            // #root>div>div>div   = PlaybackEngine region container (position:absolute, background:#000)
+            // All three must be transparent so ExoPlayer's TextureView (below the WebView) shows through.
+            // The UDB div and slot divs handle their own backgrounds reactively via nativeVideoActive state.
+            styleEl.textContent = 'html,body,#root,#root>div,#root>div>div,#root>div>div>div{background:transparent!important}'
         } else {
             styleEl?.remove()
         }
@@ -1438,12 +1443,11 @@ console.log = (...args) => {
     // CORTEX: Bridge for global console hijacking removed from direct state to avoid Error 301
     // Logs now go into a global array; the UI will pull from this array on an interval.
 
+    // originalLog feeds Chrome's native console, which WebChromeClient.onConsoleMessage
+    // picks up and forwards to OmniPushLogs logcat. Do NOT also call AndroidHealth.logLine —
+    // that would cause every log to appear twice in logcat (once from WebChromeClient,
+    // once from the explicit bridge call).
     originalLog.apply(console, args)
-
-    const win = window as any
-    if (win.AndroidHealth?.logLine) {
-        win.AndroidHealth.logLine(msg)
-    }
 }
 console.error = (...args) => {
     const msg = args.map(a => {
@@ -1487,12 +1491,9 @@ console.warn = (...args) => {
     const log = `[${new Date().toLocaleTimeString()}] WARN: ${msg}`
     consoleLogs.push(log)
     if (consoleLogs.length > MAX_LOGS) consoleLogs.shift()
+    // Same as console.log: originalWarn reaches OmniPushLogs via WebChromeClient.
+    // No explicit logLine bridge call needed.
     originalWarn.apply(console, args)
-
-    const win = window as any
-    if (win.AndroidHealth?.logLine) {
-        win.AndroidHealth.logLine(`ΓÜá∩╕Å WARN: ${msg}`)
-    }
 }
 
 
