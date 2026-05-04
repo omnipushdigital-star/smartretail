@@ -76,7 +76,60 @@ An anonymous handler produces a callback that cannot be cancelled.
 `RECONNECT_DELAY_MS` is **15 seconds** — do not increase. The device caches content locally
 so there is no user-visible gap during the retry window.
 
-### 7. MediaCacheManager: treat JSON null checksum as absent
+### 7. ExoPlayer CSS transparency must cover ALL container divs (not just the root)
+
+**File:** `omnipush-cms/src/pages/PlayerPage.tsx` → `nativeVideoActive` useEffect
+
+When `nativeVideoActive = true`, a `<style>` element is injected into `<head>` to make the WebView
+transparent so ExoPlayer (sitting in the Android layer below) shows through.
+
+The selector **must** cover every intermediate container div between `#root` and the UDB component:
+
+```js
+styleEl.textContent =
+  'html,body,#root,#root>div,#root>div>div,#root>div>div>div{background:transparent!important}'
+```
+
+- `#root>div` = PlayerPage outer fixed div
+- `#root>div>div` = normal playback container (renderMain return — position:fixed, background:#000)
+- `#root>div>div>div` = PlaybackEngine region container (position:absolute, background:#000)
+
+**Do NOT shorten this selector.** Each level has `background:'#000'` as an inline JSX style. Any
+opaque div between the WebView surface and ExoPlayer's TextureView produces a permanently black
+video. The UDB div and slot divs handle their own backgrounds reactively via `nativeVideoActive`
+state; they do not need to be in this CSS rule.
+
+### 8. console.log override: do NOT add AndroidHealth.logLine — it double-logs
+
+**File:** `omnipush-cms/src/pages/PlayerPage.tsx` → `console.log` / `console.warn` override
+
+The custom `console.log` replacement calls `originalLog.apply(console, args)`. This fires Chrome's
+native console path, which `WebChromeClient.onConsoleMessage` intercepts and writes to Android
+logcat as `OmniPushLogs`. That is the **only** path needed.
+
+**Never add** `win.AndroidHealth.logLine(msg)` inside the override — that sends a second copy of
+every log to `OmniPushLogs` via the Java bridge, making every line appear twice in logcat and
+making ADB analysis unreliable (counts, timing, and instance-count deductions all become wrong).
+
+### 9. 25-second transition watchdog must be cancellable (stored in a ref)
+
+**File:** `omnipush-cms/src/pages/PlayerPage.tsx` → `advanceBuffer` → `transitionWatchdog25sRef`
+
+The 25-second emergency watchdog that force-advances when `transitioningRef` is stuck must be
+stored in `transitionWatchdog25sRef` and cancelled at the top of every `advanceBuffer` call:
+
+```js
+if (transitionWatchdog25sRef.current) clearTimeout(transitionWatchdog25sRef.current)
+transitionWatchdog25sRef.current = setTimeout(() => { ... }, 25000)
+```
+
+**Do NOT use an anonymous `setTimeout`** for this watchdog. Anonymous timeouts accumulate without
+cleanup — each call to `advanceBuffer` would create a new 25-second timer that can never be
+cancelled. A stale watchdog firing 25s after an old transition (while a new transition is in its
+700ms `transitioningRef=true` window) causes a spurious force-advance, which cascades into
+rapid-advance: each forced advance starts another 25s timer, creating an unstoppable loop.
+
+### 10. MediaCacheManager: treat JSON null checksum as absent
 
 **File:** `SmartRetailPlayer/app/src/main/java/com/omnipush/smartretail/managers/MediaCacheManager.kt`
 
@@ -92,8 +145,7 @@ such assets to collide on the same file and corrupt each other.
 
 ## Device Notes
 
-- **OMNI-106A** — Physical Amlogic S905W2 TV box at 106.219.159.21. This is the device the black
-  screen bug was found and fixed on. Always test video changes on this device or equivalent hardware.
+- **OMNI-106A** — Physical Amlogic S905W2 TV box. LAN: 192.168.1.10 (ADB: `adb connect 192.168.1.10:5555`). This is the device the black screen and rapid-advance bugs were found and fixed on. Always test video changes on this device or equivalent hardware.
 - Chrome 83 WebView (Amlogic OEM) — HTML5 video is broken on this device. Native ExoPlayer path
   is mandatory for all video playback on Android.
 
