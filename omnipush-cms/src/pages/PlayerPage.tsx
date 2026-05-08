@@ -1853,7 +1853,10 @@ export default function PlayerPage() {
             }
 
             const newVersion = data.resolved?.version || null
-            const wasPlaying = phase === 'playing' || phase === 'standby'
+            // Use phaseRef (always current) not stale closure `phase` — fetchManifest
+            // useCallback deps are [dc, initPairing], so `phase` can be stale when
+            // fast-path sets 'playing' before bootFetch completes.
+            const wasPlaying = phaseRef.current === 'playing' || phaseRef.current === 'standby'
             const isSameVersion = newVersion === versionRef.current
 
             // ΓöÇΓöÇ Optimize: If version matches and we're already playing, SKIP re-render ΓöÇΓöÇ
@@ -2277,6 +2280,62 @@ export default function PlayerPage() {
             setSecret(stored)
             secretRef.current = stored
             setPhase('loading')
+
+            // ── Fast-path: stale-while-revalidate ──────────────────────────────────
+            // Show cached manifest immediately to eliminate black screen on every
+            // app open. The bootFetch loop below runs concurrently and updates
+            // content only when the server version differs.
+            //
+            // This does NOT replace bootFetch — bootFetch is still required for:
+            //   • First-ever boot (no cache yet)
+            //   • Detecting content changes (version bump)
+            //   • Amlogic 3-attempt retry for slow network stack at device reboot
+            //
+            // Guard: setPhase functional update only transitions loading→playing,
+            // so bootFetch can still set 'error'/'standby' without being overridden.
+            const rawCached = localStorage.getItem(manifestKey(dc))
+            if (rawCached) {
+                try {
+                    const cached = JSON.parse(rawCached)
+                    if (cached.assets) {
+                        // Mirror the nativeAssetsRef logic from fetchManifest (CLAUDE.md invariant #2)
+                        if (IS_ANDROID_NATIVE) {
+                            const ah = (window as any).AndroidHealth
+                            try {
+                                const localMap: Record<string, string> = ah?.getLocalAssetMap
+                                    ? JSON.parse(ah.getLocalAssetMap())
+                                    : {}
+                                nativeAssetsRef.current = cached.assets.map((a: any) =>
+                                    localMap[a.media_id] ? { ...a, url: localMap[a.media_id] } : a
+                                )
+                            } catch { nativeAssetsRef.current = cached.assets }
+                            if (ah?.syncAssetsFromManifest) ah.syncAssetsFromManifest(JSON.stringify(cached.assets))
+                        } else {
+                            nativeAssetsRef.current = cached.assets
+                        }
+
+                        // Set versionRef so fetchManifest hasChange diff works correctly
+                        if (cached.resolved?.version) {
+                            versionRef.current = cached.resolved.version
+                        }
+
+                        // Hydrate from IndexedDB (fast, no network) then show immediately
+                        hydrateAssetsFromCache(cached.assets).then(hydratedAssets => {
+                            if (!bgSyncActiveRef.current) return
+                            setManifest({ ...cached, assets: hydratedAssets })
+                            setVersion(cached.resolved?.version || '')
+                            setPhase(p => p === 'loading' ? 'playing' : p)
+                            console.log('[Boot] Fast-path: cached manifest showing immediately (bootFetch running in background)')
+                        }).catch(() => {
+                            if (!bgSyncActiveRef.current) return
+                            setManifest(cached)
+                            setPhase(p => p === 'loading' ? 'playing' : p)
+                            console.log('[Boot] Fast-path: cached manifest showing (hydration skipped)')
+                        })
+                    }
+                } catch { /* Corrupt cache — bootFetch will recover */ }
+            }
+            // ── End fast-path ──────────────────────────────────────────────────────
 
             // ΓöÇΓöÇΓöÇ BOOT-CRITICAL: DO NOT SIMPLIFY OR REMOVE bootFetch LOOP ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
             // This 3-attempt loop exists specifically for Amlogic Android TV boxes where
