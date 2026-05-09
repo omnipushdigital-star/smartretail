@@ -480,6 +480,15 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
                     setNativeTransitioning(true)
                     advanceBufferRef.current(false, 'onNativeVideoEnded')
                 }
+                ;(window as any).onNativeVideoError = (err: string) => {
+                    console.error('[UDB] ExoPlayer error — skipping video:', err)
+                    delete (window as any).onNativeVideoError
+                    if (consecutiveErrorsRef) consecutiveErrorsRef.current += 1
+                    if (lastMediaErrorRef) lastMediaErrorRef.current = `ExoPlayer: ${err} @ ${new Date().toLocaleTimeString()}`
+                    nativeVideoActiveRef.current = false
+                    setNativeVideoActive(false)
+                    setTimeout(() => advanceBufferRef.current(true, 'nativeVideoError'), 500)
+                }
                 nativeVideoActiveRef.current = true
                 setNativeVideoActive(true)
                 ah.playNativeVideo(exoUrl)
@@ -622,11 +631,63 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
         activeSlotRef.current = 0
         
         if (data0.type === 'video') {
+            // Android: call ExoPlayer immediately on boot — HTML5 video is broken on Amlogic Chrome 83
+            if (IS_ANDROID_NATIVE) {
+                const ah = (window as any).AndroidHealth
+                if (ah?.playNativeVideo) {
+                    let exoUrl = (data0.url && !data0.url.startsWith('blob:')) ? data0.url : ''
+                    const nativeAsset = nativeAssets?.find(a => a.media_id === item0.media_id)
+                    if (nativeAsset?.url && !nativeAsset.url.startsWith('blob:')) exoUrl = nativeAsset.url
+                    if (exoUrl) {
+                        // Crash-loop guard: if ExoPlayer crashes, Android reloads the entire WebView
+                        // (all JS state is lost). We use localStorage to detect this: record the
+                        // attempt before playing and clear it on success. If we boot again within
+                        // 30s and the record still exists, ExoPlayer must have crashed — skip it.
+                        const bootAttemptKey = `exo_boot_${item0.media_id}`
+                        const lastAttempt = parseInt(localStorage.getItem(bootAttemptKey) || '0')
+                        const now = Date.now()
+                        if (now - lastAttempt < 30000) {
+                            localStorage.removeItem(bootAttemptKey)
+                            console.warn('[UDB] Android boot: video crashed ExoPlayer on last boot — skipping:', item0.media_id)
+                            triggerWatchdog(3000) // fast-forward to next item via watchdog
+                            return
+                        }
+                        localStorage.setItem(bootAttemptKey, String(now))
+                        console.log('[UDB] Android boot: starting ExoPlayer immediately for', exoUrl.substring(0, 60))
+                        ;(window as any).onNativeVideoEnded = () => {
+                            localStorage.removeItem(bootAttemptKey) // success — clear crash guard
+                            delete (window as any).onNativeVideoEnded
+                            setNativeTransitioning(true)
+                            advanceBufferRef.current(false, 'onNativeVideoEnded')
+                        }
+                        ;(window as any).onNativeVideoError = (err: string) => {
+                            // Called only if Android app sends the error callback (future enhancement).
+                            // Without it, the crash guard above handles crash loops via localStorage.
+                            console.error('[UDB] ExoPlayer boot error:', err)
+                            localStorage.removeItem(bootAttemptKey)
+                            delete (window as any).onNativeVideoError
+                            nativeVideoActiveRef.current = false
+                            setNativeVideoActive(false)
+                            setTimeout(() => advanceBufferRef.current(true, 'nativeVideoError'), 500)
+                        }
+                        nativeVideoActiveRef.current = true
+                        setNativeVideoActive(true)
+                        ah.playNativeVideo(exoUrl)
+                        const exoDur = Math.max(getItemDuration(item0), DEFAULT_VIDEO_DURATION * 1000)
+                        triggerWatchdog(exoDur + 20000)
+                    } else {
+                        console.warn('[UDB] Android boot: no valid URL for ExoPlayer — force-advancing in 5s')
+                        triggerWatchdog(5000)
+                    }
+                    return // skip HTML5 path on Android
+                }
+            }
+            // Non-Android fallback: HTML5 video
             const v = videoRefs[0].current
-            if (v) { 
+            if (v) {
                 v.src = data0.url
                 v.muted = true
-                v.load() 
+                v.load()
             }
             const dur = getItemDuration(item0)
             triggerWatchdog(dur + 30000) // 30s buffer for first video boot
