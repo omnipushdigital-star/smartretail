@@ -176,7 +176,14 @@ Deno.serve(async (req: Request) => {
 
         // Include publication time to ensure explicit 'Publish' actions trigger updates
         const pubTime = new Date(pub.published_at || pub.created_at).getTime();
-        const dynamicVersion = `${bundle.version || 'v0'}-${pubTime}-${maxUpdated}`;
+
+        // CRITICAL: Include item count AND a sorted ID fingerprint in the version so that
+        // DELETING items (which doesn't change maxUpdated of remaining items) still produces
+        // a new version string. Without this, removing items returns up_to_date=true forever
+        // because the remaining items' timestamps are unchanged.
+        const itemCount = (rawItems || []).length;
+        const itemFingerprint = (rawItems || []).map((i: any) => i.id).sort().join('').slice(-16);
+        const dynamicVersion = `${bundle.version || 'v0'}-${pubTime}-${maxUpdated}-n${itemCount}-${itemFingerprint}`;
 
         // ── Early Exit if Up-to-Date ──
         if (current_version && dynamicVersion === current_version) {
