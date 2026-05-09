@@ -437,6 +437,11 @@ function UnifiedDoubleBuffer({ items, assets, nativeAssets, idx, onAdvance, effe
                 setIsTransitioning(false)
                 setShowNext(false)
                 transitioningRef.current = false
+                // Release the PlayerPage-level poll gate so manifest polling can resume.
+                // setGlobalTransition(true) is set at the start of advanceBuffer but the
+                // only other reset was the 25s emergency watchdog — leaving isTransitioningRef
+                // permanently true and blocking every manifest poll after the first transition.
+                if ((window as any).setGlobalTransition) (window as any).setGlobalTransition(false)
             }, 700)
 
             if (nextType === 'image') {
