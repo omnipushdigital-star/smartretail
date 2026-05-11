@@ -743,10 +743,10 @@ export default function DevicesPage() {
                                                     <tr key={d.id} className={isSelected ? 'bg-brand-500/5' : ''}>
                                                         <td style={{ width: 40 }}>
                                                             <input
-                                                                type=”checkbox”
+                                                                type="checkbox"
                                                                 checked={selectedIds.includes(d.id)}
                                                                 onChange={() => toggleSelect(d.id)}
-                                                                className=”w-4 h-4 rounded border-slate-700 bg-slate-900”
+                                                                className="w-4 h-4 rounded border-slate-700 bg-slate-900"
                                                             />
                                                         </td>
                                                         <td style={{ width: 100 }}>
@@ -769,13 +769,13 @@ export default function DevicesPage() {
                                                             )}
                                                         </td>
                                                         <td><span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.875rem', color: isSelected ? 'var(--color-brand-500)' : 'var(--color-text-primary)', letterSpacing: '0.05em' }}>{d.device_code}</span></td>
-                                                        <td style={{ color: 'var(--color-text-primary) !important' }}><span className=”force-visible” style={{ fontWeight: 900 }}>{d.display_name || '—'}</span></td>
+                                                        <td style={{ color: 'var(--color-text-primary) !important' }}><span className="force-visible" style={{ fontWeight: 900 }}>{d.display_name || '—'}</span></td>
                                                         <td style={{ fontSize: '0.925rem' }}>
                                                             <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.875rem', color: isSelected ? 'var(--color-brand-500)' : 'var(--color-text-primary)', letterSpacing: '0.05em' }}>{(d as any).store?.name || '—'}</span>
                                                         </td>
                                                         <td>
                                                             {(d as any).role?.key
-                                                                ? <span className=”badge badge-blue” style={{ fontFamily: 'monospace' }}>{(d as any).role.key}</span>
+                                                                ? <span className="badge badge-blue" style={{ fontFamily: 'monospace' }}>{(d as any).role.key}</span>
                                                                 : <span style={{ color: 'var(--color-text-primary) !important' }}>—</span>
                                                             }
                                                         </td>
@@ -814,7 +814,7 @@ export default function DevicesPage() {
                                                                  <button
                                                                      onClick={() => copyText(d.device_secret, 'Secret', d.id)}
                                                                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: copiedId === d.id ? 'var(--color-success)' : 'var(--color-text-primary)', padding: '0.2rem', display: 'flex' }}
-                                                                    title=”Copy secret”
+                                                                    title="Copy secret"
                                                                 >
                                                                     {copiedId === d.id ? <Check size={13} /> : <Copy size={13} />}
                                                                 </button>
@@ -825,7 +825,7 @@ export default function DevicesPage() {
                                                         </td>
                                                         <td style={{ textAlign: 'center' }}>
                                                             {hb?.current_version
-                                                                ? <span className=”badge badge-blue”>{hb.current_version}</span>
+                                                                ? <span className="badge badge-blue">{hb.current_version}</span>
                                                                 : <span style={{ color: 'var(--color-text-3)' }}>—</span>
                                                             }
                                                         </td>
@@ -836,27 +836,27 @@ export default function DevicesPage() {
                                                                         {/* Edit */}
                                                                         <button
                                                                             onClick={() => openEdit(d)}
-                                                                            className=”btn-secondary”
+                                                                            className="btn-secondary"
                                                                             style={{ padding: '0.375rem 0.625rem' }}
-                                                                            title=”Edit device”
+                                                                            title="Edit device"
                                                                         >
                                                                             <Edit2 size={13} />
                                                                         </button>
                                                                         {/* Reboot */}
                                                                         <button
                                                                             onClick={() => handleReboot(d.id, d.device_code)}
-                                                                            className=”btn-secondary”
+                                                                            className="btn-secondary"
                                                                             style={{ padding: '0.375rem 0.625rem' }}
-                                                                            title=”Remote Reboot”
+                                                                            title="Remote Reboot"
                                                                         >
                                                                             <RotateCcw size={13} />
                                                                         </button>
                                                                         {/* View (screenshot) */}
                                                                         <button
                                                                             onClick={() => handleScreenshot(d.id, d.device_code)}
-                                                                            className=”btn-secondary”
+                                                                            className="btn-secondary"
                                                                             style={{ padding: '0.375rem 0.625rem' }}
-                                                                            title=”Request Screenshot”
+                                                                            title="Request Screenshot"
                                                                         >
                                                                             <Camera size={13} />
                                                                         </button>
@@ -864,9 +864,9 @@ export default function DevicesPage() {
                                                                         <div style={{ position: 'relative' }}>
                                                                             <button
                                                                                 onClick={() => setOpenMenuId(openMenuId === d.id ? null : d.id)}
-                                                                                className=”btn-secondary”
+                                                                                className="btn-secondary"
                                                                                 style={{ padding: '0.375rem 0.5rem' }}
-                                                                                title=”More actions”
+                                                                                title="More actions"
                                                                             >
                                                                                 <MoreVertical size={13} />
                                                                             </button>
@@ -931,18 +931,18 @@ export default function DevicesPage() {
                                                                     <>
                                                                         <button
                                                                             onClick={() => handleRestore(d.id, d.device_code)}
-                                                                            className=”btn-secondary”
+                                                                            className="btn-secondary"
                                                                             style={{ padding: '0.375rem 0.625rem', color: 'var(--color-success)' }}
-                                                                            title=”Restore Device”
+                                                                            title="Restore Device"
                                                                         >
                                                                             <RotateCcw size={13} />
                                                                         </button>
                                                                         <button
                                                                             onClick={() => handleDelete(d.id, d.device_code)}
-                                                                            className=”btn-danger”
+                                                                            className="btn-danger"
                                                                             style={{ padding: '0.375rem 0.625rem' }}
                                                                             disabled={deleting === d.id}
-                                                                            title=”Delete permanently”
+                                                                            title="Delete permanently"
                                                                         >
                                                                             {deleting === d.id ? <Loader2 size={13} /> : <Trash2 size={13} />}
                                                                         </button>
