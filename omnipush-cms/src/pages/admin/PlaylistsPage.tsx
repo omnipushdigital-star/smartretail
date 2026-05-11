@@ -12,6 +12,16 @@ import { CSS } from '@dnd-kit/utilities'
 
 const PAGE_SIZE = 10
 
+function formatPushedDate(isoDate: string | null | undefined): string {
+    if (!isoDate) return 'Never'
+    const diff = (Date.now() - new Date(isoDate).getTime()) / 1000
+    if (diff < 60) return 'Just now'
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+    if (diff < 86400 * 7) return `${Math.floor(diff / 86400)}d ago`
+    return new Date(isoDate).toLocaleDateString()
+}
+
 function SortableItem({ item, onRemove, onUpdateSettings, menus = [] }: {
     item: PlaylistItem & { media?: MediaAsset },
     onRemove: (id: string) => void,
@@ -178,6 +188,7 @@ export default function PlaylistsPage() {
     const [pushing, setPushing] = useState(false)
     const [probedRawSeconds, setProbedRawSeconds] = useState<number>(0)
     const [probingDuration, setProbingDuration] = useState(false)
+    const [devicePushMap, setDevicePushMap] = useState<Record<string, string | null>>({})
     const { currentTenantId } = useTenant()
 
     // Auto-probe video duration whenever the selected video changes
@@ -202,15 +213,30 @@ export default function PlaylistsPage() {
     const loadAll = async () => {
         if (!currentTenantId) return
         setLoading(true)
-        const [plRes, mediaRes, menuRes] = await Promise.all([
+        const [plRes, mediaRes, menuRes, deviceRes] = await Promise.all([
             supabase.from('playlists').select('*').eq('tenant_id', currentTenantId).order('name'),
             supabase.from('media_assets').select('*').eq('tenant_id', currentTenantId).order('name'),
             supabase.from('menus').select('id, name').eq('tenant_id', currentTenantId).order('name'),
+            supabase.from('devices').select('playlist_id, updated_at')
+                .eq('tenant_id', currentTenantId)
+                .is('deleted_at', null)
+                .not('playlist_id', 'is', null),
         ])
         setPlaylists(plRes.data || [])
         setMediaAssets(mediaRes.data || [])
         setMenus(menuRes.data || [])
         setLoading(false)
+
+        // Build { [playlistId]: mostRecentUpdatedAt } from device assignments
+        const pushMap: Record<string, string | null> = {}
+        for (const device of (deviceRes.data || [])) {
+            if (!device.playlist_id) continue
+            const existing = pushMap[device.playlist_id]
+            if (!existing || new Date(device.updated_at) > new Date(existing)) {
+                pushMap[device.playlist_id] = device.updated_at
+            }
+        }
+        setDevicePushMap(pushMap)
     }
 
     useEffect(() => { loadAll() }, [currentTenantId])
@@ -470,6 +496,7 @@ export default function PlaylistsPage() {
                                         <th style={{ width: 40 }}></th>
                                         <th>Name</th>
                                         <th>Description</th>
+                                        <th>Last pushed</th>
                                         <th style={{ textAlign: 'right', paddingRight: '2.5rem' }}>Actions</th>
                                     </tr>
                                 </thead>
@@ -483,6 +510,9 @@ export default function PlaylistsPage() {
                                             </td>
                                             <td style={{ color: 'var(--color-text-1)', fontWeight: 700, fontSize: '0.9375rem' }}>{p.name}</td>
                                             <td style={{ color: 'var(--color-text-2)', fontSize: '0.8125rem' }}>{p.description || '—'}</td>
+                                            <td style={{ fontSize: '0.8125rem', color: devicePushMap[p.id] ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
+                                                {formatPushedDate(devicePushMap[p.id])}
+                                            </td>
                                             <td style={{ textAlign: 'right', paddingRight: '1.25rem' }}>
                                                 <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end', alignItems: 'center' }}>
                                                     <button onClick={() => openEditor(p)} className="btn-secondary" style={{ padding: '0.375rem 0.75rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', border: 'none', background: 'var(--color-brand-500)', color: 'white' }}>
