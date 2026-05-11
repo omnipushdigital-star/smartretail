@@ -178,7 +178,7 @@ export default function DashboardPage() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
                 <StatCard icon={<Monitor size={20} />} label="Total Devices"    value={totalDevices}                             active={activeFilter === 'all'}     color="var(--color-accent)" onClick={() => handleStatCardClick('all')} />
                 <StatCard icon={<Play size={20} />}    label="Playing"          value={stateCounts.playing}                      active={activeFilter === 'playing'} color="#22c55e"             onClick={() => handleStatCardClick('playing')} />
-                <StatCard icon={<AlertCircle size={20} />} label="Idle / Not Playing" value={stateCounts.idle + stateCounts.stale} active={activeFilter === 'idle' || activeFilter === 'stale'} color="#f59e0b" onClick={() => handleStatCardClick('idle')} />
+                <StatCard icon={<AlertCircle size={20} />} label="Idle / Not Playing" value={stateCounts.idle + stateCounts.stale} active={activeFilter === 'idle' || activeFilter === 'stale'} color="#f59e0b" onClick={() => setActiveFilter(prev => (prev === 'idle' || prev === 'stale') ? 'all' : 'idle')} />
                 <StatCard icon={<WifiOff size={20} />} label="Offline"          value={stateCounts.offline}                      active={activeFilter === 'offline'} color="#ef4444"             onClick={() => handleStatCardClick('offline')} />
             </div>
 
