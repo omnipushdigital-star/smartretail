@@ -6,6 +6,7 @@ import {
     RotateCcw, History, Trash, Database, Eraser, Camera, QrCode, Eye, EyeOff, Download
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
+import { getDeviceState, STATE_CONFIG } from '../../utils/deviceState'
 import { supabase, callEdgeFn } from '../../lib/supabase'
 import { useTenant } from '../../contexts/TenantContext'
 import { Device, Store, Role, DeviceHeartbeat } from '../../types'
@@ -15,12 +16,6 @@ import toast from 'react-hot-toast'
 import { formatDistanceToNow } from 'date-fns'
 
 const PAGE_SIZE = 10
-const ONLINE_THRESHOLD_MS = 1 * 60 * 1000 // 1 minute threshold as requested
-
-function isOnline(lastSeen?: string) {
-    if (!lastSeen) return false
-    return Date.now() - new Date(lastSeen).getTime() < ONLINE_THRESHOLD_MS
-}
 
 function formatShorthandTime(dateStr?: string) {
     if (!dateStr) return '—'
@@ -95,6 +90,7 @@ export default function DevicesPage() {
         polling: boolean
     } | null>(null)
     const [selectedHealthDevice, setSelectedHealthDevice] = useState<Device | null>(null)
+    const [openMenuId, setOpenMenuId] = useState<string | null>(null)
 
     const slugify = (s: string) => s.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '').substring(0, 20);
 
@@ -724,48 +720,79 @@ export default function DevicesPage() {
                                                         className="w-4 h-4 rounded border-slate-700 bg-slate-900"
                                                     />
                                                 </th>
-                                                <th style={{ textAlign: 'left', paddingLeft: '1rem', color: 'var(--color-text-primary)', fontWeight: 900 }}>Device Code</th>
-                                                <th style={{ textAlign: 'left', color: 'var(--color-text-primary)', fontWeight: 900 }}>Display Name</th>
-                                                <th style={{ textAlign: 'left', color: 'var(--color-text-primary)', fontWeight: 900 }}>Store</th>
-                                                <th style={{ textAlign: 'left', color: 'var(--color-text-primary)', fontWeight: 900 }}>Role</th>
-                                                <th style={{ textAlign: 'left', color: 'var(--color-text-primary)', fontWeight: 900 }}>Orientation</th>
-                                                <th style={{ textAlign: 'left', color: 'var(--color-text-primary)', fontWeight: 900 }}>Secret</th>
-                                                <th style={{ textAlign: 'center', color: 'var(--color-text-primary)', fontWeight: 900 }}>Connection</th>
-                                                <th style={{ textAlign: 'left', color: 'var(--color-text-primary)', fontWeight: 900 }}>Last Seen</th>
-                                                <th style={{ textAlign: 'center', color: 'var(--color-text-primary)', fontWeight: 900 }}>Version</th>
-                                                <th style={{ textAlign: 'center', color: 'var(--color-text-primary)', fontWeight: 900 }}>Actions</th>
+                                                <th style={{ width: 100 }}>Status</th>
+                                                <th style={{ textAlign: 'left', paddingLeft: '1rem' }}>Device Code</th>
+                                                <th style={{ textAlign: 'left' }}>Display Name</th>
+                                                <th style={{ textAlign: 'left' }}>Store</th>
+                                                <th style={{ textAlign: 'left' }}>Role</th>
+                                                <th style={{ textAlign: 'left' }}>What's Playing</th>
+                                                <th style={{ textAlign: 'left' }}>Secret</th>
+                                                <th style={{ textAlign: 'left' }}>Last Seen</th>
+                                                <th style={{ textAlign: 'center' }}>Version</th>
+                                                <th style={{ textAlign: 'center' }}>Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {paginated.map(d => {
                                                 const hb = heartbeats[d.device_code]
-                                                const online = isOnline(hb?.last_seen_at)
+                                                const deviceState = getDeviceState(hb?.last_seen_at, hb?.status)
+                                                const stateCfg = STATE_CONFIG[deviceState]
+                                                const meta = (hb?.meta as any) || {}
                                                 const isSelected = selectedIds.includes(d.id)
                                                 return (
                                                     <tr key={d.id} className={isSelected ? 'bg-brand-500/5' : ''}>
                                                         <td style={{ width: 40 }}>
                                                             <input
-                                                                type="checkbox"
+                                                                type=”checkbox”
                                                                 checked={selectedIds.includes(d.id)}
                                                                 onChange={() => toggleSelect(d.id)}
-                                                                className="w-4 h-4 rounded border-slate-700 bg-slate-900"
+                                                                className=”w-4 h-4 rounded border-slate-700 bg-slate-900”
                                                             />
                                                         </td>
+                                                        <td style={{ width: 100 }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                                                                <span style={{
+                                                                    width: 8, height: 8, borderRadius: '50%',
+                                                                    background: stateCfg.dot, flexShrink: 0,
+                                                                    boxShadow: deviceState === 'playing' ? `0 0 6px ${stateCfg.dot}` : 'none'
+                                                                }} />
+                                                                <span style={{ fontSize: '0.75rem', color: stateCfg.text, fontWeight: 500 }}>
+                                                                    {stateCfg.label}
+                                                                </span>
+                                                            </div>
+                                                            {meta.hdmi_status === 'disconnected' && (
+                                                                <span style={{ fontSize: '0.6rem', color: '#ef4444', fontWeight: 700, display: 'flex',
+                                                                    alignItems: 'center', gap: 2, background: 'rgba(239,68,68,0.1)',
+                                                                    padding: '1px 4px', borderRadius: 4, marginTop: 2, width: 'fit-content' }}>
+                                                                    <Monitor size={10} /> NO SIGNAL
+                                                                </span>
+                                                            )}
+                                                        </td>
                                                         <td><span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.875rem', color: isSelected ? 'var(--color-brand-500)' : 'var(--color-text-primary)', letterSpacing: '0.05em' }}>{d.device_code}</span></td>
-                                                        <td style={{ color: 'var(--color-text-primary) !important' }}><span className="force-visible" style={{ fontWeight: 900 }}>{d.display_name || '—'}</span></td>
+                                                        <td style={{ color: 'var(--color-text-primary) !important' }}><span className=”force-visible” style={{ fontWeight: 900 }}>{d.display_name || '—'}</span></td>
                                                         <td style={{ fontSize: '0.925rem' }}>
                                                             <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.875rem', color: isSelected ? 'var(--color-brand-500)' : 'var(--color-text-primary)', letterSpacing: '0.05em' }}>{(d as any).store?.name || '—'}</span>
                                                         </td>
                                                         <td>
                                                             {(d as any).role?.key
-                                                                ? <span className="badge badge-blue" style={{ fontFamily: 'monospace' }}>{(d as any).role.key}</span>
+                                                                ? <span className=”badge badge-blue” style={{ fontFamily: 'monospace' }}>{(d as any).role.key}</span>
                                                                 : <span style={{ color: 'var(--color-text-primary) !important' }}>—</span>
                                                             }
                                                         </td>
-                                                        <td style={{ fontSize: '0.925rem', textTransform: 'capitalize' }}>
-                                                            <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.875rem', color: isSelected ? 'var(--color-brand-500)' : 'var(--color-text-primary)', letterSpacing: '0.05em' }}>{d.orientation}</span>
+                                                        {/* What's Playing */}
+                                                        <td style={{ fontSize: '0.8125rem', maxWidth: 180, overflow: 'hidden' }}>
+                                                            {deviceState === 'playing' ? (
+                                                                <span style={{
+                                                                    color: '#22c55e', fontWeight: 500,
+                                                                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block'
+                                                                }}>
+                                                                    {meta.current_media?.title || 'Playing'}
+                                                                </span>
+                                                            ) : (
+                                                                <span style={{ color: 'var(--color-text-muted)' }}>—</span>
+                                                            )}
                                                         </td>
-                                                        {/* â”€â”€ Device Secret cell â”€â”€ */}
+                                                        {/* Device Secret cell */}
                                                         <td>
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
                                                                  <span style={{
@@ -787,22 +814,10 @@ export default function DevicesPage() {
                                                                  <button
                                                                      onClick={() => copyText(d.device_secret, 'Secret', d.id)}
                                                                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: copiedId === d.id ? 'var(--color-success)' : 'var(--color-text-primary)', padding: '0.2rem', display: 'flex' }}
-                                                                    title="Copy secret"
+                                                                    title=”Copy secret”
                                                                 >
                                                                     {copiedId === d.id ? <Check size={13} /> : <Copy size={13} />}
                                                                 </button>
-                                                            </div>
-                                                        </td>
-                                                        <td style={{ textAlign: 'center' }}>
-                                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                                                                <span className={`badge ${online ? 'badge-green' : hb ? 'badge-red' : 'badge-gray'}`}>
-                                                                    {online ? '• Online' : hb ? '• Offline' : 'Never'}
-                                                                </span>
-                                                                {hb?.meta && (hb.meta as any).hdmi_status === 'disconnected' && (
-                                                                    <span style={{ fontSize: '0.6rem', color: '#ef4444', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '2px', background: 'rgba(239, 68, 68, 0.1)', padding: '1px 4px', borderRadius: '4px' }} title="HDMI Cable Unplugged!">
-                                                                        <Monitor size={10} /> NO SIGNAL
-                                                                    </span>
-                                                                )}
                                                             </div>
                                                         </td>
                                                         <td style={{ textAlign: 'left', fontSize: '0.925rem' }}>
@@ -810,7 +825,7 @@ export default function DevicesPage() {
                                                         </td>
                                                         <td style={{ textAlign: 'center' }}>
                                                             {hb?.current_version
-                                                                ? <span className="badge badge-blue">{hb.current_version}</span>
+                                                                ? <span className=”badge badge-blue”>{hb.current_version}</span>
                                                                 : <span style={{ color: 'var(--color-text-3)' }}>—</span>
                                                             }
                                                         </td>
@@ -818,79 +833,115 @@ export default function DevicesPage() {
                                                             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
                                                                 {viewMode === 'active' ? (
                                                                     <>
-                                                                        <button onClick={() => openEdit(d)} className="btn-secondary" style={{ padding: '0.375rem 0.625rem' }} title="Edit device">
+                                                                        {/* Edit */}
+                                                                        <button
+                                                                            onClick={() => openEdit(d)}
+                                                                            className=”btn-secondary”
+                                                                            style={{ padding: '0.375rem 0.625rem' }}
+                                                                            title=”Edit device”
+                                                                        >
                                                                             <Edit2 size={13} />
                                                                         </button>
-                                                                        {/* Promoted primary actions */}
-                                                                        <button
-                                                                            onClick={() => setSelectedHealthDevice(d)}
-                                                                            className="btn-secondary"
-                                                                            style={{ padding: '0.375rem 0.625rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--color-brand-400)' }}
-                                                                            title="Device Health & Diagnostics"
-                                                                        >
-                                                                            <Activity size={12} /> Diagnostics
-                                                                        </button>
-                                                                        <button
-                                                                            onClick={() => handleScreenshot(d.id, d.device_code)}
-                                                                            className="btn-secondary"
-                                                                            style={{ padding: '0.375rem 0.625rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
-                                                                            title="Request Screenshot"
-                                                                        >
-                                                                            <Camera size={12} /> Preview
-                                                                        </button>
-                                                                        {/* Secondary icon-only actions */}
+                                                                        {/* Reboot */}
                                                                         <button
                                                                             onClick={() => handleReboot(d.id, d.device_code)}
-                                                                            className="btn-secondary"
+                                                                            className=”btn-secondary”
                                                                             style={{ padding: '0.375rem 0.625rem' }}
-                                                                            title="Remote Reboot"
+                                                                            title=”Remote Reboot”
+                                                                        >
+                                                                            <RotateCcw size={13} />
+                                                                        </button>
+                                                                        {/* View (screenshot) */}
+                                                                        <button
+                                                                            onClick={() => handleScreenshot(d.id, d.device_code)}
+                                                                            className=”btn-secondary”
+                                                                            style={{ padding: '0.375rem 0.625rem' }}
+                                                                            title=”Request Screenshot”
+                                                                        >
+                                                                            <Camera size={13} />
+                                                                        </button>
+                                                                        {/* ⋮ dropdown */}
+                                                                        <div style={{ position: 'relative' }}>
+                                                                            <button
+                                                                                onClick={() => setOpenMenuId(openMenuId === d.id ? null : d.id)}
+                                                                                className=”btn-secondary”
+                                                                                style={{ padding: '0.375rem 0.5rem' }}
+                                                                                title=”More actions”
+                                                                            >
+                                                                                <MoreVertical size={13} />
+                                                                            </button>
+                                                                            {openMenuId === d.id && (
+                                                                                <div
+                                                                                    style={{
+                                                                                        position: 'absolute', right: 0, top: '100%', zIndex: 50,
+                                                                                        background: 'var(--color-surface-1)', border: '1px solid var(--color-border)',
+                                                                                        borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+                                                                                        minWidth: 160, padding: '0.25rem', marginTop: '0.25rem'
+                                                                                    }}
+                                                                                    onMouseLeave={() => setOpenMenuId(null)}
+                                                                                >
+                                                                                    {[
+                                                                                        { label: 'Diagnostics', icon: <Activity size={13} />, action: () => { setSelectedHealthDevice(d); setOpenMenuId(null) } },
+                                                                                        { label: 'Clear Cache', icon: <Eraser size={13} />, action: () => { handleClearCache(d.id, d.device_code); setOpenMenuId(null) } },
+                                                                                        { label: 'Check Update', icon: <Download size={13} />, action: () => { handleCheckUpdate(d.id, d.device_code); setOpenMenuId(null) } },
+                                                                                        { label: 'Show QR Code', icon: <QrCode size={13} />, action: () => { setPairingInfo({ device_code: d.device_code, device_secret: d.device_secret }); setShowPairingModal(true); setOpenMenuId(null) } },
+                                                                                    ].map(item => (
+                                                                                        <button
+                                                                                            key={item.label}
+                                                                                            onClick={item.action}
+                                                                                            style={{
+                                                                                                width: '100%', textAlign: 'left', padding: '0.5rem 0.75rem',
+                                                                                                background: 'none', border: 'none', cursor: 'pointer',
+                                                                                                color: 'var(--color-text-primary)', fontSize: '0.8125rem',
+                                                                                                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                                                                                borderRadius: 6
+                                                                                            }}
+                                                                                            onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-surface-2)')}
+                                                                                            onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                                                                                        >
+                                                                                            {item.icon} {item.label}
+                                                                                        </button>
+                                                                                    ))}
+                                                                                    <div style={{ height: 1, background: 'var(--color-border)', margin: '0.25rem 0' }} />
+                                                                                    <button
+                                                                                        onClick={() => { handleDelete(d.id, d.device_code); setOpenMenuId(null) }}
+                                                                                        style={{
+                                                                                            width: '100%', textAlign: 'left', padding: '0.5rem 0.75rem',
+                                                                                            background: 'none', border: 'none', cursor: 'pointer',
+                                                                                            color: 'var(--color-danger)', fontSize: '0.8125rem',
+                                                                                            display: 'flex', alignItems: 'center', gap: '0.5rem', borderRadius: 6
+                                                                                        }}
+                                                                                        disabled={deleting === d.id}
+                                                                                    >
+                                                                                        {deleting === d.id ? <Loader2 size={13} /> : <Trash2 size={13} />}
+                                                                                        Move to Bin
+                                                                                    </button>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    </>
+                                                                ) : (
+                                                                    /* Bin mode */
+                                                                    <>
+                                                                        <button
+                                                                            onClick={() => handleRestore(d.id, d.device_code)}
+                                                                            className=”btn-secondary”
+                                                                            style={{ padding: '0.375rem 0.625rem', color: 'var(--color-success)' }}
+                                                                            title=”Restore Device”
                                                                         >
                                                                             <RotateCcw size={13} />
                                                                         </button>
                                                                         <button
-                                                                            onClick={() => handleClearCache(d.id, d.device_code)}
-                                                                            className="btn-secondary"
+                                                                            onClick={() => handleDelete(d.id, d.device_code)}
+                                                                            className=”btn-danger”
                                                                             style={{ padding: '0.375rem 0.625rem' }}
-                                                                            title="Clear Device Cache"
+                                                                            disabled={deleting === d.id}
+                                                                            title=”Delete permanently”
                                                                         >
-                                                                            <Eraser size={13} />
-                                                                        </button>
-                                                                        <button
-                                                                            onClick={() => handleCheckUpdate(d.id, d.device_code)}
-                                                                            className="btn-secondary"
-                                                                            style={{ padding: '0.375rem 0.625rem' }}
-                                                                            title="Check for App Update"
-                                                                        >
-                                                                            <Download size={13} />
-                                                                        </button>
-                                                                        <button
-                                                                            onClick={() => { setPairingInfo({ device_code: d.device_code, device_secret: d.device_secret }); setShowPairingModal(true) }}
-                                                                            className="btn-secondary"
-                                                                            style={{ padding: '0.375rem 0.625rem' }}
-                                                                            title="Show pairing info"
-                                                                        >
-                                                                            <QrCode size={13} />
+                                                                            {deleting === d.id ? <Loader2 size={13} /> : <Trash2 size={13} />}
                                                                         </button>
                                                                     </>
-                                                                ) : (
-                                                                    <button
-                                                                        onClick={() => handleRestore(d.id, d.device_code)}
-                                                                        className="btn-secondary"
-                                                                        style={{ padding: '0.375rem 0.625rem', color: 'var(--color-success)' }}
-                                                                        title="Restore Device"
-                                                                    >
-                                                                        <RotateCcw size={13} />
-                                                                    </button>
                                                                 )}
-                                                                <button
-                                                                    onClick={() => handleDelete(d.id, d.device_code)}
-                                                                    className="btn-danger"
-                                                                    style={{ padding: '0.375rem 0.625rem' }}
-                                                                    disabled={deleting === d.id}
-                                                                    title={viewMode === 'bin' ? "Delete permanently" : "Move to Bin"}
-                                                                >
-                                                                    {deleting === d.id ? <Loader2 size={13} /> : <Trash2 size={13} />}
-                                                                </button>
                                                             </div>
                                                         </td>
                                                     </tr>
