@@ -32,7 +32,7 @@ export function getDeviceState(
     if (!lastSeen) return 'offline'
     try {
         const age = Date.now() - new Date(lastSeen).getTime()
-        if (age > STALE_THRESHOLD_MS) return 'offline'
+        if (isNaN(age) || age > STALE_THRESHOLD_MS) return 'offline'
         if (age > FRESH_THRESHOLD_MS) return 'stale'
         return status === 'playing' ? 'playing' : 'idle'
     } catch {

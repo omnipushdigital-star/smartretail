@@ -871,6 +871,12 @@ export default function DevicesPage() {
                                                                                 <MoreVertical size={13} />
                                                                             </button>
                                                                             {openMenuId === d.id && (
+                                                                                <>
+                                                                                    {/* Transparent overlay to close on outside click */}
+                                                                                    <div
+                                                                                        style={{ position: 'fixed', inset: 0, zIndex: 49 }}
+                                                                                        onClick={() => setOpenMenuId(null)}
+                                                                                    />
                                                                                 <div
                                                                                     style={{
                                                                                         position: 'absolute', right: 0, top: '100%', zIndex: 50,
@@ -878,7 +884,6 @@ export default function DevicesPage() {
                                                                                         borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
                                                                                         minWidth: 160, padding: '0.25rem', marginTop: '0.25rem'
                                                                                     }}
-                                                                                    onMouseLeave={() => setOpenMenuId(null)}
                                                                                 >
                                                                                     {[
                                                                                         { label: 'Diagnostics', icon: <Activity size={13} />, action: () => { setSelectedHealthDevice(d); setOpenMenuId(null) } },
@@ -917,6 +922,7 @@ export default function DevicesPage() {
                                                                                         Move to Bin
                                                                                     </button>
                                                                                 </div>
+                                                                                </>
                                                                             )}
                                                                         </div>
                                                                     </>
