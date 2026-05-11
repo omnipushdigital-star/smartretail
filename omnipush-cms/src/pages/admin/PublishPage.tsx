@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Upload, FileCheck, Loader2, Globe, Store as StoreIcon, Monitor, ChevronDown, ChevronRight, Package, ArrowUpRight } from 'lucide-react'
+import { Upload, FileCheck, Loader2, Globe, Store as StoreIcon, Monitor, ChevronDown, ChevronRight, Package, ArrowUpRight, Check } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { Layout, Bundle } from '../../types'
 import { Store, Role, Device } from '../../types'
@@ -58,6 +58,7 @@ export default function PublishPage() {
         bundle_id: '',
     })
     const [editingId, setEditingId] = useState<string | null>(null)
+    const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1)
 
     const loadAll = async () => {
         if (!currentTenantId) return
@@ -242,6 +243,7 @@ export default function PublishPage() {
             layout_id: p.layout_id,
             bundle_id: p.bundle_id,
         })
+        setWizardStep(1)
         setShowPublishModal(true)
     }
 
@@ -272,7 +274,7 @@ export default function PublishPage() {
                     >
                         Force DB Repair
                     </button>
-                    <button className="btn-primary" onClick={() => setShowPublishModal(true)}>
+                    <button className="btn-primary" onClick={() => { setWizardStep(1); setShowPublishModal(true) }}>
                         <Upload size={14} /> Publish Layout
                     </button>
                 </div>
@@ -383,87 +385,209 @@ export default function PublishPage() {
 
             {/* Publish Modal */}
             {showPublishModal && (
-                <Modal title="Publish Layout" onClose={() => setShowPublishModal(false)}>
+                <Modal
+                    title={editingId ? 'Update Publication' : 'Publish Layout'}
+                    onClose={() => { setShowPublishModal(false); setEditingId(null) }}
+                    maxWidth="560px"
+                >
+                    {/* Step progress indicator */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1.75rem' }}>
+                        {([
+                            { n: 1, label: 'Layout & Bundle' },
+                            { n: 2, label: 'Scope & Target' },
+                            { n: 3, label: 'Confirm' },
+                        ] as { n: 1 | 2 | 3; label: string }[]).map(({ n, label }, i) => (
+                            <React.Fragment key={n}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+                                    <div style={{
+                                        width: 28, height: 28, borderRadius: '50%',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        background: wizardStep > n
+                                            ? 'var(--color-success)'
+                                            : wizardStep === n
+                                                ? 'var(--color-accent)'
+                                                : 'var(--color-surface-2)',
+                                        color: wizardStep >= n ? 'white' : 'var(--color-text-muted)',
+                                        fontSize: '0.8125rem', fontWeight: 700, flexShrink: 0,
+                                        transition: 'background 0.2s',
+                                    }}>
+                                        {wizardStep > n ? <Check size={14} /> : n}
+                                    </div>
+                                    <span style={{
+                                        fontSize: '0.75rem', fontWeight: wizardStep === n ? 600 : 400,
+                                        color: wizardStep === n ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                                        whiteSpace: 'nowrap'
+                                    }}>
+                                        {label}
+                                    </span>
+                                </div>
+                                {i < 2 && (
+                                    <div style={{ flex: 1, height: 1, background: 'var(--color-border)', margin: '0 0.625rem' }} />
+                                )}
+                            </React.Fragment>
+                        ))}
+                    </div>
+
                     <form onSubmit={handlePublish}>
-                        {/* Scope picker */}
-                        <div className="form-group">
-                            <label className="label">Scope *</label>
-                            <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                {SCOPE_OPTIONS.map(opt => (
-                                    <button key={opt.value} type="button"
-                                        onClick={() => setForm(f => ({ ...f, scope: opt.value, store_id: '', device_id: '' }))}
-                                        style={{
-                                            flex: 1, padding: '0.625rem 0.5rem', borderRadius: 8, cursor: 'pointer',
-                                            border: `1px solid ${form.scope === opt.value ? 'rgba(90,100,246,0.6)' : '#1e293b'}`,
-                                            background: form.scope === opt.value ? 'rgba(90,100,246,0.12)' : '#0f172a',
-                                            color: form.scope === opt.value ? '#c7d2fe' : '#64748b',
-                                            fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem',
-                                        }}>
-                                        {opt.icon}
-                                        <span style={{ fontWeight: 600 }}>{opt.label}</span>
+                        {/* ── STEP 1: Layout & Bundle ─────────────────────────────── */}
+                        {wizardStep === 1 && (
+                            <div>
+                                <div className="form-group">
+                                    <label className="label">Layout *</label>
+                                    {layouts.length === 0 ? (
+                                        <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
+                                            No layouts found. <a href="/admin/layouts" style={{ color: 'var(--color-accent)' }}>Create one first.</a>
+                                        </p>
+                                    ) : (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: 240, overflowY: 'auto' }}>
+                                            {layouts.map(l => (
+                                                <label
+                                                    key={l.id}
+                                                    style={{
+                                                        display: 'flex', alignItems: 'center', gap: '0.75rem',
+                                                        padding: '0.75rem 1rem', borderRadius: 8, cursor: 'pointer',
+                                                        border: `1px solid ${form.layout_id === l.id ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                                                        background: form.layout_id === l.id ? 'rgba(0,196,212,0.08)' : 'var(--color-surface-2)',
+                                                        transition: 'all 0.15s',
+                                                    }}
+                                                >
+                                                    <input
+                                                        type="radio"
+                                                        name="layout_id"
+                                                        value={l.id}
+                                                        checked={form.layout_id === l.id}
+                                                        onChange={() => setForm(f => ({ ...f, layout_id: l.id }))}
+                                                        style={{ accentColor: 'var(--color-accent)' }}
+                                                    />
+                                                    <span style={{ fontWeight: 500, color: 'var(--color-text-primary)' }}>{l.name}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="form-group">
+                                    <label className="label">Bundle version *</label>
+                                    <select className="input-field" value={form.bundle_id} onChange={e => setForm(f => ({ ...f, bundle_id: e.target.value }))}>
+                                        <option value="">— Select bundle —</option>
+                                        {bundles.map(b => (
+                                            <option key={b.id} value={b.id}>
+                                                {b.version}{b.notes ? ` — ${b.notes}` : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
+                                    <button
+                                        type="button"
+                                        className="btn-primary"
+                                        disabled={!form.layout_id || !form.bundle_id}
+                                        onClick={() => setWizardStep(2)}
+                                    >
+                                        Next →
                                     </button>
-                                ))}
-                            </div>
-                            <p style={{ margin: '0.375rem 0 0', fontSize: '0.75rem', color: '#475569' }}>
-                                {SCOPE_OPTIONS.find(o => o.value === form.scope)?.description}
-                            </p>
-                        </div>
-
-                        <div className="form-group">
-                            <label className="label">Role *</label>
-                            <select className="input-field" value={form.role_id} onChange={e => setForm(f => ({ ...f, role_id: e.target.value }))}>
-                                <option value="">— Select Role —</option>
-                                {roles.map(r => <option key={r.id} value={r.id}>{r.name} {r.key ? `(${r.key})` : ''}</option>)}
-                            </select>
-                        </div>
-
-                        {form.scope === 'STORE' && (
-                            <div className="form-group">
-                                <label className="label">Store *</label>
-                                <select className="input-field" value={form.store_id} onChange={e => setForm(f => ({ ...f, store_id: e.target.value }))}>
-                                    <option value="">— Select Store —</option>
-                                    {stores.map(s => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}
-                                </select>
+                                </div>
                             </div>
                         )}
 
-                        {form.scope === 'DEVICE' && (
-                            <div className="form-group">
-                                <label className="label">Device *</label>
-                                <select className="input-field" value={form.device_id} onChange={e => setForm(f => ({ ...f, device_id: e.target.value }))}>
-                                    <option value="">— Select Device —</option>
-                                    {devices.map(d => <option key={d.id} value={d.id}>{d.device_code}{d.display_name ? ` — ${d.display_name}` : ''}</option>)}
-                                </select>
+                        {/* ── STEP 2: Scope & Target ──────────────────────────────── */}
+                        {wizardStep === 2 && (
+                            <div>
+                                <div className="form-group">
+                                    <label className="label">Role *</label>
+                                    <select className="input-field" value={form.role_id} onChange={e => setForm(f => ({ ...f, role_id: e.target.value }))}>
+                                        <option value="">— Select role —</option>
+                                        {roles.map(r => <option key={r.id} value={r.id}>{r.name}{r.key ? ` (${r.key})` : ''}</option>)}
+                                    </select>
+                                </div>
+                                <div className="form-group">
+                                    <label className="label">Scope *</label>
+                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        {SCOPE_OPTIONS.map(opt => (
+                                            <button
+                                                key={opt.value}
+                                                type="button"
+                                                onClick={() => setForm(f => ({ ...f, scope: opt.value, store_id: '', device_id: '' }))}
+                                                style={{
+                                                    flex: 1, padding: '0.75rem 0.5rem', borderRadius: 8, cursor: 'pointer',
+                                                    border: `1px solid ${form.scope === opt.value ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                                                    background: form.scope === opt.value ? 'rgba(0,196,212,0.1)' : 'var(--color-surface-2)',
+                                                    color: form.scope === opt.value ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                                                    fontSize: '0.8125rem', display: 'flex', flexDirection: 'column',
+                                                    alignItems: 'center', gap: '0.375rem', transition: 'all 0.15s',
+                                                }}
+                                            >
+                                                {opt.icon}
+                                                <span style={{ fontWeight: 600 }}>{opt.label}</span>
+                                                <span style={{ fontSize: '0.7rem', textAlign: 'center', lineHeight: 1.3 }}>{opt.description}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                {form.scope === 'STORE' && (
+                                    <div className="form-group">
+                                        <label className="label">Store *</label>
+                                        <select className="input-field" value={form.store_id} onChange={e => setForm(f => ({ ...f, store_id: e.target.value }))}>
+                                            <option value="">— Select store —</option>
+                                            {stores.map(s => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}
+                                        </select>
+                                    </div>
+                                )}
+                                {form.scope === 'DEVICE' && (
+                                    <div className="form-group">
+                                        <label className="label">Device *</label>
+                                        <select className="input-field" value={form.device_id} onChange={e => setForm(f => ({ ...f, device_id: e.target.value }))}>
+                                            <option value="">— Select device —</option>
+                                            {devices.map(d => <option key={d.id} value={d.id}>{d.device_code}{d.display_name ? ` — ${d.display_name}` : ''}</option>)}
+                                        </select>
+                                    </div>
+                                )}
+                                <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'space-between', marginTop: '1.25rem' }}>
+                                    <button type="button" className="btn-secondary" onClick={() => setWizardStep(1)}>← Back</button>
+                                    <button
+                                        type="button"
+                                        className="btn-primary"
+                                        disabled={!form.role_id || (form.scope === 'STORE' && !form.store_id) || (form.scope === 'DEVICE' && !form.device_id)}
+                                        onClick={() => setWizardStep(3)}
+                                    >
+                                        Next →
+                                    </button>
+                                </div>
                             </div>
                         )}
 
-                        <div className="form-group">
-                            <label className="label">Layout *</label>
-                            <select className="input-field" value={form.layout_id} onChange={e => setForm(f => ({ ...f, layout_id: e.target.value }))}>
-                                <option value="">— Select Layout —</option>
-                                {layouts.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                            </select>
-                        </div>
-
-                        <div className="form-group">
-                            <label className="label">Bundle *</label>
-                            <select className="input-field" value={form.bundle_id} onChange={e => setForm(f => ({ ...f, bundle_id: e.target.value }))}>
-                                <option value="">— Select Bundle —</option>
-                                {bundles.map(b => <option key={b.id} value={b.id}>{b.version}{b.notes ? ` — ${b.notes}` : ''}</option>)}
-                            </select>
-                        </div>
-
-                        <div style={{ padding: '0.75rem 1rem', background: 'rgba(var(--color-warning-rgb), 0.06)', border: '1px solid rgba(var(--color-warning-rgb), 0.15)', borderRadius: 8, marginBottom: '1rem', fontSize: '0.8125rem', color: 'var(--color-warning)' }}>
-                            ⚠️ <span style={{ color: 'var(--color-text-2)' }}>Publishing will <strong style={{ color: 'var(--color-warning)' }}>deactivate the current active publication</strong> for the same target automatically.</span>
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-                            <button type="button" className="btn-secondary" onClick={() => setShowPublishModal(false)}>Cancel</button>
-                            <button type="submit" className="btn-primary" disabled={publishing}>
-                                {publishing && <Loader2 size={14} />}
-                                {publishing ? 'Saving…' : editingId ? 'Update Publication' : 'Publish'}
-                            </button>
-                        </div>
+                        {/* ── STEP 3: Confirm ─────────────────────────────────────── */}
+                        {wizardStep === 3 && (
+                            <div>
+                                <div style={{ background: 'var(--color-surface-2)', borderRadius: 10, padding: '1.25rem', marginBottom: '1.25rem', border: '1px solid var(--color-border)' }}>
+                                    <h3 style={{ margin: '0 0 1rem', fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                                        Publication summary
+                                    </h3>
+                                    {[
+                                        { label: 'Layout', value: layouts.find(l => l.id === form.layout_id)?.name || '—' },
+                                        { label: 'Bundle', value: bundles.find(b => b.id === form.bundle_id)?.version || '—' },
+                                        { label: 'Role', value: roles.find(r => r.id === form.role_id)?.name || '—' },
+                                        { label: 'Scope', value: form.scope },
+                                        ...(form.scope === 'STORE' ? [{ label: 'Store', value: stores.find(s => s.id === form.store_id)?.name || '—' }] : []),
+                                        ...(form.scope === 'DEVICE' ? [{ label: 'Device', value: devices.find(d => d.id === form.device_id)?.device_code || '—' }] : []),
+                                    ].map(row => (
+                                        <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.375rem 0', borderBottom: '1px solid var(--color-border)', fontSize: '0.875rem' }}>
+                                            <span style={{ color: 'var(--color-text-muted)' }}>{row.label}</span>
+                                            <span style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}>{row.value}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div style={{ padding: '0.75rem 1rem', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 8, marginBottom: '1.25rem', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                                    ⚠️ Publishing will <strong style={{ color: '#f59e0b' }}>deactivate the current active publication</strong> for the same target automatically.
+                                </div>
+                                <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'space-between' }}>
+                                    <button type="button" className="btn-secondary" onClick={() => setWizardStep(2)}>← Back</button>
+                                    <button type="submit" className="btn-primary" disabled={publishing}>
+                                        {publishing && <Loader2 size={14} />}
+                                        {publishing ? 'Publishing…' : editingId ? 'Update Publication' : '🚀 Publish'}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </form>
                 </Modal>
             )}
