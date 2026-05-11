@@ -71,9 +71,10 @@ html.light {
   --color-brand-600:    #007880;
   --color-brand-100:    rgba(0, 152, 168, 0.1);
   --color-surface-500:  #ffffff;
-  --color-text-1:       #111827;
-  --color-text-2:       #6b7280;
-  --color-text-3:       #6b7280;
+  --color-text-1: var(--color-text-primary);
+  --color-text-2: var(--color-text-muted);
+  --color-text-3: var(--color-text-muted);
+  --color-accent-legacy: #ff3d00; /* intentionally same in light mode — used for legacy alert/CTA only */
 }
 
 /* ── Layout ── */
