@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { Monitor, Wifi, WifiOff, Clock, Play, AlertCircle, Activity } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { DeviceState, getDeviceState, STATE_CONFIG, FRESH_THRESHOLD_MS, STALE_THRESHOLD_MS } from '../../utils/deviceState'
 import { supabase } from '../../lib/supabase'
 import { useTenant } from '../../contexts/TenantContext'
 import { DeviceHeartbeat } from '../../types'
@@ -9,30 +10,7 @@ import ActivityFeed from '../../components/dashboard/ActivityFeed'
 
 // ── Device State ──────────────────────────────────────────────────────────────
 
-export type DeviceState = 'playing' | 'idle' | 'stale' | 'offline'
 export type FilterTab = 'all' | DeviceState
-
-const FRESH_THRESHOLD_MS = 2 * 60 * 1000
-const STALE_THRESHOLD_MS = 5 * 60 * 1000
-
-export function getDeviceState(lastSeen: string, status: string): DeviceState {
-    if (!lastSeen) return 'offline'
-    try {
-        const age = Date.now() - new Date(lastSeen).getTime()
-        if (age > STALE_THRESHOLD_MS) return 'offline'
-        if (age > FRESH_THRESHOLD_MS) return 'stale'
-        return status === 'playing' ? 'playing' : 'idle'
-    } catch {
-        return 'offline'
-    }
-}
-
-const STATE_CONFIG: Record<DeviceState, { dot: string; label: string; bg: string; text: string }> = {
-    playing: { dot: '#22c55e', label: 'Playing',           bg: 'rgba(34,197,94,0.1)',  text: '#22c55e' },
-    idle:    { dot: '#f59e0b', label: 'Idle / No Content', bg: 'rgba(245,158,11,0.1)', text: '#f59e0b' },
-    stale:   { dot: '#3b82f6', label: 'Stale',             bg: 'rgba(59,130,246,0.1)', text: '#3b82f6' },
-    offline: { dot: '#ef4444', label: 'Offline',           bg: 'rgba(239,68,68,0.1)',  text: '#ef4444' },
-}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface ProjectHeartbeat extends DeviceHeartbeat {
