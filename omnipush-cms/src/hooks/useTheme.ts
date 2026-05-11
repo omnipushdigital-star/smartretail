@@ -26,11 +26,6 @@ export function useTheme() {
     localStorage.setItem('theme', theme)
   }, [theme])
 
-  // Apply on first mount (handles SSR or pre-render cases)
-  useEffect(() => {
-    applyTheme(getInitialTheme())
-  }, [])
-
   function toggle() {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark')
   }
