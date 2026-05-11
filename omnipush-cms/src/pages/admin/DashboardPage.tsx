@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase'
 import { useTenant } from '../../contexts/TenantContext'
 import { DeviceHeartbeat } from '../../types'
 import { formatDistanceToNow } from 'date-fns'
+import ActivityFeed from '../../components/dashboard/ActivityFeed'
 
 // ── Device State ──────────────────────────────────────────────────────────────
 
@@ -38,22 +39,7 @@ interface ProjectHeartbeat extends DeviceHeartbeat {
     device?: { display_name: string; store?: { name: string } }
 }
 
-// ── Activity Feed Placeholder (replaced in Plan 2 Task 2) ─────────────────────
-function ActivityFeed({ tenantId }: { tenantId: string }) {
-    return (
-        <div style={{
-            background: 'var(--color-surface-1)',
-            border: '1px solid var(--color-border)',
-            borderRadius: '12px',
-            padding: '1.25rem',
-            color: 'var(--color-text-muted)',
-            fontSize: '0.8125rem',
-            textAlign: 'center'
-        }}>
-            Activity feed loading…
-        </div>
-    )
-}
+
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function DashboardPage() {
