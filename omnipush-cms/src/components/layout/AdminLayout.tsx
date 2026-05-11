@@ -1,8 +1,9 @@
 import React from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
-import { Bell, Check, Plus, ChevronDown, MapPin, Building2, LogOut } from 'lucide-react'
+import { Bell, Check, Plus, ChevronDown, MapPin, Building2, LogOut, Search } from 'lucide-react'
 import Sidebar from './Sidebar'
 import ThemeToggle from '../common/ThemeToggle'
+import CommandPalette from '../common/CommandPalette'
  
 import { useAuth } from '../../contexts/AuthContext'
 import { useTenant } from '../../contexts/TenantContext'
@@ -25,6 +26,18 @@ export default function AdminLayout() {
     const [tenant, setTenant] = React.useState<TenantSettings | null>(null)
     const [showSwitcher, setShowSwitcher] = React.useState(false)
     const [showUserMenu, setShowUserMenu] = React.useState(false)
+    const [paletteOpen, setPaletteOpen] = React.useState(false)
+
+    React.useEffect(() => {
+        function handleKeyDown(e: KeyboardEvent) {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                e.preventDefault()
+                setPaletteOpen(prev => !prev)
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [])
 
     React.useEffect(() => {
         console.log('[AdminLayout] Current Tenant:', currentTenant, 'Loading:', tenantLoading)
@@ -66,15 +79,33 @@ export default function AdminLayout() {
                 
                 {/* Topbar */}
                 <header className="topbar h-[56px] px-7 flex items-center justify-between gap-4 bg-bg/85 backdrop-blur-xl border-b border-border sticky top-0 z-50 shrink-0">
-                    <div className="flex-1 flex items-center">
+                    <div className="flex-1 flex items-center gap-4">
                         <span className="text-sm font-semibold tracking-wide" style={{ color: 'var(--color-text-muted)' }}>
                             Smart Retail Display
                         </span>
                         {(import.meta.env.VITE_APP_ENV !== 'production' || window.location.hostname.includes('smartretail-plum')) && (
-                            <span className="ml-4 bg-brand-500/10 border border-brand-500 text-brand-500 text-[0.625rem] px-2 py-0.5 rounded-full font-black uppercase tracking-widest">
+                            <span className="bg-brand-500/10 border border-brand-500 text-brand-500 text-[0.625rem] px-2 py-0.5 rounded-full font-black uppercase tracking-widest">
                                 Staging
                             </span>
                         )}
+                        {/* Global search trigger */}
+                        <button
+                            onClick={() => setPaletteOpen(true)}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                padding: '0.375rem 0.875rem',
+                                background: 'var(--color-surface-2)',
+                                border: '1px solid var(--color-border)',
+                                borderRadius: 8,
+                                color: 'var(--color-text-muted)',
+                                fontSize: '0.875rem', cursor: 'pointer',
+                                minWidth: 200,
+                            }}
+                        >
+                            <Search size={14} />
+                            <span>Search…</span>
+                            <span style={{ marginLeft: 'auto', fontSize: '0.7rem', background: 'var(--color-border)', borderRadius: 4, padding: '0.1rem 0.4rem' }}>⌘K</span>
+                        </button>
                     </div>
 
                     <div className="flex items-center gap-4">
@@ -194,6 +225,7 @@ export default function AdminLayout() {
                     </div>
                 </main>
             </div>
+            <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
         </div>
     )
-} 
+}
