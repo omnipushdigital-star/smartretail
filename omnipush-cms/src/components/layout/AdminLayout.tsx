@@ -2,6 +2,7 @@ import React from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
 import { Bell, Check, Plus, ChevronDown, MapPin, Building2, LogOut } from 'lucide-react'
 import Sidebar from './Sidebar'
+import ThemeToggle from '../common/ThemeToggle'
  
 import { useAuth } from '../../contexts/AuthContext'
 import { useTenant } from '../../contexts/TenantContext'
@@ -64,10 +65,10 @@ export default function AdminLayout() {
             <div className="main-content flex-1 min-w-0 overflow-auto flex flex-col min-h-screen bg-bg transition-colors duration-200">
                 
                 {/* Topbar */}
-                <header className="topbar h-[72px] px-7 flex items-center justify-between gap-4 bg-bg/85 backdrop-blur-xl border-b border-border sticky top-0 z-50 shrink-0">
+                <header className="topbar h-[56px] px-7 flex items-center justify-between gap-4 bg-bg/85 backdrop-blur-xl border-b border-border sticky top-0 z-50 shrink-0">
                     <div className="flex-1 flex items-center">
-                        <span className="text-base font-black tracking-[0.2em] uppercase text-brand-500 drop-shadow-[0_0_8px_rgba(0,218,243,0.3)]">
-                            SMART RETAIL DISPLAY
+                        <span className="text-sm font-semibold tracking-wide" style={{ color: 'var(--color-text-muted)' }}>
+                            Smart Retail Display
                         </span>
                         {(import.meta.env.VITE_APP_ENV !== 'production' || window.location.hostname.includes('smartretail-plum')) && (
                             <span className="ml-4 bg-brand-500/10 border border-brand-500 text-brand-500 text-[0.625rem] px-2 py-0.5 rounded-full font-black uppercase tracking-widest">
@@ -148,6 +149,9 @@ export default function AdminLayout() {
                             <Bell size={18} />
                             <span className="absolute -top-[3px] -right-[3px] w-2.5 h-2.5 rounded-full bg-brand-500 border-2 border-surface-1 shadow-[0_0_10px_rgba(0,218,243,0.5)]" />
                         </button>
+
+                        {/* Theme Toggle */}
+                        <ThemeToggle />
 
                         {/* User Menu */}
                         <div className="relative">

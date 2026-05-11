@@ -110,6 +110,19 @@ export default function Sidebar() {
     getInitialOpenSections(location.pathname)
   )
 
+  // Auto-open the section containing the active route when navigating
+  React.useEffect(() => {
+    setOpenSections(prev => {
+      const next = new Set(prev)
+      for (const entry of NAV) {
+        if (entry.kind === 'section' && entry.items.some(i => i.path === location.pathname)) {
+          next.add(entry.id)
+        }
+      }
+      return next
+    })
+  }, [location.pathname])
+
   const isExpanded = pinned || hovered
 
   function togglePin() {
@@ -251,7 +264,7 @@ export default function Sidebar() {
           onClick={() => signOut()}
           title="Logout"
           style={{
-            width: isExpanded ? 'calc(100% - 0px)' : '40px',
+            width: isExpanded ? '100%' : '40px',
             margin: isExpanded ? '0' : '0 auto',
             display: 'flex',
             alignItems: 'center',
