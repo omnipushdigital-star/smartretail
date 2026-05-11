@@ -39,6 +39,9 @@ export default function ActivityFeed({ tenantId }: { tenantId: string }) {
                     .eq('tenant_id', tenantId)
                     .order('created_at', { ascending: false })
                     .limit(5),
+                // No .eq('tenant_id') here: device_heartbeats has no tenant_id column.
+                // Tenant isolation is enforced by the RLS policy, which JOINs through
+                // public.devices (device_heartbeats.device_id → devices.tenant_id).
                 supabase
                     .from('device_heartbeats')
                     .select('id, device_code, last_seen_at, status')
