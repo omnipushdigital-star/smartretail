@@ -49,53 +49,58 @@ export default function CommandPalette({ open, onClose }: Props) {
             return
         }
         setLoading(true)
-        const term = `%${q.trim()}%`
-        const [devRes, mediaRes, plRes] = await Promise.all([
-            supabase
-                .from('devices')
-                .select('id, device_code, display_name, store:stores(name)')
-                .eq('tenant_id', currentTenantId)
-                .is('deleted_at', null)
-                .or(`device_code.ilike.${term},display_name.ilike.${term}`)
-                .limit(5),
-            supabase
-                .from('media_assets')
-                .select('id, name, type')
-                .eq('tenant_id', currentTenantId)
-                .ilike('name', term)
-                .limit(5),
-            supabase
-                .from('playlists')
-                .select('id, name')
-                .eq('tenant_id', currentTenantId)
-                .ilike('name', term)
-                .limit(5),
-        ])
-        const items: ResultItem[] = [
-            ...(devRes.data || []).map(d => ({
-                id: d.id,
-                label: d.display_name || d.device_code,
-                sub: `${d.device_code}${(d as any).store?.name ? ` · ${(d as any).store.name}` : ''}`,
-                type: 'device' as const,
-                href: '/admin/devices',
-            })),
-            ...(mediaRes.data || []).map(m => ({
-                id: m.id,
-                label: m.name,
-                sub: m.type,
-                type: 'media' as const,
-                href: '/admin/media',
-            })),
-            ...(plRes.data || []).map(p => ({
-                id: p.id,
-                label: p.name,
-                type: 'playlist' as const,
-                href: '/admin/playlists',
-            })),
-        ]
-        setResults(items)
-        setActiveIdx(0)
-        setLoading(false)
+        try {
+            const term = `%${q.trim()}%`
+            const [devRes, mediaRes, plRes] = await Promise.all([
+                supabase
+                    .from('devices')
+                    .select('id, device_code, display_name, store:stores(name)')
+                    .eq('tenant_id', currentTenantId)
+                    .is('deleted_at', null)
+                    .or(`device_code.ilike.${term},display_name.ilike.${term}`)
+                    .limit(5),
+                supabase
+                    .from('media_assets')
+                    .select('id, name, type')
+                    .eq('tenant_id', currentTenantId)
+                    .ilike('name', term)
+                    .limit(5),
+                supabase
+                    .from('playlists')
+                    .select('id, name')
+                    .eq('tenant_id', currentTenantId)
+                    .ilike('name', term)
+                    .limit(5),
+            ])
+            const items: ResultItem[] = [
+                ...(devRes.data || []).map(d => ({
+                    id: d.id,
+                    label: d.display_name || d.device_code,
+                    sub: `${d.device_code}${(d as any).store?.name ? ` · ${(d as any).store.name}` : ''}`,
+                    type: 'device' as const,
+                    href: '/admin/devices',
+                })),
+                ...(mediaRes.data || []).map(m => ({
+                    id: m.id,
+                    label: m.name,
+                    sub: m.type,
+                    type: 'media' as const,
+                    href: '/admin/media',
+                })),
+                ...(plRes.data || []).map(p => ({
+                    id: p.id,
+                    label: p.name,
+                    type: 'playlist' as const,
+                    href: '/admin/playlists',
+                })),
+            ]
+            setResults(items)
+            setActiveIdx(0)
+        } catch {
+            setResults([])
+        } finally {
+            setLoading(false)
+        }
     }, [currentTenantId])
 
     // Debounce search
