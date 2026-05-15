@@ -22,8 +22,8 @@
   --color-border:    #2d3348;
 
   /* Text — dark mode defaults */
-  --color-text-primary: #f0f2f7;
-  --color-text-muted:   #6b7280;
+  --color-text-primary: #ffffff;
+  --color-text-muted:   #9ca3af;
 
   /* Semantic */
   --color-success: #22c55e;
@@ -62,8 +62,8 @@ html.light {
   --color-surface-2:    #f1f4f9;
   --color-surface-3:    #e8ecf2;
   --color-border:       #e2e6ef;
-  --color-text-primary: #111827;
-  --color-text-muted:   #6b7280;
+  --color-text-primary: #0a0e1a;
+  --color-text-muted:   #4b5563;
   --color-accent:       #0098a8;
   --color-accent-dark:  #007880;
   --color-accent-subtle: rgba(0, 152, 168, 0.1);
