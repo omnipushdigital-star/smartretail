@@ -1,26 +1,34 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Calendar, Plus, Clock, MoreVertical, Edit2, Play, Trash2, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
-import toast from 'react-hot-toast'
+import { Calendar, Plus, Clock, Play, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useTenant } from '../../contexts/TenantContext'
 import { Rule } from '../../types'
 import { format } from 'date-fns'
 
-interface TimeSlot {
-    id: string
-    time: string
-    content: string
-    color: string
-    type: string
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+// Bit values matching JS Date.getDay(): Sun=0, Mon=1 ... Sat=6
+const DAY_BITS = [1, 2, 3, 4, 5, 6, 0]
+
+function formatCountdown(startTime: string, currentMinutes: number): string {
+    const [h, m] = startTime.split(':').map(Number)
+    const targetMins = h * 60 + m
+    const diffMins = targetMins - currentMinutes
+    if (diffMins <= 0) return ''
+    const hrs = Math.floor(diffMins / 60)
+    const mins = diffMins % 60
+    return hrs > 0 ? `in ${hrs}h ${mins}m` : `in ${mins}m`
 }
 
-const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+function scopeColor(targetType: string): string {
+    if (targetType === 'GLOBAL') return 'rgba(124,107,248,0.4)'
+    if (targetType === 'STORE') return 'rgba(245,158,11,0.3)'
+    return 'rgba(59,130,246,0.3)'
+}
 
 export default function SchedulePage() {
     const navigate = useNavigate()
     const { currentTenantId } = useTenant()
-    const [selectedLocation] = useState('All Infrastructure')
     const [rules, setRules] = useState<Rule[]>([])
     const [loading, setLoading] = useState(true)
 
@@ -32,47 +40,46 @@ export default function SchedulePage() {
             .select('*, layout:layouts(name), schedules:rule_schedules(*)')
             .eq('tenant_id', currentTenantId)
             .eq('enabled', true)
-
         if (!error) setRules(data || [])
         setLoading(false)
     }
 
     useEffect(() => { loadData() }, [currentTenantId])
 
-    const activeRulesCount = rules.length
-    const dayPartsCount = rules.filter(r => r.schedules && r.schedules.length > 0).length
-
-    // Detect currently active rule
+    // Time context (computed at render time — no interval needed)
     const now = new Date()
-    const dayBit = now.getDay() // 0=Sun, 1=Mon...
+    const todayBit = now.getDay()            // 0=Sun, 1=Mon ... 6=Sat
     const timeStr = format(now, 'HH:mm:ss')
+    const currentMinutes = now.getHours() * 60 + now.getMinutes()
 
-    const currentRule = rules.find(r => {
+    // Rules active today, sorted by start_time ascending
+    const todayRules = rules
+        .filter(r => {
+            const mask = r.schedules?.[0]?.days_mask ?? 0
+            return !!(mask & (1 << todayBit))
+        })
+        .sort((a, b) =>
+            (a.schedules?.[0]?.start_time ?? '').localeCompare(b.schedules?.[0]?.start_time ?? '')
+        )
+
+    // Currently active rule (time window overlaps now)
+    const currentRule = todayRules.find(r => {
         const sched = r.schedules?.[0]
         if (!sched) return false
-        if (!(sched.days_mask & (1 << dayBit))) return false
         if (sched.start_time && timeStr < sched.start_time) return false
         if (sched.end_time && timeStr > sched.end_time) return false
         return true
     })
 
-    const slots: TimeSlot[] = rules.map(r => {
+    // Next rule starting after now
+    const nextRule = todayRules.find(r => {
         const sched = r.schedules?.[0]
-        return {
-            id: r.id,
-            time: sched ? `${sched.start_time?.substring(0, 5)} - ${sched.end_time?.substring(0, 5)}` : 'Always',
-            content: r.name,
-            color: r.target_type === 'GLOBAL' ? 'purple' : r.target_type === 'STORE' ? 'orange' : 'blue',
-            type: (r as any).layout?.name || 'Layout'
-        }
-    }).sort((a, b) => a.time.localeCompare(b.time))
+        return sched?.start_time && sched.start_time > timeStr
+    })
 
-    const colors: any = {
-        purple: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20 hover:bg-purple-500/20',
-        orange: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20 hover:bg-orange-500/20',
-        blue: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20',
-        green: 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20 hover:bg-green-500/20',
-    }
+    // OR all days_mask values to determine weekly coverage
+    const combinedMask = rules.reduce((acc, r) => acc | (r.schedules?.[0]?.days_mask ?? 0), 0)
+    const isDayActive = (bit: number) => !!(combinedMask & (1 << bit))
 
     if (loading) {
         return (
@@ -107,14 +114,14 @@ export default function SchedulePage() {
                 <div className="stat-card border border-slate-200 dark:border-white/5 bg-white dark:bg-surface-900/50 shadow-sm">
                     <div className="stat-icon bg-brand-500/10 text-brand-500"><Clock size={20} /></div>
                     <div>
-                        <div className="text-2xl font-bold text-slate-900 dark:text-white">{dayPartsCount} Slots</div>
+                        <div className="text-2xl font-bold text-slate-900 dark:text-white">{rules.filter(r => r.schedules && r.schedules.length > 0).length} Slots</div>
                         <div className="text-sm font-medium text-text-2">Daily Dayparts</div>
                     </div>
                 </div>
                 <div className="stat-card border border-slate-200 dark:border-white/5 bg-white dark:bg-surface-900/50 shadow-sm">
                     <div className="stat-icon bg-green-500/10 text-green-500"><CheckCircle2 size={20} /></div>
                     <div>
-                        <div className="text-2xl font-bold text-slate-900 dark:text-white">{activeRulesCount > 0 ? 'Active' : 'Idle'}</div>
+                        <div className="text-2xl font-bold text-slate-900 dark:text-white">{rules.length > 0 ? 'Active' : 'Idle'}</div>
                         <div className="text-sm font-medium text-text-2">Scheduling Engine</div>
                     </div>
                 </div>
@@ -132,7 +139,7 @@ export default function SchedulePage() {
                 <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-10">
                     <h3 className="text-xl font-bold text-text-1 flex items-center gap-3">
                         <Calendar size={24} className="text-brand-500" />
-                        Weekly Schedule — <span className="text-brand-500">{selectedLocation}</span>
+                        Weekly Schedule — <span className="text-brand-500">All Infrastructure</span>
                     </h3>
                     <button className="btn-primary text-xs py-2 px-4 rounded-full" onClick={() => navigate('/admin/rules')}>
                         <Plus size={14} /> Add Rule
@@ -152,27 +159,31 @@ export default function SchedulePage() {
 
                     {/* Timeline Rows */}
                     <div className="space-y-6">
-                        {slots.length === 0 ? (
+                        {rules.length === 0 ? (
                             <div className="text-center py-20 border border-dashed border-white/10 rounded-3xl bg-white/[0.02]">
                                 <Calendar size={48} className="mx-auto text-text-3 mb-4 opacity-20" />
                                 <h4 className="text-white font-bold mb-1">No Active Dayparts</h4>
                                 <p className="text-text-3 text-sm">Define rules in the Rules section to see them here.</p>
                             </div>
-                        ) : slots.map(slot => {
-                            const rule = rules.find(r => r.id === slot.id);
-                            const mask = rule?.schedules?.[0]?.days_mask || 0;
+                        ) : rules.map(rule => {
+                            const sched = rule.schedules?.[0]
+                            const mask = sched?.days_mask ?? 0
+                            const timeLabel = sched ? `${sched.start_time?.substring(0, 5)} - ${sched.end_time?.substring(0, 5)}` : 'Always'
                             return (
-                                <div key={slot.id} className="grid grid-cols-[120px_repeat(7,1fr)] gap-4 items-center group">
+                                <div key={rule.id} className="grid grid-cols-[120px_repeat(7,1fr)] gap-4 items-center group">
                                     <div className="text-[10px] font-black text-text-2 bg-slate-100 dark:bg-surface-800 py-2 rounded-xl text-center border border-slate-200 dark:border-white/10 shadow-sm uppercase tracking-tighter">
-                                        {slot.time}
+                                        {timeLabel}
                                     </div>
-                                    {DAYS.map((day, idx) => {
-                                        const bit = idx === 6 ? 0 : idx + 1; // 0=Mon...5=Sat -> 1..6, 6=Sun -> 0
+                                    {DAY_BITS.map((bit, idx) => {
                                         const isActive = mask & (1 << bit);
                                         return (
-                                            <div key={day} className="h-10 rounded-xl border border-white/5 flex items-center justify-center transition-all bg-white/[0.01] group-hover:bg-white/[0.03]">
+                                            <div key={DAYS[idx]} className="h-10 rounded-xl border border-white/5 flex items-center justify-center transition-all bg-white/[0.01] group-hover:bg-white/[0.03]">
                                                 {isActive ? (
-                                                    <div className={`w-full h-full rounded-xl border-2 flex items-center justify-center text-[10px] font-bold ${colors[slot.color]}`} title={slot.content}>
+                                                    <div
+                                                        className="w-full h-full rounded-xl border-2 flex items-center justify-center text-[10px] font-bold"
+                                                        style={{ background: scopeColor(rule.target_type), borderColor: 'transparent' }}
+                                                        title={rule.name}
+                                                    >
                                                         <CheckCircle2 size={12} className="opacity-40" />
                                                     </div>
                                                 ) : null}
@@ -210,7 +221,7 @@ export default function SchedulePage() {
                                 <div className="text-sm text-text-2">{rules.length} total scheduled events</div>
                             </div>
                         </div>
-                        <span className="text-xs font-black text-text-3 tracking-widest uppercase">{selectedLocation}</span>
+                        <span className="text-xs font-black text-text-3 tracking-widest uppercase">All Infrastructure</span>
                     </div>
                 </div>
             </div>
