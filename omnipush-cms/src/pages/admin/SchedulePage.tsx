@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Calendar, Plus, Clock, Play, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
+import { Calendar, Plus, Play, Loader2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useTenant } from '../../contexts/TenantContext'
 import { Rule } from '../../types'
@@ -262,7 +262,50 @@ export default function SchedulePage() {
                 </div>
             </div>
 
-            {/* ── Zones 5-6 placeholder — added in next task ── */}
+            {/* ── Zone 5: Weekly Coverage Pills ── */}
+            <div style={{ background: 'var(--color-surface-1)', border: '1px solid var(--color-border)', borderRadius: 12, padding: '1rem 1.25rem' }}>
+                <div style={{ fontSize: '0.6875rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--color-text-muted)', marginBottom: '0.75rem' }}>
+                    Weekly Coverage — All Infrastructure
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    {DAYS.map((day, idx) => {
+                        const bit = DAY_BITS[idx]
+                        const active = isDayActive(bit)
+                        const isToday = bit === todayBit
+                        return (
+                            <div key={day} style={{
+                                flex: 1,
+                                borderRadius: 10,
+                                border: `1px solid ${active ? 'rgba(124,107,248,0.35)' : 'var(--color-border)'}`,
+                                background: active ? 'rgba(124,107,248,0.1)' : 'var(--color-surface-2)',
+                                padding: '0.625rem 0.25rem',
+                                textAlign: 'center',
+                                outline: isToday ? '2px solid var(--color-accent)' : 'none',
+                                outlineOffset: 2,
+                            }}>
+                                <div style={{ fontSize: '0.5625rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: active ? 'var(--color-accent)' : 'var(--color-text-muted)', marginBottom: 6 }}>
+                                    {day}
+                                </div>
+                                <div style={{ width: 8, height: 8, borderRadius: '50%', margin: '0 auto', background: active ? 'var(--color-accent)' : 'var(--color-border)' }} />
+                            </div>
+                        )
+                    })}
+                </div>
+            </div>
+
+            {/* ── Zone 6: Stats Strip ── */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
+                {[
+                    { value: String(rules.length), label: 'Active Rules', color: 'var(--color-text-primary)' },
+                    { value: rules.length > 0 ? 'Active' : 'Idle', label: 'Engine Status', color: rules.length > 0 ? 'var(--color-success)' : 'var(--color-text-muted)' },
+                    { value: '0', label: 'Conflicts', color: 'var(--color-text-primary)' },
+                ].map(stat => (
+                    <div key={stat.label} style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: 10, padding: '0.75rem 0.875rem' }}>
+                        <div style={{ fontSize: '1.125rem', fontWeight: 800, color: stat.color }}>{stat.value}</div>
+                        <div style={{ fontSize: '0.625rem', color: 'var(--color-text-muted)', marginTop: 2 }}>{stat.label}</div>
+                    </div>
+                ))}
+            </div>
 
         </div>
     )
