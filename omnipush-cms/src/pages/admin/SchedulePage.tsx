@@ -198,7 +198,71 @@ export default function SchedulePage() {
                 )}
             </div>
 
-            {/* ── Zones 4-6 placeholder — added in next tasks ── */}
+            {/* ── Zone 4: Today's Timeline ── */}
+            <div style={{ background: 'var(--color-surface-1)', border: '1px solid var(--color-border)', borderRadius: 12, padding: '1rem 1.25rem' }}>
+                <div style={{ fontSize: '0.6875rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--color-text-muted)', marginBottom: '0.625rem' }}>
+                    Today's Timeline — {DAYS[todayBit === 0 ? 6 : todayBit - 1]}
+                </div>
+                <div style={{ position: 'relative' }}>
+                    <div style={{ position: 'relative', height: 40, background: 'var(--color-surface-2)', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--color-border)' }}>
+                        {todayRules.length === 0 && (
+                            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                No slots scheduled today
+                            </div>
+                        )}
+                        {todayRules.map(r => {
+                            const sched = r.schedules?.[0]
+                            if (!sched?.start_time || !sched?.end_time) return null
+                            const [sh, sm] = sched.start_time.split(':').map(Number)
+                            const [eh, em] = sched.end_time.split(':').map(Number)
+                            const startMins = sh * 60 + sm
+                            const endMins = eh * 60 + em
+                            const startPct = (startMins / 1440) * 100
+                            const widthPct = ((endMins - startMins) / 1440) * 100
+                            const showLabel = widthPct > 8
+                            return (
+                                <div key={r.id} title={r.name} style={{
+                                    position: 'absolute',
+                                    left: `${startPct}%`,
+                                    width: `${widthPct}%`,
+                                    top: 0, bottom: 0,
+                                    background: scopeColor(r.target_type),
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontSize: '0.5625rem', fontWeight: 700, color: '#fff',
+                                    overflow: 'hidden',
+                                    borderRight: '1px solid rgba(255,255,255,0.08)',
+                                }}>
+                                    {showLabel ? r.name : ''}
+                                </div>
+                            )
+                        })}
+                        {/* NOW line */}
+                        <div style={{
+                            position: 'absolute',
+                            left: `${(currentMinutes / 1440) * 100}%`,
+                            top: 0, bottom: 0, width: 2,
+                            background: '#fff', zIndex: 10,
+                        }} />
+                    </div>
+                    {/* NOW label above the bar */}
+                    <div style={{
+                        position: 'absolute',
+                        left: `${(currentMinutes / 1440) * 100}%`,
+                        top: -16,
+                        fontSize: '0.5rem', color: '#fff', fontWeight: 700,
+                        transform: 'translateX(-50%)',
+                        pointerEvents: 'none',
+                    }}>NOW</div>
+                </div>
+                {/* Hour markers */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.375rem' }}>
+                    {['00:00', '06:00', '12:00', '18:00', '24:00'].map(t => (
+                        <div key={t} style={{ fontSize: '0.5625rem', color: 'var(--color-text-muted)' }}>{t}</div>
+                    ))}
+                </div>
+            </div>
+
+            {/* ── Zones 5-6 placeholder — added in next task ── */}
 
         </div>
     )
