@@ -102,13 +102,13 @@ export default function SchedulePage() {
                         <Calendar style={{ color: 'var(--color-accent)' }} size={30} />
                         Schedule Manager
                     </h1>
-                    <p style={{ color: 'var(--color-text-muted)', marginTop: '0.375rem', fontSize: '0.9375rem', margin: '0.375rem 0 0' }}>
+                    <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9375rem', margin: '0.375rem 0 0' }}>
                         Set dayparting rules and automated content rotation
                     </p>
                 </div>
                 <div style={{ display: 'flex', gap: '0.75rem' }}>
                     <button className="btn-secondary" onClick={() => navigate('/admin/devices')}>
-                        <Plus size={16} /> Add Screen
+                        <Plus size={16} aria-hidden="true" /> Add Screen
                     </button>
                     <button className="btn-primary" onClick={() => navigate('/admin/publish')}>
                         Push Content
@@ -147,7 +147,12 @@ export default function SchedulePage() {
                         </div>
                         <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginTop: 2 }}>
                             {currentRule
-                                ? `${currentRule.target_type} · Layout: ${(currentRule as any).layout?.name ?? '—'} · ${currentRule.schedules?.[0]?.start_time?.substring(0, 5) ?? ''} – ${currentRule.schedules?.[0]?.end_time?.substring(0, 5) ?? ''}`
+                                ? (() => {
+                                    const s = currentRule.schedules?.[0]?.start_time?.substring(0, 5)
+                                    const e = currentRule.schedules?.[0]?.end_time?.substring(0, 5)
+                                    const timeRange = (!s && !e) ? 'All day' : `${s ?? '?'} – ${e ?? '?'}`
+                                    return `${currentRule.target_type} · Layout: ${currentRule.layout?.name ?? '—'} · ${timeRange}`
+                                  })()
                                 : 'No rule is scheduled for this time slot'
                             }
                         </div>
