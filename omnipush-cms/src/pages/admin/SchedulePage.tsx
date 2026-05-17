@@ -85,148 +85,116 @@ export default function SchedulePage() {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center min-h-[400px]">
-                <Loader2 className="animate-spin text-brand-500" size={32} />
-                <span className="ml-3 text-text-2">Synchronizing Schedule Data...</span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400 }}>
+                <Loader2 className="animate-spin" style={{ color: 'var(--color-accent)' }} size={32} />
+                <span style={{ marginLeft: '0.75rem', color: 'var(--color-text-muted)' }}>Synchronizing Schedule Data...</span>
             </div>
         )
     }
 
     return (
-        <div className="p-6">
-            <div className="flex flex-col md:flex-row justify-between items-start gap-6 mb-10">
+        <div style={{ padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+
+            {/* ── Zone 1: Header ── */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
                 <div>
-                    <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white flex items-center gap-3 tracking-tight">
-                        <Calendar className="text-brand-500" size={32} />
+                    <h1 style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--color-text-primary)', display: 'flex', alignItems: 'center', gap: '0.75rem', margin: 0 }}>
+                        <Calendar style={{ color: 'var(--color-accent)' }} size={30} />
                         Schedule Manager
                     </h1>
-                    <p className="text-text-2 mt-2 text-lg">Set dayparting rules and automated content rotation</p>
+                    <p style={{ color: 'var(--color-text-muted)', marginTop: '0.375rem', fontSize: '0.9375rem', margin: '0.375rem 0 0' }}>
+                        Set dayparting rules and automated content rotation
+                    </p>
                 </div>
-                <div className="flex gap-4">
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
                     <button className="btn-secondary" onClick={() => navigate('/admin/devices')}>
-                        <Plus size={18} /> Add Screen
+                        <Plus size={16} /> Add Screen
                     </button>
-                    <button onClick={() => navigate('/admin/publish')} className="btn-primary shadow-xl shadow-brand-500/20">
+                    <button className="btn-primary" onClick={() => navigate('/admin/publish')}>
                         Push Content
                     </button>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-                <div className="stat-card border border-slate-200 dark:border-white/5 bg-white dark:bg-surface-900/50 shadow-sm">
-                    <div className="stat-icon bg-brand-500/10 text-brand-500"><Clock size={20} /></div>
+            {/* ── Zone 2: Now Playing Hero ── */}
+            <div style={{
+                background: 'linear-gradient(135deg, rgba(124,107,248,0.12) 0%, var(--color-surface-1) 100%)',
+                border: '1px solid var(--color-accent)',
+                borderRadius: 14,
+                padding: '1.25rem 1.5rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '1rem',
+                flexWrap: 'wrap',
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div style={{
+                        width: 52, height: 52,
+                        background: 'rgba(124,107,248,0.15)',
+                        borderRadius: 14,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: 'var(--color-accent)', flexShrink: 0,
+                    }}>
+                        <Play size={22} fill="currentColor" />
+                    </div>
                     <div>
-                        <div className="text-2xl font-bold text-slate-900 dark:text-white">{rules.filter(r => r.schedules && r.schedules.length > 0).length} Slots</div>
-                        <div className="text-sm font-medium text-text-2">Daily Dayparts</div>
+                        <div style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--color-accent)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 4 }}>
+                            Now Playing
+                        </div>
+                        <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-text-primary)' }}>
+                            {currentRule ? currentRule.name : 'No Active Rule'}
+                        </div>
+                        <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginTop: 2 }}>
+                            {currentRule
+                                ? `${currentRule.target_type} · Layout: ${(currentRule as any).layout?.name ?? '—'} · ${currentRule.schedules?.[0]?.start_time?.substring(0, 5) ?? ''} – ${currentRule.schedules?.[0]?.end_time?.substring(0, 5) ?? ''}`
+                                : 'No rule is scheduled for this time slot'
+                            }
+                        </div>
                     </div>
                 </div>
-                <div className="stat-card border border-slate-200 dark:border-white/5 bg-white dark:bg-surface-900/50 shadow-sm">
-                    <div className="stat-icon bg-green-500/10 text-green-500"><CheckCircle2 size={20} /></div>
-                    <div>
-                        <div className="text-2xl font-bold text-slate-900 dark:text-white">{rules.length > 0 ? 'Active' : 'Idle'}</div>
-                        <div className="text-sm font-medium text-text-2">Scheduling Engine</div>
-                    </div>
-                </div>
-                <div className="stat-card border border-slate-200 dark:border-white/5 bg-white dark:bg-surface-900/50 shadow-sm">
-                    <div className="stat-icon bg-blue-500/10 text-blue-500"><AlertCircle size={20} /></div>
-                    <div>
-                        <div className="text-2xl font-bold text-slate-900 dark:text-white">0 Conflicts</div>
-                        <div className="text-sm font-medium text-text-2">Validation Status</div>
-                    </div>
+                <div style={{
+                    background: currentRule ? 'rgba(34,197,94,0.15)' : 'rgba(107,114,128,0.15)',
+                    color: currentRule ? 'var(--color-success)' : 'var(--color-text-muted)',
+                    border: `1px solid ${currentRule ? 'rgba(34,197,94,0.3)' : 'var(--color-border)'}`,
+                    fontSize: '0.6875rem', fontWeight: 700,
+                    padding: '0.375rem 0.875rem',
+                    borderRadius: 20,
+                    textTransform: 'uppercase', letterSpacing: '0.1em',
+                    whiteSpace: 'nowrap',
+                }}>
+                    {currentRule ? '● Live' : '○ Idle'}
                 </div>
             </div>
 
-            {/* Weekly Schedule Row View */}
-            <div className="card-glass border border-slate-200 dark:border-white/5 rounded-3xl p-8 bg-white/70 dark:bg-surface-900/50 backdrop-blur-xl shadow-xl">
-                <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-10">
-                    <h3 className="text-xl font-bold text-text-1 flex items-center gap-3">
-                        <Calendar size={24} className="text-brand-500" />
-                        Weekly Schedule — <span className="text-brand-500">All Infrastructure</span>
-                    </h3>
-                    <button className="btn-primary text-xs py-2 px-4 rounded-full" onClick={() => navigate('/admin/rules')}>
-                        <Plus size={14} /> Add Rule
-                    </button>
-                </div>
-
-                <div className="relative overflow-x-auto">
-                    {/* Header: Days */}
-                    <div className="grid grid-cols-[120px_repeat(7,1fr)] gap-4 mb-6">
-                        <div />
-                        {DAYS.map(day => (
-                            <div key={day} className="text-center text-[10px] font-bold uppercase tracking-[0.2em] text-text-2">
-                                {day}
-                            </div>
-                        ))}
-                    </div>
-
-                    {/* Timeline Rows */}
-                    <div className="space-y-6">
-                        {rules.length === 0 ? (
-                            <div className="text-center py-20 border border-dashed border-white/10 rounded-3xl bg-white/[0.02]">
-                                <Calendar size={48} className="mx-auto text-text-3 mb-4 opacity-20" />
-                                <h4 className="text-white font-bold mb-1">No Active Dayparts</h4>
-                                <p className="text-text-3 text-sm">Define rules in the Rules section to see them here.</p>
-                            </div>
-                        ) : rules.map(rule => {
-                            const sched = rule.schedules?.[0]
-                            const mask = sched?.days_mask ?? 0
-                            const timeLabel = sched ? `${sched.start_time?.substring(0, 5)} - ${sched.end_time?.substring(0, 5)}` : 'Always'
-                            return (
-                                <div key={rule.id} className="grid grid-cols-[120px_repeat(7,1fr)] gap-4 items-center group">
-                                    <div className="text-[10px] font-black text-text-2 bg-slate-100 dark:bg-surface-800 py-2 rounded-xl text-center border border-slate-200 dark:border-white/10 shadow-sm uppercase tracking-tighter">
-                                        {timeLabel}
-                                    </div>
-                                    {DAY_BITS.map((bit, idx) => {
-                                        const isActive = mask & (1 << bit);
-                                        return (
-                                            <div key={DAYS[idx]} className="h-10 rounded-xl border border-white/5 flex items-center justify-center transition-all bg-white/[0.01] group-hover:bg-white/[0.03]">
-                                                {isActive ? (
-                                                    <div
-                                                        className="w-full h-full rounded-xl border-2 flex items-center justify-center text-[10px] font-bold"
-                                                        style={{ background: scopeColor(rule.target_type), borderColor: 'transparent' }}
-                                                        title={rule.name}
-                                                    >
-                                                        <CheckCircle2 size={12} className="opacity-40" />
-                                                    </div>
-                                                ) : null}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-
-                <div className="mt-12 pt-10 border-t border-slate-200 dark:border-white/5 grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="p-6 rounded-2xl bg-slate-50 dark:bg-surface-950/50 border border-slate-200 dark:border-white/5 flex items-center justify-between hover:border-brand-500/50 transition-colors">
-                        <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-500">
-                                <Play size={24} />
-                            </div>
-                            <div>
-                                <div className="text-base font-bold text-text-1">Current Rule</div>
-                                <div className="text-sm text-text-2">{currentRule ? currentRule.name : 'No active rule'}</div>
-                            </div>
+            {/* ── Zone 3: Next Up Bar ── */}
+            <div style={{
+                background: 'var(--color-surface-2)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 10,
+                padding: '0.75rem 1rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+            }}>
+                <div style={{ width: 8, height: 8, background: 'var(--color-warning)', borderRadius: '50%', flexShrink: 0 }} />
+                {nextRule ? (
+                    <>
+                        <div>
+                            <div style={{ fontSize: '0.625rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Next Up</div>
+                            <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-text-primary)' }}>{nextRule.name}</div>
                         </div>
-                        <span className={`${currentRule ? 'bg-green-500/10 text-green-600 dark:text-green-400' : 'bg-slate-500/10 text-slate-400'} px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider`}>
-                            {currentRule ? 'Running' : 'Idle'}
-                        </span>
-                    </div>
-                    <div className="p-6 rounded-2xl bg-slate-50 dark:bg-surface-950/50 border border-slate-200 dark:border-white/5 flex items-center justify-between hover:border-brand-500/50 transition-colors">
-                        <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-xl bg-brand-500/10 flex items-center justify-center text-brand-500">
-                                <Clock size={24} />
-                            </div>
-                            <div>
-                                <div className="text-base font-bold text-text-1">Timeline Context</div>
-                                <div className="text-sm text-text-2">{rules.length} total scheduled events</div>
-                            </div>
+                        <div style={{ marginLeft: 'auto', fontSize: '0.6875rem', color: 'var(--color-warning)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                            {formatCountdown(nextRule.schedules?.[0]?.start_time ?? '', currentMinutes)} → {nextRule.schedules?.[0]?.start_time?.substring(0, 5) ?? ''}
                         </div>
-                        <span className="text-xs font-black text-text-3 tracking-widest uppercase">All Infrastructure</span>
-                    </div>
-                </div>
+                    </>
+                ) : (
+                    <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>No more rules scheduled today</div>
+                )}
             </div>
+
+            {/* ── Zones 4-6 placeholder — added in next tasks ── */}
+
         </div>
     )
 }
