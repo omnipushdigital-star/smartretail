@@ -296,7 +296,7 @@ export default function SchedulePage() {
             {/* ── Zone 6: Stats Strip ── */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
                 {[
-                    { value: String(rules.length), label: 'Active Rules', color: 'var(--color-text-primary)' },
+                    { value: String(rules.length), label: 'Enabled Rules', color: 'var(--color-text-primary)' },
                     { value: rules.length > 0 ? 'Active' : 'Idle', label: 'Engine Status', color: rules.length > 0 ? 'var(--color-success)' : 'var(--color-text-muted)' },
                     { value: '0', label: 'Conflicts', color: 'var(--color-text-primary)' },
                 ].map(stat => (
