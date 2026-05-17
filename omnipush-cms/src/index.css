@@ -3,23 +3,23 @@
 @variant dark (&:where(.dark, .dark *));
 
 /* ═══════════════════════════════════════════════════════════════
-   OMNIPUSH DESIGN SYSTEM v2 — Neutral SaaS
+   OMNIPUSH DESIGN SYSTEM v2 — Midnight Ink
 ═══════════════════════════════════════════════════════════════ */
 @theme {
   --font-sans: 'Inter', system-ui, sans-serif;
   --font-display: 'Space Grotesk', system-ui, sans-serif;
 
-  /* Accent (cyan, toned down) */
-  --color-accent:        #00c4d4;
-  --color-accent-dark:   #0098a8;
-  --color-accent-subtle: rgba(0, 196, 212, 0.1);
+  /* Accent (indigo-violet) */
+  --color-accent:        #7c6bf8;
+  --color-accent-dark:   #6454e0;
+  --color-accent-subtle: rgba(124, 107, 248, 0.1);
 
-  /* Surfaces — dark mode defaults */
-  --color-bg:        #0f1117;
-  --color-surface-1: #1a1f2e;
-  --color-surface-2: #222738;
-  --color-surface-3: #2a3045;
-  --color-border:    #2d3348;
+  /* Surfaces — dark mode defaults (Midnight Ink) */
+  --color-bg:        #08090e;
+  --color-surface-1: #111420;
+  --color-surface-2: #181c2e;
+  --color-surface-3: #1e2338;
+  --color-border:    #252a3d;
 
   /* Text — dark mode defaults */
   --color-text-primary: #ffffff;
@@ -32,9 +32,9 @@
   --color-info:    #3b82f6;
 
   /* Legacy aliases (keep so existing pages do not break) */
-  --color-brand-500: #00c4d4;
-  --color-brand-600: #0098a8;
-  --color-brand-100: rgba(0, 196, 212, 0.1);
+  --color-brand-500: #7c6bf8;
+  --color-brand-600: #6454e0;
+  --color-brand-100: rgba(124, 107, 248, 0.1);
   --color-accent-legacy: #ff3d00;
   --color-surface-500: var(--color-surface-1);
   --color-text-1: var(--color-text-primary);
@@ -57,19 +57,19 @@ html, body {
 
 /* ── Light Mode: override tokens on <html class="light"> ── */
 html.light {
-  --color-bg:           #f8f9fb;
+  --color-bg:           #f6f5ff;
   --color-surface-1:    #ffffff;
-  --color-surface-2:    #f1f4f9;
-  --color-surface-3:    #e8ecf2;
-  --color-border:       #e2e6ef;
+  --color-surface-2:    #eeecff;
+  --color-surface-3:    #e4e1fc;
+  --color-border:       #d4d0f5;
   --color-text-primary: #0a0e1a;
   --color-text-muted:   #4b5563;
-  --color-accent:       #0098a8;
-  --color-accent-dark:  #007880;
-  --color-accent-subtle: rgba(0, 152, 168, 0.1);
-  --color-brand-500:    #0098a8;
-  --color-brand-600:    #007880;
-  --color-brand-100:    rgba(0, 152, 168, 0.1);
+  --color-accent:       #5b48d9;
+  --color-accent-dark:  #4836c4;
+  --color-accent-subtle: rgba(91, 72, 217, 0.1);
+  --color-brand-500:    #5b48d9;
+  --color-brand-600:    #4836c4;
+  --color-brand-100:    rgba(91, 72, 217, 0.1);
   --color-surface-500:  #ffffff;
   --color-text-1: var(--color-text-primary);
   --color-text-2: var(--color-text-muted);
