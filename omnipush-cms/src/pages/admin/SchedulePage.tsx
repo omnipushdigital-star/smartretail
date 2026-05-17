@@ -218,7 +218,7 @@ export default function SchedulePage() {
                             const startMins = sh * 60 + sm
                             const endMins = eh * 60 + em
                             const startPct = (startMins / 1440) * 100
-                            const widthPct = ((endMins - startMins) / 1440) * 100
+                            const widthPct = Math.max(0, ((endMins - startMins) / 1440) * 100)
                             const showLabel = widthPct > 8
                             return (
                                 <div key={r.id} title={r.name} style={{
@@ -237,7 +237,7 @@ export default function SchedulePage() {
                             )
                         })}
                         {/* NOW line */}
-                        <div style={{
+                        <div aria-hidden="true" style={{
                             position: 'absolute',
                             left: `${(currentMinutes / 1440) * 100}%`,
                             top: 0, bottom: 0, width: 2,
@@ -245,9 +245,9 @@ export default function SchedulePage() {
                         }} />
                     </div>
                     {/* NOW label above the bar */}
-                    <div style={{
+                    <div aria-hidden="true" style={{
                         position: 'absolute',
-                        left: `${(currentMinutes / 1440) * 100}%`,
+                        left: `${Math.max(2, Math.min(98, (currentMinutes / 1440) * 100))}%`,
                         top: -16,
                         fontSize: '0.5rem', color: '#fff', fontWeight: 700,
                         transform: 'translateX(-50%)',
