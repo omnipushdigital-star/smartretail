@@ -7,17 +7,18 @@ import { Rule } from '../../types'
 import { format } from 'date-fns'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-// Bit values matching JS Date.getDay(): Sun=0, Mon=1 ... Sat=6
+// getDay() shift amounts for days_mask bitmask — Mon=1, Tue=2, ... Sat=6, Sun=0
 const DAY_BITS = [1, 2, 3, 4, 5, 6, 0]
 
 function formatCountdown(startTime: string, currentMinutes: number): string {
+    if (!startTime) return ''
     const [h, m] = startTime.split(':').map(Number)
     const targetMins = h * 60 + m
     const diffMins = targetMins - currentMinutes
     if (diffMins <= 0) return ''
     const hrs = Math.floor(diffMins / 60)
     const mins = diffMins % 60
-    return hrs > 0 ? `in ${hrs}h ${mins}m` : `in ${mins}m`
+    return hrs > 0 ? (mins > 0 ? `in ${hrs}h ${mins}m` : `in ${hrs}h`) : `in ${mins}m`
 }
 
 function scopeColor(targetType: string): string {
@@ -76,6 +77,7 @@ export default function SchedulePage() {
         const sched = r.schedules?.[0]
         return sched?.start_time && sched.start_time > timeStr
     })
+
 
     // OR all days_mask values to determine weekly coverage
     const combinedMask = rules.reduce((acc, r) => acc | (r.schedules?.[0]?.days_mask ?? 0), 0)
