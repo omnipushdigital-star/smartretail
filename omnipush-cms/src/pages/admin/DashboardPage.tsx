@@ -83,11 +83,12 @@ export default function DashboardPage() {
                         device_code: dev.device_code,
                         status: 'offline',
                         last_seen_at: new Date(0).toISOString(),
+                        created_at: new Date(0).toISOString(),
                         current_version: null,
                         ip_address: null,
                         meta: {},
                         device: dev as any,
-                    } as ProjectHeartbeat)
+                    } as unknown as ProjectHeartbeat)
                 }
             }
             setHeartbeats(Array.from(hbMap.values()))
