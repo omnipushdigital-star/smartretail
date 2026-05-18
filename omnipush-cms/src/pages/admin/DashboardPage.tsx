@@ -74,6 +74,22 @@ export default function DashboardPage() {
                     }
                 }
             }
+            // Add phantom offline entries for devices that have never sent a heartbeat
+            for (const dev of devices) {
+                if (!hbMap.has(dev.device_code)) {
+                    hbMap.set(dev.device_code, {
+                        id: `phantom-${dev.id}`,
+                        device_id: dev.id,
+                        device_code: dev.device_code,
+                        status: 'offline',
+                        last_seen_at: new Date(0).toISOString(),
+                        current_version: null,
+                        ip_address: null,
+                        meta: {},
+                        device: dev as any,
+                    } as ProjectHeartbeat)
+                }
+            }
             setHeartbeats(Array.from(hbMap.values()))
         } catch (err) {
             console.error('[Dashboard] load error:', err)
@@ -105,11 +121,9 @@ export default function DashboardPage() {
     const stateCounts = React.useMemo(() => {
         const counts = { playing: 0, idle: 0, stale: 0, offline: 0 }
         for (const hb of heartbeats) counts[getDeviceState(hb.last_seen_at, hb.status)]++
-        const noHb = Math.max(0, totalDevices - heartbeats.length)
-        counts.offline += noHb
         return counts
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [heartbeats, totalDevices, tick])
+    }, [heartbeats, tick])
 
     const filteredHeartbeats = React.useMemo(() => {
         if (activeFilter === 'all') return heartbeats
@@ -160,7 +174,7 @@ export default function DashboardPage() {
                         {/* Filter tabs */}
                         <div style={{ display: 'flex', gap: '4px', background: 'var(--color-surface-2)', borderRadius: '8px', padding: '3px' }}>
                             {(['all', 'playing', 'idle', 'stale', 'offline'] as FilterTab[]).map(tab => {
-                                const count = tab === 'all' ? heartbeats.length : stateCounts[tab as DeviceState]
+                                const count = tab === 'all' ? totalDevices : stateCounts[tab as DeviceState]
                                 const isActive = activeFilter === tab
                                 return (
                                     <button
